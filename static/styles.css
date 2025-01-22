@@ -4,6 +4,9 @@
 }
 
 @media (min-width: 1000px){
+	#menu {
+    	right: 20vw;
+	}
 	#menu-modal {
 		overflow-y: scroll;
     	max-height: 715px;
@@ -17,8 +20,16 @@
 		width: 60rem !important;
 		max-width: 70% !important;
 	}
+	#editor li {
+		margin-left: 100px;
+	}
 }
 @media only screen and (max-width: 999px){
+	#menu {
+    	right: 0;
+		width: 100%;
+		max-width: 300px;
+	}
 	#export-btn {
 		display: none;
 	}
@@ -47,8 +58,8 @@
 	.modal-container {
 		max-width: 100% !important;
 		max-height: 100% !important;
-		width: 100% !important;
-		height: 100% !important;
+		/*width: 100% !important;
+		height: 100% !important;*/
 	}
 }
 * {
@@ -138,7 +149,6 @@ body {
     background-color: #ffffff;
     display: none;
     position: absolute;
-    right: 10px;
 }
 .menu {
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
@@ -152,7 +162,7 @@ body {
     border: none;
     padding: 10px;
     cursor: pointer;
-    width: 100%;
+    /*width: 100%;*/
 }
 
 .close-button{
@@ -195,16 +205,17 @@ body {
 
 #content-container,
 .editor-container {
-	overflow: scroll;
+	overflow-y: scroll;
     padding: var(--content-padding);
     min-height: 300px;
-	height: 100%;
+	margin-top: 170px;
+	height: -webkit-fill-available;
+	display: block;
 }
 
 #content,
 .editor {
     width: 100%;
-	margin-top: 170px;
 	height: 100%;
     min-height: 300px;
     outline: none;
@@ -215,8 +226,9 @@ body {
 
 #content,
 #editor * {
-	margin-top: 4px;
+	margin-top: 5px;
 }
+
 
 .dark-mode {
     background-color: #2c2c2c !important;
@@ -281,4 +293,31 @@ hr {
 .modal-topbar {
 	margin: 10px;
 	justify-content: space-between;
+}
+/* width */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+  background: #f1f1f1; 
+}
+ 
+/* Handle */
+::-webkit-scrollbar-thumb {
+  background: #888; 
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover {
+  background: #555; 
+}
+
+.double-button-div{
+	display: flex;
+}
+
+.delete-btn{
+	width: 80px !important;
 }

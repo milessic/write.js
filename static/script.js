@@ -1,10 +1,14 @@
-let autoSaveEnabled = true;
+let autosaveEnabled = 0;
+const lastOpenedKey= "__lastOpened__";
+const docPrefix = "__doc_";
+const autosaveKey = "__autosave__";
+
 const fontStyleMark = `
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">`
-const lastOpenedKey= "__lastOpened__";
-const docPrefix = "__doc_";
+loadAutosaveSetting();
+setAutosaveText();
 const documentNames = getDocumentNamesFromLocalStorage();
 const userConsent = true; // TODO user consent handling
 let darkModeEnabled = parseInt(localStorage.getItem("darkModeEnabled")) ? true : false;
@@ -35,7 +39,7 @@ editorObserver.observe(editorObject, config);
 document.onload = loadLastOpenedDocument()
 
 // Setup Events
-document.body.addEventListener('keydown', performAutoSave)
+document.getElementById("editor-container").addEventListener('keydown', performAutoSave)
 document.getElementById('editor-container').addEventListener('click', focusEditor);
 document.getElementById("dark-mode-btn").addEventListener("click", toggleDarkMode);
 document.getElementById("hamburger-menu").addEventListener("click", toggleMenu);
@@ -45,6 +49,7 @@ document.getElementById("open-doc-btn").addEventListener("click", openDocumentFr
 document.getElementById("import-doc-btn").addEventListener("click", importDocument);
 document.getElementById("toggle-format-btn").addEventListener("click", toggleFormattingBar);
 document.getElementById("spellcheck-btn").addEventListener("click", toggleSpellCheck);
+document.getElementById("toggle-autosave-btn").addEventListener("click", toggleAutosave);
 document.getElementById("generate-pdf").addEventListener("click", generatePDF);
 
 function formatText(command) {
@@ -102,7 +107,7 @@ function focusEditor(){
 
 function toggleMenu(){
     const menu = document.getElementById("menu");
-    menu.style.display = menu.style.display === "block" ? "none" : "block";
+    menu.style.display = menu.style.display === "grid" ? "none" : "grid";
 }
 
 function exportDocument(){
@@ -147,12 +152,21 @@ function fillEditorWithHTML(html){
 }
 function toggleFormattingBar(){
     const subBar = document.getElementById("sub-bar");
+	const toggleFormatBtn = document.getElementById("toggle-format-btn");
     subBar.style.display = subBar.style.display === "none" ? "flex" : "none";
+	if (subBar.style.display === "none"){
+		toggleFormatBtn.innerText = "Toggle Formatting (It's off now)";
+	} else {
+		toggleFormatBtn.innerText = "Toggle Formatting (It's on now)";
+	}
 }
 
 function toggleSpellCheck(){
     const editor = document.getElementById("editor");
+	const spellCheckBtn = document.getElementById("spellcheck-btn");
     editor.spellcheck = !editor.spellcheck;
+	spellCheckBtn.innerText = editor.spellcheck ? "Toggle Spell Check (It's on)" : "Toggle Spell Check (It's off)";
+
 }
 
 function getDocumentText(){
@@ -175,7 +189,7 @@ function createOpenDocumentModal(documentNames){
 		namesElements += `<button onclick="showAlert('Just create one :)!', 'info')">You don't have any saved documents</button>`
 	}
 	for ( let name of documentNames ){
-		namesElements += `<button onclick="loadDocumentFromLocalStorage('${name}');closeAllModals()">${name}</button>\n`
+		namesElements += `<div class="double-button-div"><button onclick="loadDocumentFromLocalStorage('${name}');closeAllModals()">${name}</button><button class="delete-btn" onclick="deleteDocumentInLocalStorage('${name}');">Delete</button></div>\n`
 	}
 
 	let modalContainer = document.createElement("div");
@@ -225,21 +239,26 @@ function checkIfDocumentNameExists(name){
 }
 
 function performAutoSave(){
-	if (!autoSaveEnabled){return}
-	validateDocumentName();
-	localStorage.setItem(docPrefix + getDocumentName(), getDocumentText());
+	if (!autosaveEnabled){return}
+	if (!validateDocumentName(false)){return};
+	let name = getDocumentName();
+	let content = getDocumentText();
+	if (!content){return}
+	localStorage.setItem(docPrefix + name, content);
 	console.log('autosaved')
+	saveAsLastOpenedDocument(name)
 }
 
-function validateDocumentName(){
+function validateDocumentName(isShowAlert=true){
 	// returns true or false
 	if ( !getDocumentName() ){
-		showAlert("Document name is empty!", "error");
+		if ( isShowAlert ) {showAlert("Document name is empty!", "error")}
 		return false
 	}
 	return true
 	
 }
+
 
 function showAlert(text, type){
 	// type: info, warning, error
@@ -247,9 +266,15 @@ function showAlert(text, type){
 	window.alert(text);
 }
 
+function showConfirm(text){
+	// type: info, warning, error
+	// TODO alert handlings
+	return confirm(text);
+}
 function createOverlay(){
 	let overlay = document.createElement("div");
 	overlay.setAttribute("id","overlay");
+	overlay.setAttribute("onclick", "closeAllModals()")
 	document.body.appendChild(overlay);
 }
 
@@ -269,9 +294,16 @@ function getDocumentTextFromLocalStorage(name){
 
 function loadDocumentFromLocalStorage(name){
 	let text = getDocumentTextFromLocalStorage(name);
-	if ( !text ){return}
+	if ( !text ){return false}
 	fillEditorWithHTML(text);
 	fillDocName(name);
+	return true
+}
+
+function deleteDocumentInLocalStorage(name){
+	if ( showConfirm(`Delete document '${name}' ?`) ){
+		localStorage.removeItem(docPrefix + name);
+	}
 }
 
 function closeAllModals(){
@@ -285,8 +317,12 @@ function saveAsLastOpenedDocument(name){
 
 function loadLastOpenedDocument(){
 	let documentName = localStorage.getItem(lastOpenedKey);
-	if ( documentName ){
-		loadDocumentFromLocalStorage(documentName);
+	if ( documentName && documentName != "null"){
+		if ( loadDocumentFromLocalStorage(documentName)) {return};
+		saveAsLastOpenedDocument(null);
+		return
+	}  else {
+	saveAsLastOpenedDocument(null);
 	}
 }
 
@@ -304,4 +340,35 @@ function stripImportToOnlyContent(html){
 	let output = html.replace(/[\s\S]*id="content">/, "")
 	return output = output.replace("</div></div></body></html>", "")
 
+}
+
+function toggleAutosave(){
+	if (autosaveEnabled) {
+		autosaveEnabled = 0
+	} else { 
+		autosaveEnabled = 1
+	};
+
+	setAutosaveText();
+	saveAutosaveSetting();
+}
+
+function loadAutosaveSetting(){
+	let ls_setting = parseInt(localStorage.getItem(autosaveKey));
+
+		console.log(ls_setting)
+	if ( ls_setting ){
+		autosaveEnabled = 1;
+		console.log(1)
+	} else {
+		autosaveEnabled = 0;
+		console.log(2)
+	}
+}
+function saveAutosaveSetting(){
+	localStorage.setItem(autosaveKey, autosaveEnabled);
+}
+function setAutosaveText(){
+	const autosaveBtn = document.getElementById("toggle-autosave-btn");
+	autosaveBtn.innerText = autosaveEnabled ? "Toggle Autosave (It's off now)" : "Toggle Autosave (It's on now)"
 }
