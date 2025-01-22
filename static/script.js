@@ -40,6 +40,7 @@ document.onload = loadLastOpenedDocument()
 
 // Setup Events
 document.getElementById("editor-container").addEventListener('keydown', performAutoSave)
+document.getElementById("new-doc-btn").addEventListener('click', createNewDocument)
 document.getElementById('editor-container').addEventListener('click', focusEditor);
 document.getElementById("dark-mode-btn").addEventListener("click", toggleDarkMode);
 document.getElementById("hamburger-menu").addEventListener("click", toggleMenu);
@@ -371,4 +372,15 @@ function saveAutosaveSetting(){
 function setAutosaveText(){
 	const autosaveBtn = document.getElementById("toggle-autosave-btn");
 	autosaveBtn.innerText = autosaveEnabled ? "Toggle Autosave (It's off now)" : "Toggle Autosave (It's on now)"
+}
+function createNewDocument(){
+	let previousAutosave = autosaveEnabled;
+	try {
+		autosaveEnabled = false;
+		fillDocName("");
+		fillEditorWithHTML("")
+	} catch(error){
+		showAlert("There were some problems with new document creation!", "error")
+	autosaveEnabled = previousAutosave;
+	}
 }
