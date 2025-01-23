@@ -33,15 +33,8 @@ async def read_styles():
 async def read_scriptx():
     return STATIC_DIR / "script.js"
 
-@app.get("/script.js.old", response_class=FileResponse)
-async def read_scriptx2():
-    return STATIC_DIR / "script.js"
-
 @app.get("/favicon.svg", response_class=FileResponse)
 async def read_favicon():
     """Serve the favicon.svg file."""
     return STATIC_DIR / "favicon.svg"
 
-@app.get("/t")
-async def test():
-    return "ok"
