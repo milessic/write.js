@@ -24,6 +24,7 @@ let underlineState = false;
 const editorObject = document.getElementById("editor");
 const documentNameObject = document.getElementById("doc-name");
 
+/*
 let editorObserver = new MutationObserver(function(mutations) {
         mutations.forEach(function(mutation) {
 			performAutoSave();
@@ -33,13 +34,16 @@ let config = { attributes: true, childList: true, characterData: true }
 
     // pass in the target node, as well as the observer options
 editorObserver.observe(editorObject, config);
+*/
 
 
 // set document onload
 document.onload = loadLastOpenedDocument()
 
 // Setup Events
+function loge(e){console.log(e)}
 document.getElementById("editor-container").addEventListener('keydown', performAutoSave)
+document.getElementById("editor").addEventListener('keydown',loge);
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument)
 document.getElementById('editor-container').addEventListener('click', focusEditor);
 document.getElementById("dark-mode-btn").addEventListener("click", toggleDarkMode);
@@ -51,6 +55,7 @@ document.getElementById("import-doc-btn").addEventListener("click", importDocume
 document.getElementById("toggle-format-btn").addEventListener("click", toggleFormattingBar);
 document.getElementById("spellcheck-btn").addEventListener("click", toggleSpellCheck);
 document.getElementById("toggle-autosave-btn").addEventListener("click", toggleAutosave);
+document.getElementById("generate-md").addEventListener("click", generateMarkdown);
 document.getElementById("generate-pdf").addEventListener("click", generatePDF);
 
 function formatText(command) {
@@ -77,6 +82,7 @@ function formatText(command) {
         document.execCommand("insertOrderedList", false, null);
     } else if (command === "hr") {
         document.execCommand("insertHorizontalRule", false, null);
+		simulateEnter()
     } else if (command === "code") {
         document.execCommand("formatBlock", false, "pre");
     } else if (command === "inline-code") {
@@ -119,11 +125,15 @@ function exportDocument(){
     const blob = new Blob([content], { type: "html" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
+	docName = assignFileExtension("html");
+	link.download = docName;
+	/*
 	if ( docName.endsWith(".html")){
     	link.download = docName;
 	} else{
     	link.download = `${docName}.html`;
 	}
+	*/
     link.click();
 }
 
@@ -327,6 +337,19 @@ function loadLastOpenedDocument(){
 	}
 }
 
+function generateMarkdown(){
+	if (!validateDocumentName()){return}
+	const docName = getDocumentName();
+	const mdContent = getContentAsMarkdown();
+	const blob = new Blob([mdContent], { type: "text"});
+	const link = document.createElement("a");
+	link.href = URL.createObjectURL(blob);
+	fileName = assignFileExtension(docName,"markdown");
+	link.download = fileName;
+	link.click();
+	
+}
+
 function generatePDF(){
 	showAlert("PDFs are not yet supported :(","warning")
 }
@@ -380,5 +403,125 @@ function createNewDocument(){
 		showAlert("There were some problems with new document creation!", "error")
 	autosaveEnabled = previousAutosave;
 	}
+}
+
+function getContentAsMarkdown(){
+	let content = getDocumentText()
+	// h1
+	let contentMd = content.replace(/<h1>/g,"# ");
+	contentMd = contentMd.replace(/<\/h1>/g,"\n");
+	// h2
+	contentMd = contentMd.replace(/<h2>/g,"## ");
+	contentMd = contentMd.replace(/<\/h2>/,"\n");
+	// other headers
+	contentMd = contentMd.replace(/<h\d>/g,"### ");
+	contentMd = contentMd.replace(/<\/h2>/g,"\n");
+	// hr
+	contentMd = contentMd.replace(/<hr>/g, "---\n");
+	contentMd = contentMd.replace(/<hr id=\"null\">/g, "---\n");
+	contentMd = contentMd.replace(/<div><hr>/g, "---\n");
+	contentMd = contentMd.replace(/<div><hr id=\"null\">/g, "---\n");
+	// regular text
+	contentMd = contentMd.replace(/<div>/g,"");
+	contentMd = contentMd.replace(/<\/div>/g,"\n");
+	contentMd = contentMd.replace(/<p>/g,"");
+	contentMd = contentMd.replace(/<\/p>/g,"\n");
+	// code
+	contentMd = contentMd.replace(/<pre>/g, "```");
+	contentMd = contentMd.replace(/<\/pre>/g, "```\n");
+	// text formatting <b> etc
+	contentMd = contentMd.replace(/<b><i>/g, "***");
+	contentMd = contentMd.replace(/<\/b><\/i>/g, "***");
+	contentMd = contentMd.replace(/<i><b>/g, "***");
+	contentMd = contentMd.replace(/<\/i><\/b>/g, "***");
+	contentMd = contentMd.replace(/<b>/g, "__");
+	contentMd = contentMd.replace(/<\/b>/g, "__");
+	contentMd = contentMd.replace(/<i>/g, "_");
+	contentMd = contentMd.replace(/<\/i>/g, "_");
+	contentMd = contentMd.replace(/<u>/g, "<ins>");
+	contentMd = contentMd.replace(/<\/u>/g, "</ins>");
+
+	// ordered listo
+	let patternOl = /<ol>[\s\S]*?<\/ol>/g
+	const matches = contentMd.match(patternOl);
+	console.log(matches)
+	while ( matches && matches.length ){
+			contentMd = contentMd.replace(
+			matches[0],
+			matches.shift().replace(/<li>/g, "1. ")
+		)
+	}
+	contentMd = contentMd.replace(/<ol>/g,"")
+	contentMd = contentMd.replace(/<\/ol>/g,"\n")
+	contentMd = contentMd.replace(/<\/li>/g,"\n")
+	// now replace 1. to normal numbers
+	let contentMdAsArray = contentMd.split("\n");
+	console.table(contentMdAsArray)
+	let olStarted = false;
+	let i = 1;
+	for ( let l of contentMdAsArray ){
+		if ( l.startsWith("1.") ){
+			olStarted = true;
+		} else if ( l === "" ) {
+			olStarted = false;
+			i = 1;
+		}
+		if ( !olStarted ) { continue }
+		// perform replace
+		console.log(olStarted, i, l)
+		let newText = `${i}.`;
+		console.log(newText)
+		contentMdAsArray[contentMdAsArray.indexOf(l)] = l.replace(/(1\.)/, newText)
+		i++;
+	}
+	contentMd = contentMdAsArray.join('\n');
+	
+	// unordered list
+	let patternUl = /<ul>[\s\S]*?<\/ul>/g
+	const matchesUl = contentMd.match(patternUl);
+	while ( matches && matchesUl.length ){
+			contentMd = contentMd.replace(
+			matchesUl[0],
+			matchesUl.shift().replace(/<li>/g, "- ")
+			)
+	}
+	contentMd = contentMd.replace(/<ul>/g,"")
+	contentMd = contentMd.replace(/<\/ul>/g,"\n")
+
+	// lines
+	contentMd = contentMd.replace(/<br>/g, "\n");
+	
+	
+
+
+	return contentMd
+}
+
+function assignFileExtension(name, extension){
+	const removeExtensions = ["html", "txt", "md", "markdown"]
+	for ( let e of removeExtensions ){
+		name = name.replace(`.${e}`, "");
+	}
+	name += `.${extension}`
+	return name
+	
+
+}
+
+function simulateEnter() {
+    const editor = document.querySelector("#editor");
+    const newLine = document.createElement("div");
+    newLine.innerHTML = "<br>";
+
+    editor.appendChild(newLine);
+
+    // Optionally, move the focus to the new line
+    const range = document.createRange();
+    const sel = window.getSelection();
+    range.setStart(newLine, 0);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+	console.log(1)
 }
 
