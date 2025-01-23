@@ -41,9 +41,7 @@ editorObserver.observe(editorObject, config);
 document.onload = loadLastOpenedDocument()
 
 // Setup Events
-function loge(e){console.log(e)}
 document.getElementById("editor-container").addEventListener('keydown', performAutoSave)
-document.getElementById("editor").addEventListener('keydown',loge);
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument)
 document.getElementById('editor-container').addEventListener('click', focusEditor);
 document.getElementById("dark-mode-btn").addEventListener("click", toggleDarkMode);
@@ -443,7 +441,6 @@ function getContentAsMarkdown(){
 	// ordered listo
 	let patternOl = /<ol>[\s\S]*?<\/ol>/g
 	const matches = contentMd.match(patternOl);
-	console.log(matches)
 	while ( matches && matches.length ){
 			contentMd = contentMd.replace(
 			matches[0],
@@ -467,9 +464,7 @@ function getContentAsMarkdown(){
 		}
 		if ( !olStarted ) { continue }
 		// perform replace
-		console.log(olStarted, i, l)
 		let newText = `${i}.`;
-		console.log(newText)
 		contentMdAsArray[contentMdAsArray.indexOf(l)] = l.replace(/(1\.)/, newText)
 		i++;
 	}
@@ -521,6 +516,5 @@ function simulateEnter() {
     range.collapse(true);
     sel.removeAllRanges();
     sel.addRange(range);
-	console.log(1)
 }
 
