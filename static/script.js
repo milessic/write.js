@@ -246,7 +246,6 @@ function performAutoSave(){
 	let content = getDocumentText();
 	if (!content){return}
 	localStorage.setItem(docPrefix + name, content);
-	console.log('autosaved')
 	saveAsLastOpenedDocument(name)
 }
 
@@ -357,13 +356,10 @@ function toggleAutosave(){
 function loadAutosaveSetting(){
 	let ls_setting = parseInt(localStorage.getItem(autosaveKey));
 
-		console.log(ls_setting)
 	if ( ls_setting ){
 		autosaveEnabled = 1;
-		console.log(1)
 	} else {
 		autosaveEnabled = 0;
-		console.log(2)
 	}
 }
 function saveAutosaveSetting(){
@@ -371,7 +367,7 @@ function saveAutosaveSetting(){
 }
 function setAutosaveText(){
 	const autosaveBtn = document.getElementById("toggle-autosave-btn");
-	autosaveBtn.innerText = autosaveEnabled ? "Toggle Autosave (It's off now)" : "Toggle Autosave (It's on now)"
+	autosaveBtn.innerText = autosaveEnabled ? "Toggle Autosave (It's on now)" : "Toggle Autosave (It's off now)"
 }
 function createNewDocument(){
 	let previousAutosave = autosaveEnabled;
@@ -384,3 +380,4 @@ function createNewDocument(){
 	autosaveEnabled = previousAutosave;
 	}
 }
+

@@ -149,6 +149,7 @@ body {
     background-color: #ffffff;
     display: none;
     position: absolute;
+	padding: 3px 0px;
 }
 .menu {
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
