@@ -125,8 +125,7 @@ function exportDocument(){
     const blob = new Blob([content], { type: "html" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-	docName = assignFileExtension("html");
-	link.download = docName;
+	link.download = assignFileExtension(docName, "html");
 	/*
 	if ( docName.endsWith(".html")){
     	link.download = docName;
