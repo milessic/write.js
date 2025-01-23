@@ -4,7 +4,7 @@
 	<link rel="icon" href="favicon.svg" sizes="any" type="image/svg+xml">
 
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 	<meta name="author" content="Miłosz 'milessic' Jura">
 	<meta name="description" content="Write.js: A versatile app for creating, editing, and managing documents. Save locally with localStorage, sync to a remote database after login, and easily import/export in HTML or Markdown formats. Streamline your writing workflow!">
 	<meta name="keywords" content="document editor, online writing app, save documents, localStorage, remote database, document management, export HTML, import HTML, export Markdown, import Markdown, writing tool, document synchronization, write and save, markdown editor, HTML editor">
@@ -14,7 +14,7 @@
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
 </head>
-<body>
+<body class="color-background">
     <div class="app-container">
         <!-- Top Bar -->
 		<div id="fixed-bar">
@@ -56,8 +56,8 @@
         	    	<button class="format-btn" onclick="formatText('ul')">*</button>
         	    	<button class="format-btn" onclick="formatText('ol')">1,2,3</button>
         	    	<button class="format-btn" onclick="formatText('hr')">---</button>
+        	    	<button class="format-btn" onclick="formatText('code')">code</button>
 					<!--
-        	    	<button class="format-btn" onclick="formatText('code')">Code Block</button>
         	    	<button class="format-btn" onclick="formatText('inline-code')">Inline Code</button>
 					-->
         	    	<button id="bold-btn" class="format-btn" onclick="formatText('bold')"><b>B</b></button>
@@ -68,7 +68,7 @@
 
 		</div>
         <!-- Editor Area -->
-        <div id="editor-container" class="editor-container">
+        <div id="editor-container" class="editor-container color-background">
             <div contenteditable="true" id="editor" class="editor"></div>
         </div>
     </div>

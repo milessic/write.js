@@ -61,23 +61,27 @@
 		/*width: 100% !important;
 		height: 100% !important;*/
 	}
+	.editor-container {
+		padding: 10px 30px !important;
+	}
 }
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+	font-family: monospace;
 	font-family: 'Cousine';
 }
 
 body {
-    font-family: system-ui, sans-serif;
+    font-family: monospace, system-ui, sans-serif;
     display: flex;
     justify-content: center;
     align-items: center;
     height: 100vh;
-    background-color: #f4f4f4;
     color: #333;
 }
+
 
 #doc-name {
 	width: 30rem;
@@ -97,6 +101,7 @@ body {
 #fixed-bar {
 	position: fixed;
 	width: 100%;
+	z-index: 1;
 }
 .top-bar-root{
 	height: 100px;
@@ -206,11 +211,17 @@ body {
 
 #content-container,
 .editor-container {
+	position: absolute;
+	top: 170px;
+	bottom: auto;
+	left: auto;
+	right: auto;
+	width: 100%;
 	overflow-y: scroll;
     padding: var(--content-padding);
     min-height: 300px;
-	margin-top: 170px;
 	height: -webkit-fill-available;
+	height: initial;
 	display: block;
 }
 
@@ -230,6 +241,9 @@ body {
 	margin-top: 5px;
 }
 
+.color-background {
+    background-color: #f4f4f4;
+}
 
 .dark-mode {
     background-color: #2c2c2c !important;
@@ -243,6 +257,7 @@ body {
 .dark-mode-medium{
 	background-color: #404040 !important;
 }
+
 hr {
 	margin: 10px 0px;
 }
@@ -321,4 +336,22 @@ hr {
 
 .delete-btn{
 	width: 80px !important;
+}
+
+#editor pre {
+	background: #f4f4f4;
+    border: 1px solid #ddd;
+    border-left: 3px solid #f36d33;
+    color: #666;
+    page-break-inside: avoid;
+    font-family: monospace;
+    font-size: 15px;
+    line-height: 1.6;
+    margin-bottom: 1.6em;
+    max-width: 100%;
+    overflow: auto;
+    padding: 1em 1.5em;
+    display: block;
+    word-wrap: break-word;
+
 }

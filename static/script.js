@@ -87,6 +87,7 @@ function formatText(command) {
 
 function toggleDarkMode(){
     document.body.classList.toggle("dark-mode");
+    document.querySelector("#editor-container").classList.toggle("dark-mode");
 	document.querySelector(".top-bar-root").classList.toggle("dark-mode-dark");
 	document.querySelector("#sub-bar").classList.toggle("dark-mode-medium");
 	if ( darkModeEnabled) {
