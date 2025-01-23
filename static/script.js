@@ -424,7 +424,7 @@ function getContentAsMarkdown(){
 	contentMd = contentMd.replace(/<p>/g,"");
 	contentMd = contentMd.replace(/<\/p>/g,"\n");
 	// code
-	contentMd = contentMd.replace(/<pre>/g, "```");
+	contentMd = contentMd.replace(/<pre>/g, "```\n");
 	contentMd = contentMd.replace(/<\/pre>/g, "\n```\n");
 	// text formatting <b> etc
 	contentMd = contentMd.replace(/<b><i>/g, "***");
