@@ -452,7 +452,6 @@ function getContentAsMarkdown(){
 	contentMd = contentMd.replace(/<\/li>/g,"\n")
 	// now replace 1. to normal numbers
 	let contentMdAsArray = contentMd.split("\n");
-	console.table(contentMdAsArray)
 	let olStarted = false;
 	let i = 1;
 	for ( let l of contentMdAsArray ){
@@ -535,17 +534,14 @@ function loadDataFromLocalStorageJson(jsonObject){
 	}
 
 	for ( const [key, value] of Object.entries(dataObject) ){
-		console.log(0);
 		if ( !key.startsWith(docPrefix) ) { continue }
 
-		console.log(1, key)
 
 		// check for documents that are different
 		// TODO add support for current document
 		const existingDocument = localStorage.getItem(key)  
 		if ( existingDocument === value ) { continue }    // if document is the same, don't overwrite
-		else if ( !confirm(`!Do you want to overwrite '${key.replace(docPrefix, "")}'?`)){ console.log(2);continue } // for edited documents in both sources 
-		console.log(3)
+		else if ( !confirm(`!Do you want to overwrite '${key.replace(docPrefix, "")}'?`)){ continue } // for edited documents in both sources 
 
 		// set remote value
 		localStorage.setItem(key, value);
@@ -563,7 +559,6 @@ function purgeLocalStorage(){
 function handleWidth(){
 	const width = (window.innerWidth > 0) ? window.innerWidth : screen.width;
 	isLowWidth = ( width < 1000 ) ? true : false;
-	console.log(isLowWidth)
 }
 
 function handleMobileScrollEvent(e){
