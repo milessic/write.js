@@ -4,18 +4,6 @@ from pathlib import Path
 
 app = FastAPI()
 
-"""
-from starlette.middleware.base import BaseHTTPMiddleware
-class DisableCacheMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        response = await call_next(request)
-        if request.url.path.startswith("/static/"):
-            response.headers["Cache-Control"] = "no-store"
-        return response
-
-app.add_middleware(DisableCacheMiddleware)
-
-"""
 
 # Base directory for static files
 STATIC_DIR = Path(__file__).parent / "static"

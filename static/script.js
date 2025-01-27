@@ -1,7 +1,8 @@
 let autosaveEnabled = 0;
 const lastOpenedKey= "__lastOpened__";
-const docPrefix = "__doc_";
+const docPrefix = "__doc__";
 const autosaveKey = "__autosave__";
+const darkModeKey = "__darkModeEnabled__";
 
 const fontStyleMark = `
 	<link rel="preconnect" href="https://fonts.googleapis.com">
@@ -11,7 +12,7 @@ loadAutosaveSetting();
 setAutosaveText();
 const documentNames = getDocumentNamesFromLocalStorage();
 const userConsent = true; // TODO user consent handling
-let darkModeEnabled = parseInt(localStorage.getItem("darkModeEnabled")) ? true : false;
+let darkModeEnabled = parseInt(localStorage.getItem(darkModeKey)) ? true : false;
 if ( darkModeEnabled ) {
 	toggleDarkMode();
 	setDarkMode(1);
@@ -19,28 +20,21 @@ if ( darkModeEnabled ) {
 let boldState = false;
 let italicState = false;
 let underlineState = false;
+let isLowWidth = false;
+handleWidth();
 
 // Setup elements
 const editorObject = document.getElementById("editor");
 const documentNameObject = document.getElementById("doc-name");
 
-/*
-let editorObserver = new MutationObserver(function(mutations) {
-        mutations.forEach(function(mutation) {
-			performAutoSave();
-        });
-    });
-let config = { attributes: true, childList: true, characterData: true }
-
-    // pass in the target node, as well as the observer options
-editorObserver.observe(editorObject, config);
-*/
 
 
 // set document onload
 document.onload = loadLastOpenedDocument()
 
 // Setup Events
+window.addEventListener("resize", handleWidth);
+window.addEventListener("keydown", handleMobileScrollEvent);
 document.getElementById("editor-container").addEventListener('keydown', performAutoSave)
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument)
 document.getElementById('editor-container').addEventListener('click', focusEditor);
@@ -103,17 +97,19 @@ function toggleDarkMode(){
 
 function setDarkMode(state){
 	darkModeEnabled = state;
-	localStorage.setItem("darkModeEnabled", state);
+	localStorage.setItem(darkModeKey, state);
 }
 
 function focusEditor(){
     // Focus on the 'editable' div
+	document.getElementById('menu').classList.remove("menu-opened");
     document.getElementById('editor').focus();
 }
 
 function toggleMenu(){
     const menu = document.getElementById("menu");
-    menu.style.display = menu.style.display === "grid" ? "none" : "grid";
+    //menu.style.display = menu.style.display === "grid" ? "none" : "grid";
+	menu.classList.toggle("menu-opened");
 }
 
 function exportDocument(){
@@ -191,16 +187,7 @@ function openDocumentFromLocalStorage(){
 	createOpenDocumentModal(names);
 }
 
-function createOpenDocumentModal(documentNames){
-	createOverlay();
-	let namesElements = "";
-	if (! documentNames.length ){
-		namesElements += `<button onclick="showAlert('Just create one :)!', 'info')">You don't have any saved documents</button>`
-	}
-	for ( let name of documentNames ){
-		namesElements += `<div class="double-button-div"><button onclick="loadDocumentFromLocalStorage('${name}');closeAllModals()">${name}</button><button class="delete-btn" onclick="deleteDocumentInLocalStorage('${name}');">Delete</button></div>\n`
-	}
-
+function createModal(title, html){
 	let modalContainer = document.createElement("div");
 	modalContainer.setAttribute("id","modal");
 	modalContainer.classList.add("modal-container");
@@ -209,16 +196,27 @@ function createOpenDocumentModal(documentNames){
 	}
 	modalContainer.innerHTML =`
 	<div class="modal-topbar" style="display:flex">
-		<h3 class="modal-header">Load Document</h3>
-		<button class="close-button" onclick="document.getElementById('modal').remove();deleteOverlay()">X</div>
+		<h3 class="modal-header">${title}</h3>
+		<button class="close-button" onclick="closeAllModals()">X</button>
 	</div>
-	<div>This modal is temporary.</div>
+	${html}
+`
+	createOverlay();
+	document.body.appendChild(modalContainer)
+}
+function createOpenDocumentModal(documentNames){
+	let namesElements = "";
+	if (! documentNames.length ){
+		namesElements += `<button onclick="showAlert('Just create one :)!', 'info')">You don't have any saved documents</button>`
+	}
+	for ( let name of documentNames ){
+		namesElements += `<div class="double-button-div"><button onclick="loadDocumentFromLocalStorage('${name}');closeAllModals()">${name}</button><button class="delete-btn" onclick="deleteDocumentInLocalStorage('${name}');">Delete</button></div>\n`
+	}
+	createModal("Open document", `<div>This modal design is temporary, I promise</div>
 	<div id="menu-modal" class="menu overflow">
 		${namesElements}
-		</div>
-</div>
-`
-	document.body.appendChild(modalContainer)
+	</div>`);
+
 
 }
 
@@ -311,6 +309,8 @@ function loadDocumentFromLocalStorage(name){
 function deleteDocumentInLocalStorage(name){
 	if ( showConfirm(`Delete document '${name}' ?`) ){
 		localStorage.removeItem(docPrefix + name);
+		closeAllModals();
+		openDocumentFromLocalStorage();
 	}
 }
 
@@ -518,3 +518,83 @@ function simulateEnter() {
     sel.addRange(range);
 }
 
+function getAllLocalStorageItems() {
+	const data = {}
+	for ( var i = 0, len = localStorage.length; i < len; ++i ) {
+	  const key = localStorage.key( i );
+	  data[key] = localStorage.getItem( localStorage.key( i ) );
+	}
+	return data
+}
+
+function loadDataFromLocalStorageJson(jsonObject){
+	let dataObject = JSON.parse(jsonObject);
+	if ( typeof(dataObject) != 'object' ){
+		// this is a check for complex documents
+		dataObject = JSON.parse(dataObject);
+	}
+
+	for ( const [key, value] of Object.entries(dataObject) ){
+		console.log(0);
+		if ( !key.startsWith(docPrefix) ) { continue }
+
+		console.log(1, key)
+
+		// check for documents that are different
+		// TODO add support for current document
+		const existingDocument = localStorage.getItem(key)  
+		if ( existingDocument === value ) { continue }    // if document is the same, don't overwrite
+		else if ( !confirm(`!Do you want to overwrite '${key.replace(docPrefix, "")}'?`)){ console.log(2);continue } // for edited documents in both sources 
+		console.log(3)
+
+		// set remote value
+		localStorage.setItem(key, value);
+	}
+	loadLastOpenedDocument();
+}
+
+
+function purgeLocalStorage(){
+	if ( confirm("Do you really want to delete everything from Browser?") ){
+		localStorage.clear();
+	}
+}
+
+function handleWidth(){
+	const width = (window.innerWidth > 0) ? window.innerWidth : screen.width;
+	isLowWidth = ( width < 1000 ) ? true : false;
+	console.log(isLowWidth)
+}
+
+function handleMobileScrollEvent(e){
+	// FIXME doesn't work well on Chrome mobile :'( But where is the issue? Maybe in Chrome itself?
+	return
+	if ( !isLowWidth ) { return }
+
+	if ( e.keyCode === 13 ){
+		// Enter
+		const lastElement = document.querySelector("#editor > :last-child");
+		console.log(lastElement)
+		if ( isElementInViewport(lastElement)){ return}
+			window.alert('scrolll');
+			lastElement.scrollIntoView();
+		
+	}
+
+}
+function isElementInViewport (el) {
+
+    // Special bonus for those using jQuery
+    if (typeof jQuery === "function" && el instanceof jQuery) {
+        el = el[0];
+    }
+
+    var rect = el.getBoundingClientRect();
+
+    return (
+        rect.top >= 0 &&
+        rect.left >= 0 &&
+        rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) && /* or $(window).height() */
+        rect.right <= (window.innerWidth || document.documentElement.clientWidth) /* or $(window).width() */
+    );
+}

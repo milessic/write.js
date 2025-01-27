@@ -1,9 +1,14 @@
 :root {
 	--content-padding: 20px 20vw;
 	--sub-bar-height: 70px;
+	--transition-speed: .5s ease-out;
 }
 
 @media (min-width: 1000px){
+	#hamburger-button {
+		/*font-size: 3rem;*/
+		scale: 7;
+	}
 	#menu {
     	right: 20vw;
 	}
@@ -25,6 +30,10 @@
 	}
 }
 @media only screen and (max-width: 999px){
+	#hamburger-button {
+		/*font-size: 3rem;*/
+		scale: 4;
+	}
 	#menu {
     	right: 0;
 		width: 100%;
@@ -52,7 +61,7 @@
 		display: contents !important;
 	}
 	#sub-bar {
-		padding: 10px;
+		padding: 0px 10px;
 		width: 100%;
 	}
 	.modal-container {
@@ -66,6 +75,7 @@
 	}
 }
 * {
+	transition: background-color 0.3s ease, color .1s ease-out, margin var(--transition-speed), padding var(--transition-speed);
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -113,14 +123,19 @@ body {
 }
 .top-bar {
     display: flex;
+	  -webkit-backface-visibility: hidden;
     justify-content: left;
     padding: 0px;
+	max-width: 700px;
     color: white;
+}
+.top-bar-left {
+	display: flex;
+	width: -webkit-fill-available;
 }
 
 .top-bar-padding {
 	padding: 10px 30px;
-	max-width: 700px;
 }
 
 .top-bar input {
@@ -141,10 +156,8 @@ body {
     margin: 2px 3px;
 }
 
-#hamburger-button {
-	font-size: 3rem;
-}
 
+.hamburger-menu a,
 .hamburger-menu button {
     background: transparent;
     color: white;
@@ -155,14 +168,22 @@ body {
     display: none;
     position: absolute;
 	padding: 3px 0px;
+	overflow-y: auto;
+	max-height: 70vh;
 }
 .menu {
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
     border-radius: 4px;
 }
+.menu-opened {
+	display: flex !important;
+	flex-flow: column;
+}
 
 .close-button,
+.menu a,
 .menu button {
+	text-align: center;
     background: #fff;
 	color: #757575;
     border: none;
@@ -176,6 +197,7 @@ body {
 	height: 40px;
 }
 
+.menu a:hover,
 .menu button:hover {
     background-color: #f0f0f0;
 	color: black;
@@ -198,6 +220,7 @@ body {
     border-radius: 4px;
     cursor: pointer;
     transition: background-color 0.3s;
+	margin-top: 3px;
 }
 
 .format-btn-active {
@@ -241,6 +264,18 @@ body {
 	margin-top: 5px;
 }
 
+#editor > :last-child {
+	padding-bottom: 55vh;
+}
+
+#editor > :last-child,
+#editor > :nth-last-child(2){
+	-webkit-transition-property: none;
+	-moz-transition-property: none;
+	-o-transition-property: none;
+	transition-property: none;
+}
+
 .color-background {
     background-color: #f4f4f4;
 }
@@ -250,7 +285,7 @@ body {
     color: white !important;
 }
 
-.dark-mode-dark {
+.{
 	background-color: black !important;
 }
 
@@ -263,6 +298,7 @@ hr {
 }
 
 .modal-container {
+	border-radius: 4px;
 	position: fixed;
 	right: auto;
 	top: auto;
@@ -278,8 +314,10 @@ hr {
 
 }
 
+#menu-modal a,
 #menu-modal button {
 	margin: 10px;
+	width: 100%;
 	width: -webkit-fill-available;
 }
 
@@ -354,4 +392,9 @@ hr {
     display: block;
     word-wrap: break-word;
 
+}
+
+#hamburger-button {
+	margin-top: 12px;
+	transition: scale .3s;
 }
