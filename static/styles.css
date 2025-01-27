@@ -376,6 +376,7 @@ hr {
 	width: 80px !important;
 }
 
+#content pre,
 #editor pre {
 	background: #f4f4f4;
     border: 1px solid #ddd;
