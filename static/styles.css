@@ -6,8 +6,7 @@
 
 @media (min-width: 1000px){
 	#hamburger-button {
-		/*font-size: 3rem;*/
-		scale: 7;
+		font-size: 3rem;
 	}
 	#menu {
     	right: 20vw;
@@ -31,8 +30,7 @@
 }
 @media only screen and (max-width: 999px){
 	#hamburger-button {
-		/*font-size: 3rem;*/
-		scale: 4;
+		font-size: 3rem;
 	}
 	#menu {
     	right: 0;
@@ -401,6 +399,6 @@ hr {
 }
 
 #hamburger-button {
-	margin-top: 12px;
+	margin-top: -5px;
 	transition: scale .3s;
 }
