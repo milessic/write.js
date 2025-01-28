@@ -1,4 +1,6 @@
 let autosaveEnabled = 0;
+let caretPosition = null;
+
 const notificationTimeout = 3000;
 const notificationTimeoutLong = 10000;
 
@@ -38,8 +40,10 @@ document.onload = loadLastOpenedDocument()
 // Setup Events
 window.addEventListener("resize", handleWidth);
 window.addEventListener("keydown", handleMobileScrollEvent);
-document.getElementById("editor-container").addEventListener('keydown', performAutoSave)
-document.getElementById("new-doc-btn").addEventListener('click', createNewDocument)
+document.getElementById("editor-container").addEventListener('keydown', performAutoSave);
+document.getElementById("editor-container").addEventListener('click', updateCaretPosition);
+document.getElementById("editor-container").addEventListener('keyup', updateCaretPosition);
+document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
 document.getElementById('editor-container').addEventListener('click', focusEditor);
 document.getElementById("dark-mode-btn").addEventListener("click", toggleDarkMode);
 document.getElementById("hamburger-menu").addEventListener("click", toggleMenu);
@@ -83,7 +87,9 @@ function formatText(command) {
         document.execCommand("formatBlock", false, "pre");
     } else if (command === "inline-code") {
         document.execCommand("formatBlock", false, "code");
-    }
+    } else if (command === "a"){
+		createInsertLinkModal();
+	}
 	focusEditor();
 }
 
@@ -320,6 +326,7 @@ function loadDocumentFromLocalStorage(name){
 	if ( !text ){return false}
 	fillEditorWithHTML(text);
 	fillDocName(name);
+	saveAsLastOpenedDocument();
 	return true
 }
 
@@ -336,7 +343,10 @@ function closeAllModals(){
 	deleteOverlay();
 }
 
-function saveAsLastOpenedDocument(name){
+function saveAsLastOpenedDocument(name=null){
+	if ( name === null ) {
+		name = getDocumentName();
+	}
 	localStorage.setItem(lastOpenedKey, name)
 }
 
@@ -425,92 +435,89 @@ function createNewDocument(){
 }
 
 function getContentAsMarkdown(){
-	let content = getDocumentText()
-	// h1
-	let contentMd = content.replace(/<h1>/g,"# ");
-	contentMd = contentMd.replace(/<\/h1>/g,"\n");
-	// h2
-	contentMd = contentMd.replace(/<h2>/g,"## ");
-	contentMd = contentMd.replace(/<\/h2>/,"\n");
-	// other headers
-	contentMd = contentMd.replace(/<h\d>/g,"### ");
-	contentMd = contentMd.replace(/<\/h2>/g,"\n");
-	// hr
-	contentMd = contentMd.replace(/<hr>/g, "---\n");
-	contentMd = contentMd.replace(/<hr id=\"null\">/g, "---\n");
-	contentMd = contentMd.replace(/<div><hr>/g, "---\n");
-	contentMd = contentMd.replace(/<div><hr id=\"null\">/g, "---\n");
-	// regular text
-	contentMd = contentMd.replace(/<div>/g,"");
-	contentMd = contentMd.replace(/<\/div>/g,"\n");
-	contentMd = contentMd.replace(/<p>/g,"");
-	contentMd = contentMd.replace(/<\/p>/g,"\n");
-	// code
-	contentMd = contentMd.replace(/<pre>/g, "```\n");
-	contentMd = contentMd.replace(/<\/pre>/g, "\n```\n");
-	// text formatting <b> etc
-	contentMd = contentMd.replace(/<b><i>/g, "***");
-	contentMd = contentMd.replace(/<\/b><\/i>/g, "***");
-	contentMd = contentMd.replace(/<i><b>/g, "***");
-	contentMd = contentMd.replace(/<\/i><\/b>/g, "***");
-	contentMd = contentMd.replace(/<b>/g, "__");
-	contentMd = contentMd.replace(/<\/b>/g, "__");
-	contentMd = contentMd.replace(/<i>/g, "_");
-	contentMd = contentMd.replace(/<\/i>/g, "_");
-	contentMd = contentMd.replace(/<u>/g, "<ins>");
-	contentMd = contentMd.replace(/<\/u>/g, "</ins>");
+	let content = getDocumentText();
+	const parser = new DOMParser();
+    const doc = parser.parseFromString(content, "text/html");
 
-	// ordered listo
-	let patternOl = /<ol>[\s\S]*?<\/ol>/g
-	const matches = contentMd.match(patternOl);
-	while ( matches && matches.length ){
-			contentMd = contentMd.replace(
-			matches[0],
-			matches.shift().replace(/<li>/g, "1. ")
-		)
-	}
-	contentMd = contentMd.replace(/<ol>/g,"")
-	contentMd = contentMd.replace(/<\/ol>/g,"\n")
-	contentMd = contentMd.replace(/<\/li>/g,"\n")
-	// now replace 1. to normal numbers
-	let contentMdAsArray = contentMd.split("\n");
-	let olStarted = false;
-	let i = 1;
-	for ( let l of contentMdAsArray ){
-		if ( l.startsWith("1.") ){
-			olStarted = true;
-		} else if ( l === "" ) {
-			olStarted = false;
-			i = 1;
-		}
-		if ( !olStarted ) { continue }
-		// perform replace
-		let newText = `${i}.`;
-		contentMdAsArray[contentMdAsArray.indexOf(l)] = l.replace(/(1\.)/, newText)
-		i++;
-	}
-	contentMd = contentMdAsArray.join('\n');
-	
-	// unordered list
-	let patternUl = /<ul>[\s\S]*?<\/ul>/g
-	const matchesUl = contentMd.match(patternUl);
-	while ( matchesUl && matchesUl.length ){
-			contentMd = contentMd.replace(
-			matchesUl[0],
-			matchesUl.shift().replace(/<li>/g, "- ")
-			)
-	}
-	contentMd = contentMd.replace(/<ul>/g,"")
-	contentMd = contentMd.replace(/<\/ul>/g,"\n")
+    function traverse(element) {
+        let markdown = "";
 
-	// lines
-	contentMd = contentMd.replace(/<br>/g, "\n");
-	
-	
+        for (const child of element.childNodes) {
+            if (child.nodeType === Node.TEXT_NODE) {
+                markdown += child.nodeValue;
+            } else if (child.nodeType === Node.ELEMENT_NODE) {
+                const tagName = child.tagName.toLowerCase();
 
+                switch (tagName) {
+                    case "h1":
+                        markdown += `# ${traverse(child)}\n`;
+                        break;
+                    case "h2":
+                        markdown += `## ${traverse(child)}\n`;
+                        break;
+                    case "h3":
+                        markdown += `### ${traverse(child)}\n`;
+                        break;
+                    case "hr":
+                        markdown += "---\n";
+                        break;
+                    case "div":
+                        markdown += traverse(child) + "\n";
+                        break;
+                    case "p":
+                        markdown += traverse(child) + "\n";
+                        break;
+                    case "pre":
+                        markdown += `\`\`\`\n${traverse(child)}\n\`\`\`\n`;
+                        break;
+                    case "b":
+                        markdown += `__${traverse(child)}__`;
+                        break;
+                    case "i":
+                        markdown += `_${traverse(child)}_`;
+                        break;
+                    case "b" && "i":
+                    case "i" && "b":
+                        markdown += `***${traverse(child)}***`;
+                        break;
+                    case "u":
+                        markdown += `<ins>${traverse(child)}</ins>`;
+                        break;
+                    case "ol":
+                        let i = 1;
+                        for (const li of child.querySelectorAll("li")) {
+                            markdown += `${i++}. ${traverse(li)}\n`;
+                        }
+                        break;
+                    case "ul":
+                        for (const li of child.querySelectorAll("li")) {
+                            markdown += `- ${traverse(li)}\n`;
+                        }
+                        break;
+                    case "li":
+                        markdown += traverse(child) + "\n";
+                        break;
+                    case "br":
+                        markdown += "\n";
+                        break;
+					case "a":
+						const href = child.getAttribute("href") || "#";
+						const text = traverse(child).trim();
+						markdown += `[${text}](${href})`
+						break;
+                    default:
+                        markdown += traverse(child);
+                        break;
+                }
+            }
+        }
 
-	return contentMd
+        return markdown;
+    }
+
+    return traverse(doc.body).trim();
 }
+
 
 function assignFileExtension(name, extension){
 	const removeExtensions = ["html", "txt", "md", "markdown"]
@@ -664,3 +671,72 @@ function informError(notificationText, error){
 	createNotification(notificationText, "error", notificationTimeoutLong);
 }
 
+function createInsertLinkModal(){
+	if ( document.querySelector(".insert-link-modal") ) { closeInsertLinkModal();return }
+	const c_div = document.createElement("div");
+	c_div.setAttribute("class","format-btn insert-link-modal");
+	c_div.innerHTML = `
+	<div class="insert-link-form">
+		<label for='link-name'>Link Text</label>
+		<input id='link-name' type='text' value="${caretPosition.cloneContents().textContent}">
+		<label for='link-href'>Link url</label>
+		<input id='link-href' type='text'>
+	</div>
+	`
+	const b_div = document.createElement("div");
+	b_div.classList.add("create-link-buttons")
+
+	const btn = document.createElement("button");
+	btn.innerText = "Add";
+	btn.addEventListener("click", insertLink);
+
+	const cnl = document.createElement("button");
+	cnl.innerText = "Cancel";
+	cnl.addEventListener("click", closeInsertLinkModal);
+
+	b_div.appendChild(btn);
+	b_div.appendChild(cnl);
+
+	c_div.appendChild(b_div)
+	document.body.appendChild(c_div)
+}
+
+function insertLink(){
+	const href = document.getElementById("link-href").value;
+	const text = document.getElementById("link-name").value;
+	if ( !href || !text ) { informError("Both Text and Link have to be provided!","");return}
+	const html = `<a contenteditable="false" href="${href}" target="about:blank">${text}</a>`
+	injectHtml(html)
+	document.execCommand('createlink', false, href)
+	closeInsertLinkModal();
+}
+
+function closeInsertLinkModal(){
+	document.querySelectorAll('.insert-link-modal').forEach((e) => e.remove());
+}
+
+function injectHtml(html){
+	// inserts HTML into pointer place
+	console.log(caretPosition)
+	if ( caretPosition ) {
+		try { 
+			const newNode = document.createElement("span");
+			newNode.innerHTML = html;
+			caretPosition.deleteContents(); // delete selected text if it's selected
+			caretPosition.insertNode(newNode);
+		} catch ( err ) {
+			informError("Cannot perform action!", err)
+		}
+	} else {
+		const newNode = document.createElement("div");
+		newNode.innerHTML = html;
+		document.querySelector("#editor").appendChild(newNode)
+	}
+}
+
+function updateCaretPosition(){
+	const selection = window.getSelection();
+	if ( selection.rangeCount > 0 ) {
+		caretPosition = selection.getRangeAt(0);
+	}
+}

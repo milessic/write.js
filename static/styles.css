@@ -170,6 +170,7 @@ body {
 	padding: 10px;
 }
 
+.create-link-buttons button,
 .top-bar button {
     background-color: #ff5722;
     color: white;
@@ -223,6 +224,8 @@ body {
 	height: 40px;
 }
 
+.create-link-buttons button:hover,
+.top-bar button:hover,
 .notification-container button:hover,
 .menu a:hover,
 .menu button:hover {
@@ -241,6 +244,7 @@ body {
 }
 
 .format-btn {
+	color: #0b0b0b;
     background-color: #ddd;
     border: none;
     padding: 8px;
@@ -426,7 +430,7 @@ hr {
 }
 
 #notifications-container{
-	z-index: 10;
+	z-index: 100;
 }
 .notification-container {
 	display: flex;
@@ -475,4 +479,30 @@ hr {
 
 .dark-mode-medium{
 	background-color: #404040 !important;
+}
+
+.insert-link-modal{
+	position:absolute;
+	top:100px;
+	bottom:auto;
+	left:auto;
+	right:auto;
+	background-color: #fff !important;
+	z-index: 4;
+
+}
+
+.create-link-buttons {
+	display: flex;
+	flex-flow: row-reverse;
+}
+
+.insert-link-modal:hover{
+	background-color: #ddd;
+}
+
+.insert-link-form {
+	display: flex;
+	flex-flow: column;
+	margin-bottom: 10px;
 }
