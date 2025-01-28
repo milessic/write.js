@@ -248,7 +248,7 @@ body {
 	height: 40px;
 }
 
-.double-buttons button:
+.double-buttons button,
 .create-link-buttons button:hover,
 .top-bar button:hover,
 .notification-container button:hover,
@@ -477,7 +477,7 @@ hr {
 
 #hamburger-button {
 	margin-top: -5px;
-	transition: scale .3s;
+	transition: scale .3s, background-color 0.3s ease, color .1s ease-out, margin var(--transition-speed), padding var(--transition-speed);
 }
 
 #notifications-container{
