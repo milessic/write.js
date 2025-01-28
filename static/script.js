@@ -66,6 +66,7 @@ document.getElementById("toggle-format-btn").addEventListener("click", toggleFor
 document.getElementById("spellcheck-btn").addEventListener("click", toggleSpellCheck);
 document.getElementById("toggle-autosave-btn").addEventListener("click", toggleAutosave);
 document.getElementById("generate-md").addEventListener("click", exportMarkdown);
+document.getElementById("copy-md").addEventListener("click", copyMarkdown);
 document.getElementById("generate-pdf").addEventListener("click", generatePDF);
 document.getElementById("contact").addEventListener("click", () => createNotification("Thank you!", 'info'))
 
@@ -710,23 +711,28 @@ function handleExistingNotifications(text, type){
 	})
 }
 
-function informError(notificationText, error){
+function informError(notificationText, error, type="error"){
 	console.error(notificationText, error);
-	createNotification(notificationText, "error", notificationTimeoutLong);
+	createNotification(notificationText, type, notificationTimeoutLong);
 }
 
 function createInsertLinkModal(){
 	if ( document.querySelector(".insert-link-modal") ) { closeInsertLinkModal();return }
 	const c_div = document.createElement("div");
 	c_div.setAttribute("class","format-btn insert-link-modal");
-	c_div.innerHTML = `
-	<div class="insert-link-form">
-		<label for='link-name'>Link Text</label>
-		<input id='link-name' type='text' value="${caretPosition.cloneContents().textContent}">
-		<label for='link-href'>Link url</label>
-		<input id='link-href' type='text'>
-	</div>
-	`
+	try {
+		c_div.innerHTML = `
+		<div class="insert-link-form">
+			<label for='link-name'>Link Text</label>
+			<input id='link-name' type='text' value="${caretPosition.cloneContents().textContent}">
+			<label for='link-href'>Link url</label>
+			<input id='link-href' type='text'>
+		</div>
+		`
+	} catch ( err ) {
+		informError("First, point where the link shuold be inserted", err, "warning")
+		return
+	}
 	const b_div = document.createElement("div");
 	b_div.classList.add("create-link-buttons")
 
@@ -854,4 +860,10 @@ function insertTab(){
 	caretPosition.setEndAfter(tabNode);
 	selection.removeAllRanges();
 	selection.addRange(caretPosition);
+}
+
+function copyMarkdown(){
+	navigator.clipboard.writeText(
+		getContentAsMarkdown()
+	);
 }
