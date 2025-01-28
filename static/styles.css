@@ -71,6 +71,9 @@
 	.editor-container {
 		padding: 10px 30px !important;
 	}
+	#editor li {
+		margin-left: 10px;
+	}
 }
 * {
 	transition: background-color 0.3s ease, color .1s ease-out, margin var(--transition-speed), padding var(--transition-speed);
