@@ -18,6 +18,11 @@ const darkModeKey = "__darkModeEnabled__";
 
 let userConsent = localStorage.getItem(userConsentKey);
 let darkModeEnabled = 0;
+	darkModeEnabled = parseInt(localStorage.getItem(darkModeKey)) ? true : false;
+	if ( darkModeEnabled ) {
+		toggleDarkMode();
+		setDarkMode(1);
+	}
 
 const fontStyleMark = `
 	<link rel="preconnect" href="https://fonts.googleapis.com">
@@ -25,11 +30,6 @@ const fontStyleMark = `
 	<link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">`
 
 if ( userConsent ){
-	darkModeEnabled = parseInt(localStorage.getItem(darkModeKey)) ? true : false;
-	if ( darkModeEnabled ) {
-		toggleDarkMode();
-		setDarkMode(1);
-	}
 	loadAutosaveSetting();
 	setAutosaveText();
 	documentNames = getDocumentNamesFromLocalStorage();
@@ -53,6 +53,7 @@ window.addEventListener("load", function() {
 	if ( wordCounterEnabled ){
 		handleWordCounter();
 	};
+	document.querySelector("#editor").classList.add("color-transition");
 })
 
 // Setup Events

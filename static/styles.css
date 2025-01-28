@@ -117,12 +117,16 @@
 	}
 }
 * {
-	transition: background-color 0.3s ease, color .1s ease-out, margin var(--transition-speed), padding var(--transition-speed);
+	transition: margin var(--transition-speed), padding var(--transition-speed);
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 	font-family: monospace;
 	font-family: 'Cousine';
+}
+
+.color-transition {
+	transition: background-color 0.3 ease color .1s ease-out;
 }
 
 body {
