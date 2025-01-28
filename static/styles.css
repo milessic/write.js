@@ -5,6 +5,13 @@
 }
 
 @media (min-width: 1000px){
+	#word-counter-container {
+		position: fixed;
+		right: 10px;
+		bottom: 10px;
+		left: auto;
+		top: auto;
+	}
 	#notifications-container{
 		display: flex;
 		flex-flow: column-reverse;
@@ -40,6 +47,13 @@
 	}
 }
 @media only screen and (max-width: 999px){
+	#word-counter-container {
+		position: fixed;
+		right: 10px;
+		top: 150px;
+		left: auto;
+		bottom: auto;
+	}
 	#notifications-container{
 		display: flex;
 		flex-flow: column-reverse;
@@ -192,10 +206,11 @@ body {
 #menu {
     background-color: #ffffff;
     display: none;
-    position: absolute;
+    position: fixed;
 	padding: 3px 0px;
 	overflow-y: auto;
 	max-height: 70vh;
+	z-index: 3;
 }
 .menu {
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
@@ -339,7 +354,7 @@ hr {
 	max-height: 80vh;
 	max-width: 80vw;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-	z-index:3;
+	z-index:4;
 
 }
 
@@ -362,7 +377,7 @@ hr {
   right: 0;
   bottom: 0;
   background-color: rgba(0,0,0,0.5); /* Black background with opacity */
-  z-index: 2; /* Specify a stack order in case you're using a different order for other elements */
+  z-index: 3; /* Specify a stack order in case you're using a different order for other elements */
   cursor: pointer; /* Add a pointer on hover */
 }
 
@@ -505,4 +520,9 @@ hr {
 	display: flex;
 	flex-flow: column;
 	margin-bottom: 10px;
+}
+
+#word-counter-container {
+	color: #757575;
+	z-index:2;
 }

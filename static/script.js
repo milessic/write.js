@@ -1,5 +1,6 @@
 let autosaveEnabled = 0;
 let caretPosition = null;
+let wordCounterEnabled = true;
 
 const notificationTimeout = 3000;
 const notificationTimeoutLong = 10000;
@@ -15,6 +16,7 @@ const fontStyleMark = `
 	<link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">`
 loadAutosaveSetting();
 setAutosaveText();
+
 const documentNames = getDocumentNamesFromLocalStorage();
 const userConsent = true; // TODO user consent handling
 let darkModeEnabled = parseInt(localStorage.getItem(darkModeKey)) ? true : false;
@@ -25,7 +27,7 @@ if ( darkModeEnabled ) {
 let boldState = false;
 let italicState = false;
 let underlineState = false;
-let isLowWidth = false;
+let isLowWidthViewport = false;
 handleWidth();
 
 // Setup elements
@@ -35,12 +37,17 @@ const documentNameObject = document.getElementById("doc-name");
 
 
 // set document onload
-document.onload = loadLastOpenedDocument()
+window.addEventListener("load", function() { 
+	loadLastOpenedDocument();
+	if ( wordCounterEnabled ){
+		handleWordCounter();
+	}
+})
 
 // Setup Events
 window.addEventListener("resize", handleWidth);
 window.addEventListener("keydown", handleMobileScrollEvent);
-document.getElementById("editor-container").addEventListener('keydown', performAutoSave);
+document.getElementById("editor-container").addEventListener('keydown', () => {performAutoSave();handleWordCounter()});
 document.getElementById("editor-container").addEventListener('click', updateCaretPosition);
 document.getElementById("editor-container").addEventListener('keyup', updateCaretPosition);
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
@@ -121,6 +128,11 @@ function toggleMenu(){
     const menu = document.getElementById("menu");
     //menu.style.display = menu.style.display === "grid" ? "none" : "grid";
 	menu.classList.toggle("menu-opened");
+	if ( isLowWidthViewport && menu.classList.contains("menu-opened")) { 
+		document.getElementById("word-counter-container").classList.add("hidden")
+	} else if ( !menu.classList.contains("menu-opened") && wordCounterEnabled){
+		document.getElementById("word-counter-container").classList.remove("hidden")
+	}
 }
 
 function exportDocument(){
@@ -190,9 +202,10 @@ function toggleSpellCheck(){
 
 }
 
-function getDocumentText(){
-	return editorObject.innerHTML
+function getDocumentText(withHtml=true){
+	return withHtml ? editorObject.innerHTML : editorObject.innerText;
 }
+
 
 function getDocumentName(){
 	return documentNameObject.value;
@@ -395,6 +408,25 @@ function stripImportToOnlyContent(html){
 
 }
 
+function handleWordCounter(){
+	const counterEl = document.getElementById("word-counter-container")
+	if ( wordCounterEnabled ){
+		try {
+			counterEl.innerText = `${countWords()} words`;
+			counterEl.classList.remove("hidden");
+		} catch ( err ) {
+			informError("Word Counter error occured!", err)
+		}
+
+	} else {
+		counterEl.classList.add("hidden");
+	}
+}
+
+function updateWordCounter(){
+	document.getElementById("word-counter-container").innerText = countWords();
+}
+
 function toggleAutosave(){
 	if (autosaveEnabled) {
 		autosaveEnabled = 0
@@ -587,18 +619,22 @@ function purgeLocalStorage(){
 
 function handleWidth(){
 	const width = (window.innerWidth > 0) ? window.innerWidth : screen.width;
-	isLowWidth = ( width < 1000 ) ? true : false;
+	isLowWidthViewport = ( width < 1000 ) ? true : false;
+	if (  isLowWidthViewport && document.getElementById("menu").classList.contains("menu-opened") ) {
+		document.getElementById("word-counter-container").classList.add("hidden");
+	} else if ( wordCounterEnabled ){
+		document.getElementById("word-counter-container").classList.remove("hidden");
+	}
 }
 
 function handleMobileScrollEvent(e){
 	// FIXME doesn't work well on Chrome mobile :'( But where is the issue? Maybe in Chrome itself?
 	return
-	if ( !isLowWidth ) { return }
+	if ( !isLowWidthViewport ) { return }
 
 	if ( e.keyCode === 13 ){
 		// Enter
 		const lastElement = document.querySelector("#editor > :last-child");
-		console.log(lastElement)
 		if ( isElementInViewport(lastElement)){ return}
 			window.alert('scrolll');
 			lastElement.scrollIntoView();
@@ -661,8 +697,7 @@ function handleExistingNotifications(text, type){
 	document.querySelectorAll(".notification-container").forEach((e) => {
 		if ( e.classList.contains(`notification-${type}`) && e.childNodes[0].innerText === text ) {
 			e.remove();
-			console.log('should be removed');
-		} else {console.log(e.innerText)}
+		} 
 	})
 }
 
@@ -717,7 +752,6 @@ function closeInsertLinkModal(){
 
 function injectHtml(html){
 	// inserts HTML into pointer place
-	console.log(caretPosition)
 	if ( caretPosition ) {
 		try { 
 			const newNode = document.createElement("span");
@@ -740,3 +774,12 @@ function updateCaretPosition(){
 		caretPosition = selection.getRangeAt(0);
 	}
 }
+
+function countWords() {
+  return getDocumentText(false).trim().split(/\s+/).length;
+}
+
+function saveSetting(key, value){
+	localStorage.setItem(key, value);
+}
+
