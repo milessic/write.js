@@ -1,4 +1,7 @@
 let autosaveEnabled = 0;
+const notificationTimeout = 3000;
+const notificationTimeoutLong = 10000;
+
 const lastOpenedKey= "__lastOpened__";
 const docPrefix = "__doc__";
 const autosaveKey = "__autosave__";
@@ -47,8 +50,9 @@ document.getElementById("import-doc-btn").addEventListener("click", importDocume
 document.getElementById("toggle-format-btn").addEventListener("click", toggleFormattingBar);
 document.getElementById("spellcheck-btn").addEventListener("click", toggleSpellCheck);
 document.getElementById("toggle-autosave-btn").addEventListener("click", toggleAutosave);
-document.getElementById("generate-md").addEventListener("click", generateMarkdown);
+document.getElementById("generate-md").addEventListener("click", exportMarkdown);
 document.getElementById("generate-pdf").addEventListener("click", generatePDF);
+document.getElementById("contact").addEventListener("click", () => createNotification("Thank you!", 'info'))
 
 function formatText(command) {
     const editor = document.getElementById("editor");
@@ -88,6 +92,7 @@ function toggleDarkMode(){
     document.querySelector("#editor-container").classList.toggle("dark-mode");
 	document.querySelector(".top-bar-root").classList.toggle("dark-mode-dark");
 	document.querySelector("#sub-bar").classList.toggle("dark-mode-medium");
+	document.querySelectorAll(".notification-container").forEach((e) => e.classList.toggle("dark-mode-medium"))
 	if ( darkModeEnabled) {
 		setDarkMode(0);
 	} else {
@@ -113,21 +118,26 @@ function toggleMenu(){
 }
 
 function exportDocument(){
-	if (!validateDocumentName()){return}
-    const docName = document.getElementById("doc-name").value || "Untitled Document";
-    const content = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${getStyles()}</style>${fontStyleMark}</head><body><div id="content-container"><div id="content">${document.getElementById("editor").innerHTML}</div></div></body></html>`;
-    const blob = new Blob([content], { type: "html" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-	link.download = assignFileExtension(docName, "html");
-	/*
-	if ( docName.endsWith(".html")){
-    	link.download = docName;
-	} else{
-    	link.download = `${docName}.html`;
+	try {
+		if (!validateDocumentName()){return}
+    	const docName = document.getElementById("doc-name").value || "Untitled Document";
+    	const content = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${getStyles()}</style>${fontStyleMark}</head><body><div id="content-container"><div id="content">${document.getElementById("editor").innerHTML}</div></div></body></html>`;
+    	const blob = new Blob([content], { type: "html" });
+    	const link = document.createElement("a");
+    	link.href = URL.createObjectURL(blob);
+		link.download = assignFileExtension(docName, "html");
+		/*
+		if ( docName.endsWith(".html")){
+    		link.download = docName;
+		} else{
+    		link.download = `${docName}.html`;
+		}
+		*/
+    	link.click();
+		createNotification(`Document '${link.download}' saved on the machine!`, 'info')
+	} catch ( err ) {
+		informError("Could not export file as HTML!\n\nPlease report a bug", err)
 	}
-	*/
-    link.click();
 }
 
 function importDocument(){
@@ -221,12 +231,16 @@ function createOpenDocumentModal(documentNames){
 }
 
 function saveDocumentToLocalStorage(){
-	let documentNameValue = getDocumentName();
-	let documentText = getDocumentText();
-	if ( !validateDocumentName() ){return}
-	localStorage.setItem(docPrefix + documentNameValue, documentText);
-	saveAsLastOpenedDocument(documentNameValue);
-	showAlert(`Document '${documentNameValue}' saved!`, "info");
+	try { 
+		let documentNameValue = getDocumentName();
+		let documentText = getDocumentText();
+		if ( !validateDocumentName() ){return}
+		localStorage.setItem(docPrefix + documentNameValue, documentText);
+		saveAsLastOpenedDocument(documentNameValue);
+		createNotification(`Document '${documentNameValue}' saved!`, "info");
+	} catch ( err ) {
+		informError("Could not save document!", err)
+	}
 }
 
 function getDocumentNamesFromLocalStorage(){
@@ -246,19 +260,23 @@ function checkIfDocumentNameExists(name){
 }
 
 function performAutoSave(){
-	if (!autosaveEnabled){return}
-	if (!validateDocumentName(false)){return};
-	let name = getDocumentName();
-	let content = getDocumentText();
-	if (!content){return}
-	localStorage.setItem(docPrefix + name, content);
-	saveAsLastOpenedDocument(name)
+	try {
+		if (!autosaveEnabled){return}
+		if (!validateDocumentName(false)){return};
+		let name = getDocumentName();
+		let content = getDocumentText();
+		if (!content){return}
+		localStorage.setItem(docPrefix + name, content);
+		saveAsLastOpenedDocument(name)
+	} catch ( err ) {
+		informError("Autosave failure!\n\nPlease save manually!\n\nyou may report a bug or disable autosave", err)
+	}
 }
 
 function validateDocumentName(isShowAlert=true){
 	// returns true or false
 	if ( !getDocumentName() ){
-		if ( isShowAlert ) {showAlert("Document name is empty!", "error")}
+		if ( isShowAlert ) {createNotification("Document name is empty!", "error", notificationTimeoutLong)}
 		return false
 	}
 	return true
@@ -291,8 +309,7 @@ function deleteOverlay(){
 function getDocumentTextFromLocalStorage(name){
 	let text = localStorage.getItem(docPrefix + name);
 	if (!text) {
-		showAlert(`Document with name "${name}" has not been found!`, "error");
-		console.error(`localStorage document '${docPrefix}${name}' has not been found!`)
+		informError(`Document with name "${name}" has not been found!`, '');
 		return null
 	}
 	return text;
@@ -334,21 +351,26 @@ function loadLastOpenedDocument(){
 	}
 }
 
-function generateMarkdown(){
-	if (!validateDocumentName()){return}
-	const docName = getDocumentName();
-	const mdContent = getContentAsMarkdown();
-	const blob = new Blob([mdContent], { type: "text"});
-	const link = document.createElement("a");
-	link.href = URL.createObjectURL(blob);
-	fileName = assignFileExtension(docName,"markdown");
-	link.download = fileName;
-	link.click();
+function exportMarkdown(){
+	try {
+		if (!validateDocumentName()){return}
+		const docName = getDocumentName();
+		const mdContent = getContentAsMarkdown();
+		const blob = new Blob([mdContent], { type: "text"});
+		const link = document.createElement("a");
+		link.href = URL.createObjectURL(blob);
+		fileName = assignFileExtension(docName,"markdown");
+		link.download = fileName;
+		link.click();
+		createNotification(`Document '${link.download}' saved on the machine!`, 'info')
+	} catch ( err ) {
+		informError("Cannot export Markdown!\n\nPlese report this bug", err);
+	}
 	
 }
 
 function generatePDF(){
-	showAlert("PDFs are not yet supported :(","warning")
+	createNotification("PDFs are not yet supported :(","warning")
 }
 
 function getStyles(){
@@ -397,7 +419,7 @@ function createNewDocument(){
 		fillDocName("");
 		fillEditorWithHTML("")
 	} catch(error){
-		showAlert("There were some problems with new document creation!", "error")
+		createNotification("There were some problems with new document creation!", "error")
 	autosaveEnabled = previousAutosave;
 	}
 }
@@ -472,7 +494,7 @@ function getContentAsMarkdown(){
 	// unordered list
 	let patternUl = /<ul>[\s\S]*?<\/ul>/g
 	const matchesUl = contentMd.match(patternUl);
-	while ( matches && matchesUl.length ){
+	while ( matchesUl && matchesUl.length ){
 			contentMd = contentMd.replace(
 			matchesUl[0],
 			matchesUl.shift().replace(/<li>/g, "- ")
@@ -593,3 +615,52 @@ function isElementInViewport (el) {
         rect.right <= (window.innerWidth || document.documentElement.clientWidth) /* or $(window).width() */
     );
 }
+
+function createNotification( text, type, timeout=notificationTimeout ) {
+	// type: info, warning, error
+	try {
+		handleExistingNotifications(text, type);
+		const n_div = document.createElement("div");
+		n_div.setAttribute("class" ,`notification-container notification-${type}`);
+		if ( darkModeEnabled ){ n_div.classList.add('dark-mode-medium')}
+
+		const div_text = document.createElement("div");
+		div_text.setAttribute("class", "notification-text");
+		div_text.innerText = text;
+
+		const close = document.createElement("button");
+		close.setAttribute("class", "notification-close");
+		close.innerText = "X";
+		close.addEventListener("click", () => {closeNotification(n_div)});
+		
+		n_div.appendChild(div_text);
+		n_div.appendChild(close);
+
+		document.querySelector("#notifications-container").appendChild(n_div)
+
+		setTimeout(() => closeNotification(n_div), timeout);
+		return n_div;
+	} catch ( err ) {
+		window.alert(`${text}\n\n\n${err}`)
+	}
+}
+
+function closeNotification(notificationDiv){
+	notificationDiv.classList.add("hidden");
+	setTimeout(() => notificationDiv.remove(), 800)
+}
+
+function handleExistingNotifications(text, type){
+	document.querySelectorAll(".notification-container").forEach((e) => {
+		if ( e.classList.contains(`notification-${type}`) && e.childNodes[0].innerText === text ) {
+			e.remove();
+			console.log('should be removed');
+		} else {console.log(e.innerText)}
+	})
+}
+
+function informError(notificationText, error){
+	console.error(notificationText, error);
+	createNotification(notificationText, "error", notificationTimeoutLong);
+}
+
