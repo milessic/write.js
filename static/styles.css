@@ -61,6 +61,7 @@
 		position: fixed;
 		left: auto;
 		right: auto;
+		margin-top: 30px;
 		top:30px;
 		bottom:auto;
 		height: 20px;
@@ -187,6 +188,7 @@ body {
 	padding: 10px;
 }
 
+.double-buttons button,
 .create-link-buttons button,
 .top-bar button {
     background-color: #ff5722;
@@ -242,6 +244,7 @@ body {
 	height: 40px;
 }
 
+.double-buttons button:
 .create-link-buttons button:hover,
 .top-bar button:hover,
 .notification-container button:hover,
@@ -373,6 +376,13 @@ hr {
 
 }
 
+.modal-bottom {
+	/* this is not ready yet
+	position: absolute;
+	bottom: 100px;
+	*/
+}
+
 #menu-modal a,
 #menu-modal button {
 	margin: 10px;
@@ -399,14 +409,21 @@ hr {
 .modal-header {
 	margin-left: auto;
 	margin-right: auto;
-	-ms-transform: translate(-25%, 0%);
-	transform: translate(-25%, 0%);
 }
 
 .modal-topbar {
 	margin: 10px;
 	justify-content: space-between;
 }
+
+.modal-content {
+	margin: 35px;
+}
+
+.modal-content li {
+	margin-left: 50px;
+}
+
 /* width */
 ::-webkit-scrollbar {
   width: 10px;
@@ -541,3 +558,4 @@ hr {
 	color: #757575;
 	z-index:2;
 }
+

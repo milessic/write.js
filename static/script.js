@@ -1,4 +1,5 @@
 let autosaveEnabled = 0;
+let documentNames = [];
 let caretPosition = null;
 let selection = null;
 let wordCounterEnabled = true;
@@ -9,24 +10,29 @@ const notificationTimeoutLong = 10000;
 const softreturnText = `
 `
 
+const userConsentKey = "__userConsent__";
 const lastOpenedKey= "__lastOpened__";
 const docPrefix = "__doc__";
 const autosaveKey = "__autosave__";
 const darkModeKey = "__darkModeEnabled__";
 
+let userConsent = localStorage.getItem(userConsentKey);
+let darkModeEnabled = 0;
+
 const fontStyleMark = `
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">`
-loadAutosaveSetting();
-setAutosaveText();
 
-const documentNames = getDocumentNamesFromLocalStorage();
-const userConsent = true; // TODO user consent handling
-let darkModeEnabled = parseInt(localStorage.getItem(darkModeKey)) ? true : false;
-if ( darkModeEnabled ) {
-	toggleDarkMode();
-	setDarkMode(1);
+if ( userConsent ){
+	loadAutosaveSetting();
+	setAutosaveText();
+	documentNames = getDocumentNamesFromLocalStorage();
+	darkModeEnabled = parseInt(localStorage.getItem(darkModeKey)) ? true : false;
+	if ( darkModeEnabled ) {
+		toggleDarkMode();
+		setDarkMode(1);
+	}
 }
 let boldState = false;
 let italicState = false;
@@ -42,7 +48,8 @@ const documentNameObject = document.getElementById("doc-name");
 
 // set document onload
 window.addEventListener("load", function() { 
-	loadLastOpenedDocument();
+	userConsentModal();
+	if ( userConsent ) { loadLastOpenedDocument();}
 	if ( wordCounterEnabled ){
 		handleWordCounter();
 	};
@@ -125,7 +132,9 @@ function toggleDarkMode(){
 
 function setDarkMode(state){
 	darkModeEnabled = state;
-	localStorage.setItem(darkModeKey, state);
+	if ( validateUserConsent(false)){
+		localStorage.setItem(darkModeKey, state);
+	}
 }
 
 function focusEditor(){
@@ -222,6 +231,7 @@ function getDocumentName(){
 }
 
 function openDocumentFromLocalStorage(){
+	if ( !validateUserConsent() ) { return } 
 	let names = getDocumentNamesFromLocalStorage();
 	createOpenDocumentModal(names);
 }
@@ -238,7 +248,9 @@ function createModal(title, html){
 		<h3 class="modal-header">${title}</h3>
 		<button class="close-button" onclick="closeAllModals()">X</button>
 	</div>
-	${html}
+	<div class="modal-content">
+		${html}
+	</div>
 `
 	createOverlay();
 	document.body.appendChild(modalContainer)
@@ -260,6 +272,7 @@ function createOpenDocumentModal(documentNames){
 }
 
 function saveDocumentToLocalStorage(){
+	if ( !validateUserConsent() ) { return }
 	try { 
 		let documentNameValue = getDocumentName();
 		let documentText = getDocumentText();
@@ -273,6 +286,7 @@ function saveDocumentToLocalStorage(){
 }
 
 function getDocumentNamesFromLocalStorage(){
+	if ( !validateUserConsent() ) { return }
 	const documentNames = [];
 	for ( let ls_object of Object.entries(localStorage) ){
 		let key = ls_object[0];
@@ -285,10 +299,12 @@ function getDocumentNamesFromLocalStorage(){
 }
 
 function checkIfDocumentNameExists(name){
+	if ( !validateUserConsent() ) { return }
 	return getDocumentNamesFromLocalStorage().includes(name);
 }
 
 function performAutoSave(){
+	if ( !validateUserConsent() ) { return }
 	try {
 		if (!autosaveEnabled){return}
 		if (!validateDocumentName(false)){return};
@@ -332,10 +348,11 @@ function createOverlay(){
 }
 
 function deleteOverlay(){
-	document.getElementById("overlay").remove()
+	document.querySelectorAll("#overlay").forEach((e) => e.remove());
 }
 
 function getDocumentTextFromLocalStorage(name){
+	if ( !validateUserConsent() ) { return }
 	let text = localStorage.getItem(docPrefix + name);
 	if (!text) {
 		informError(`Document with name "${name}" has not been found!`, '');
@@ -345,6 +362,7 @@ function getDocumentTextFromLocalStorage(name){
 }
 
 function loadDocumentFromLocalStorage(name){
+	if ( !validateUserConsent() ) { return }
 	let text = getDocumentTextFromLocalStorage(name);
 	if ( !text ){return false}
 	fillEditorWithHTML(text);
@@ -354,6 +372,7 @@ function loadDocumentFromLocalStorage(name){
 }
 
 function deleteDocumentInLocalStorage(name){
+	if ( !validateUserConsent() ) { return }
 	if ( showConfirm(`Delete document '${name}' ?`) ){
 		localStorage.removeItem(docPrefix + name);
 		closeAllModals();
@@ -367,6 +386,7 @@ function closeAllModals(){
 }
 
 function saveAsLastOpenedDocument(name=null){
+	if ( !validateUserConsent() ) { return }
 	if ( name === null ) {
 		name = getDocumentName();
 	}
@@ -374,6 +394,7 @@ function saveAsLastOpenedDocument(name=null){
 }
 
 function loadLastOpenedDocument(){
+	if ( !validateUserConsent() ) { return }
 	let documentName = localStorage.getItem(lastOpenedKey);
 	if ( documentName && documentName != "null"){
 		if ( loadDocumentFromLocalStorage(documentName)) {return};
@@ -438,6 +459,7 @@ function updateWordCounter(){
 }
 
 function toggleAutosave(){
+	if ( !validateUserConsent() ) { autosaveEnabled = 0; return}
 	if (autosaveEnabled) {
 		autosaveEnabled = 0
 	} else { 
@@ -449,6 +471,7 @@ function toggleAutosave(){
 }
 
 function loadAutosaveSetting(){
+	if ( !validateUserConsent() ) { return }
 	let ls_setting = parseInt(localStorage.getItem(autosaveKey));
 
 	if ( ls_setting ){
@@ -458,6 +481,7 @@ function loadAutosaveSetting(){
 	}
 }
 function saveAutosaveSetting(){
+	if ( !validateUserConsent() ) { return }
 	localStorage.setItem(autosaveKey, autosaveEnabled);
 }
 function setAutosaveText(){
@@ -589,6 +613,7 @@ function simulateEnter() {
 }
 
 function getAllLocalStorageItems() {
+	if ( !validateUserConsent() ) { return [] }
 	const data = {}
 	for ( var i = 0, len = localStorage.length; i < len; ++i ) {
 	  const key = localStorage.key( i );
@@ -598,6 +623,7 @@ function getAllLocalStorageItems() {
 }
 
 function loadDataFromLocalStorageJson(jsonObject){
+	if ( !validateUserConsent() ) { return }
 	let dataObject = JSON.parse(jsonObject);
 	if ( typeof(dataObject) != 'object' ){
 		// this is a check for complex documents
@@ -669,17 +695,21 @@ function isElementInViewport (el) {
     );
 }
 
-function createNotification( text, type, timeout=notificationTimeout ) {
+function createNotification( text, type, timeout=notificationTimeout, isHtml=false) {
 	// type: info, warning, error
+	handleExistingNotifications(text, type, isHtml);
 	try {
-		handleExistingNotifications(text, type);
 		const n_div = document.createElement("div");
 		n_div.setAttribute("class" ,`notification-container notification-${type}`);
 		if ( darkModeEnabled ){ n_div.classList.add('dark-mode-medium')}
 
 		const div_text = document.createElement("div");
 		div_text.setAttribute("class", "notification-text");
-		div_text.innerText = text;
+		if ( isHtml ){
+			div_text.innerHTML = text;
+		} else {
+			div_text.innerText = text;
+		}
 
 		const close = document.createElement("button");
 		close.setAttribute("class", "notification-close");
@@ -703,14 +733,17 @@ function closeNotification(notificationDiv){
 	setTimeout(() => notificationDiv.remove(), 800)
 }
 
-function handleExistingNotifications(text, type){
+function handleExistingNotifications(text, type, isHtml){
 	document.querySelectorAll(".notification-container").forEach((e) => {
-		if ( e.classList.contains(`notification-${type}`) && e.childNodes[0].innerText === text ) {
+		if ( e.classList.contains(`notification-${type}`) && (e.childNodes[0].innerText === text || e.childNotes[0].innerHTML === text ) ) {
 			e.remove();
 		} 
 	})
 }
 
+function closeAllNotifications(){
+	document.querySelectorAll(".notification-container").forEach((e) => {closeNotification(e)})
+}
 function informError(notificationText, error, type="error"){
 	console.error(notificationText, error);
 	createNotification(notificationText, type, notificationTimeoutLong);
@@ -810,6 +843,7 @@ function countWords() {
 }
 
 function saveSetting(key, value){
+	if ( !validateUserConsent() ) { return }
 	localStorage.setItem(key, value);
 }
 
@@ -866,4 +900,55 @@ function copyMarkdown(){
 	navigator.clipboard.writeText(
 		getContentAsMarkdown()
 	);
+}
+
+function userConsentModal(){
+	if ( userConsent == 1) { return }
+	createOverlay();
+	const html = `
+	<div>
+	Do you agree to:
+	<ul>
+		<li>Storing some cookies on your browser</li>
+		<li>Storing documents you have created in LocalStorage</li>
+	</ul>
+	<div class="modal-bottom">
+		<div class="double-buttons">
+			<button onclick="setUserConsent(1)">Yes</button>
+			<button onclick="setUserConsent(0)">No</button>
+		</div>
+		If you won't agree, this will be displayed at every visit and core app functionalities such as document saving won't work.
+		<br>
+		<hr>
+		<br>
+		<strong>If you have some data already written, you may just agree and <b>reload</b></strong>
+	</div>
+	</div>
+	`
+	createModal("Do you agree to cookies and storing data in LocalStorage?", html)
+}
+
+function setUserConsent(value){
+	if ( value === 1 ){
+		userConsent = 1
+		localStorage.setItem(userConsentKey, value);
+		closeAllModals();
+		closeAllNotifications();
+	} else {
+		userConsent = 0;
+		closeAllModals();
+	}
+}
+
+function validateUserConsent(showMessage=true){
+	if ( userConsent == 1 ){
+		return true
+	} else if ( showMessage ) {
+		const html = `
+			<span>For this action, you need to consent to store data!</span>
+			<button onclick="userConsentModal()">Change Settings</button>
+		`
+		createNotification(html, "warning", notificationTimeoutLong, true)
+	}
+	return false
 }
