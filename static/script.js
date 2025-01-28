@@ -25,14 +25,14 @@ const fontStyleMark = `
 	<link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">`
 
 if ( userConsent ){
-	loadAutosaveSetting();
-	setAutosaveText();
-	documentNames = getDocumentNamesFromLocalStorage();
 	darkModeEnabled = parseInt(localStorage.getItem(darkModeKey)) ? true : false;
 	if ( darkModeEnabled ) {
 		toggleDarkMode();
 		setDarkMode(1);
 	}
+	loadAutosaveSetting();
+	setAutosaveText();
+	documentNames = getDocumentNamesFromLocalStorage();
 }
 let boldState = false;
 let italicState = false;
