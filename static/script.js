@@ -1,9 +1,13 @@
 let autosaveEnabled = 0;
 let caretPosition = null;
+let selection = null;
 let wordCounterEnabled = true;
+let indentSize = 4;
 
 const notificationTimeout = 3000;
 const notificationTimeoutLong = 10000;
+const softreturnText = `
+`
 
 const lastOpenedKey= "__lastOpened__";
 const docPrefix = "__doc__";
@@ -41,13 +45,13 @@ window.addEventListener("load", function() {
 	loadLastOpenedDocument();
 	if ( wordCounterEnabled ){
 		handleWordCounter();
-	}
+	};
 })
 
 // Setup Events
 window.addEventListener("resize", handleWidth);
 window.addEventListener("keydown", handleMobileScrollEvent);
-document.getElementById("editor-container").addEventListener('keydown', () => {performAutoSave();handleWordCounter()});
+document.getElementById("editor-container").addEventListener('keydown', (e) => {performAutoSave();handleWordCounter();changeTabBehavior(e)});
 document.getElementById("editor-container").addEventListener('click', updateCaretPosition);
 document.getElementById("editor-container").addEventListener('keyup', updateCaretPosition);
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
@@ -96,6 +100,11 @@ function formatText(command) {
         document.execCommand("formatBlock", false, "code");
     } else if (command === "a"){
 		createInsertLinkModal();
+	} else if (command === "softreturn"){
+		injectIntoDocument(softreturnText, false);
+		adjustSelectionRange(1);
+	} else if (command === "inserttab") {
+		insertTab();
 	}
 	focusEditor();
 }
@@ -750,26 +759,41 @@ function closeInsertLinkModal(){
 	document.querySelectorAll('.insert-link-modal').forEach((e) => e.remove());
 }
 
+
 function injectHtml(html){
 	// inserts HTML into pointer place
+	injectIntoDocument(html, true);
+}
+
+function injectIntoDocument(content, isHtml){
 	if ( caretPosition ) {
 		try { 
-			const newNode = document.createElement("span");
-			newNode.innerHTML = html;
-			caretPosition.deleteContents(); // delete selected text if it's selected
+			let newNode = null;
+			if ( isHtml ){
+				newNode = document.createElement("span");
+				newNode.innerHTML = content;
+				caretPosition.deleteContents(); // delete selected text if it's selected
+			} else {
+				newNode = document.createTextNode(content);
+			}
 			caretPosition.insertNode(newNode);
 		} catch ( err ) {
 			informError("Cannot perform action!", err)
 		}
 	} else {
-		const newNode = document.createElement("div");
-		newNode.innerHTML = html;
+		let newNode = null;
+		if ( isHtml ){
+			newNode = document.createElement("div");
+			newNode.innerHTML = content;
+		} else {
+			newNode = document.createTextNode(content);
+		}
 		document.querySelector("#editor").appendChild(newNode)
 	}
+	updateCaretPosition();
 }
-
 function updateCaretPosition(){
-	const selection = window.getSelection();
+	selection = window.getSelection();
 	if ( selection.rangeCount > 0 ) {
 		caretPosition = selection.getRangeAt(0);
 	}
@@ -783,3 +807,51 @@ function saveSetting(key, value){
 	localStorage.setItem(key, value);
 }
 
+function adjustSelectionRange(n) {
+    const selectionThis = window.getSelection();
+    if (!selection.rangeCount) {
+        console.warn("No selection found.");
+        return;
+    }
+
+    const range = selectionThis.getRangeAt(0); // Get the current range
+    const newStart = range.startOffset + n;
+    const newEnd = range.endOffset + n;
+
+    // Ensure the new range stays within the bounds of the selected node's text
+    const textContent = range.startContainer.textContent;
+    if (newStart < 0 || newEnd > textContent.length) {
+        console.warn("New range exceeds text bounds.");
+        return;
+    }
+
+    // Update the range
+    range.setStart(range.startContainer, newStart);
+    range.setEnd(range.endContainer, newEnd);
+
+    // Apply the updated range to the selection
+    selectionThis.removeAllRanges();
+    selectionThis.addRange(range);
+}
+
+function changeTabBehavior(e){
+	if ( e.key === "Tab" ){
+		e.preventDefault();
+		insertTab();
+    }
+}
+
+function insertTab(){
+	// delete selection
+    caretPosition.deleteContents();
+	
+	// create text node for indent
+    const tabNode = document.createTextNode(" ".repeat(indentSize));
+	caretPosition.insertNode(tabNode);
+
+	// move the caret
+	caretPosition.setStartAfter(tabNode);
+	caretPosition.setEndAfter(tabNode);
+	selection.removeAllRanges();
+	selection.addRange(caretPosition);
+}
