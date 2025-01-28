@@ -934,6 +934,7 @@ function setUserConsent(value){
 		localStorage.setItem(userConsentKey, value);
 		closeAllModals();
 		closeAllNotifications();
+		window.location.reload()
 	} else {
 		userConsent = 0;
 		closeAllModals();
