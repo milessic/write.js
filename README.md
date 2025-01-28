@@ -25,7 +25,7 @@ pip install -r requirements.txt
 ```
 3. Run server locally
 ```
-uvicorn main:app --reload --host 0.0.0.0 --port8000
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 ## Tests
 Tests are located in another repository - [Playwright Repository](https://github.com/milessic/playwright-js-demo)
