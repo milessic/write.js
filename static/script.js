@@ -18,12 +18,13 @@ const darkModeKey = "__darkModeEnabled__";
 
 let userConsent = localStorage.getItem(userConsentKey);
 let darkModeEnabled = 0;
-	darkModeEnabled = parseInt(localStorage.getItem(darkModeKey)) ? true : false;
-	if ( darkModeEnabled ) {
-		toggleDarkMode();
-		setDarkMode(1);
-	}
+darkModeEnabled = parseInt(localStorage.getItem(darkModeKey)) ? true : false;
+if ( darkModeEnabled ) {
+	toggleDarkMode();
+	setDarkMode(1);
+}
 
+document.querySelector("body").classList.add("transitions-enabled");
 const fontStyleMark = `
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -53,7 +54,6 @@ window.addEventListener("load", function() {
 	if ( wordCounterEnabled ){
 		handleWordCounter();
 	};
-	document.querySelector("#editor").classList.add("color-transition");
 })
 
 // Setup Events

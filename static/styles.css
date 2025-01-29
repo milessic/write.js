@@ -5,6 +5,9 @@
 }
 
 @media (min-width: 1000px){
+	#sub-bar{
+		padding-top: 10px !important;
+	}
 	#word-counter-container {
 		position: fixed;
 		right: 10px;
@@ -98,7 +101,7 @@
 		display: contents !important;
 	}
 	#sub-bar {
-		padding: 0px 10px;
+		padding: 0px 5px;
 		width: 100%;
 	}
 	.modal-container {
@@ -117,7 +120,6 @@
 	}
 }
 * {
-	transition: margin var(--transition-speed), padding var(--transition-speed);
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -125,8 +127,13 @@
 	font-family: 'Cousine';
 }
 
-.color-transition {
-	transition: background-color 0.3 ease color .1s ease-out;
+.transitions-enabled *,
+.transitions-enabled {
+	transition: background-color 0.3s ease, color .1s ease-out, margin var(--transition-speed), padding var(--transition-speed);
+}
+.transitions-enabled *,
+.transitions-enabled {
+	transition: background-color 0.3s ease, color .1s ease-out, margin var(--transition-speed), padding var(--transition-speed);
 }
 
 body {
@@ -248,7 +255,7 @@ body {
 	height: 40px;
 }
 
-.double-buttons button,
+.double-buttons button:hover,
 .create-link-buttons button:hover,
 .top-bar button:hover,
 .notification-container button:hover,
@@ -477,7 +484,7 @@ hr {
 
 #hamburger-button {
 	margin-top: -5px;
-	transition: scale .3s, background-color 0.3s ease, color .1s ease-out, margin var(--transition-speed), padding var(--transition-speed);
+	transition: scale .3s;
 }
 
 #notifications-container{
