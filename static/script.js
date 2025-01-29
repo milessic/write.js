@@ -60,9 +60,9 @@ window.addEventListener("load", function() {
 // Setup Events
 window.addEventListener("resize", handleWidth);
 window.addEventListener("keydown", handleMobileScrollEvent);
-document.getElementById("editor-container").addEventListener('keydown', (e) => {performAutoSave();handleWordCounter();changeTabBehavior(e)});
+document.getElementById("editor-container").addEventListener('keydown', (e) => {performAutoSave();changeTabBehavior(e)});
 document.getElementById("editor-container").addEventListener('click', updateCaretPosition);
-document.getElementById("editor-container").addEventListener('keyup', updateCaretPosition);
+document.getElementById("editor-container").addEventListener('keyup', () => {updateCaretPosition();handleWordCounter();});
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
 document.getElementById('editor-container').addEventListener('click', focusEditor);
 document.getElementById("dark-mode-btn").addEventListener("click", toggleDarkMode);
@@ -447,7 +447,8 @@ function handleWordCounter(){
 	const counterEl = document.getElementById("word-counter-container")
 	if ( wordCounterEnabled ){
 		try {
-			counterEl.innerText = `${countWords()} words`;
+			const wordCount = countWords();
+			counterEl.innerText = `${wordCount} word` + (wordCount > 1 ? 's' : '');
 			counterEl.classList.remove("hidden");
 		} catch ( err ) {
 			informError("Word Counter error occured!", err)
@@ -843,7 +844,11 @@ function updateCaretPosition(){
 }
 
 function countWords() {
-  return getDocumentText(false).trim().split(/\s+/).length;
+  	docTextAsArray = getDocumentText(false).trim().split(/\s+/);
+	if ( docTextAsArray.length === 1 && !docTextAsArray[0]){
+		return 0
+	}
+	return docTextAsArray.length
 }
 
 function saveSetting(key, value){
