@@ -10,6 +10,7 @@ const notificationTimeoutLong = 10000;
 const softreturnText = `
 `
 
+const baseTitle = "Write.JS";
 const userConsentKey = "__userConsent__";
 const lastOpenedKey= "__lastOpened__";
 const docPrefix = "__doc__";
@@ -77,6 +78,7 @@ document.getElementById("generate-md").addEventListener("click", exportMarkdown)
 document.getElementById("copy-md").addEventListener("click", copyMarkdown);
 document.getElementById("generate-pdf").addEventListener("click", generatePDF);
 document.getElementById("contact").addEventListener("click", () => createNotification("Thank you!", 'info'))
+documentNameObject.addEventListener("change", updateTitle);
 
 function formatText(command) {
     const editor = document.getElementById("editor");
@@ -199,6 +201,7 @@ function importDocument(){
 
 function fillDocName(name){
 	document.getElementById("doc-name").value = name;
+	updateTitle();
 }
 function fillEditorWithHTML(html){
     document.getElementById("editor").innerHTML = html;
@@ -953,4 +956,16 @@ function validateUserConsent(showMessage=true){
 		createNotification(html, "warning", notificationTimeoutLong, true)
 	}
 	return false
+}
+
+function updateTitle(){
+	// updates title due with document name
+	const docName = getDocumentName();
+	let newName = new String();
+	if  ( docName ) {
+		newName = docName + " - " + baseTitle;
+	} else {
+		newName = baseTitle;
+	}
+	document.title = newName;
 }
