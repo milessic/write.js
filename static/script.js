@@ -372,6 +372,7 @@ function loadDocumentFromLocalStorage(name){
 	fillEditorWithHTML(text);
 	fillDocName(name);
 	saveAsLastOpenedDocument();
+	handleWordCounter();
 	return true
 }
 
@@ -448,7 +449,7 @@ function handleWordCounter(){
 	if ( wordCounterEnabled ){
 		try {
 			const wordCount = countWords();
-			counterEl.innerText = `${wordCount} word` + (wordCount > 1 ? 's' : '');
+			counterEl.innerText = `${wordCount} word` + (!wordCount || wordCount > 1 ? 's' : '');
 			counterEl.classList.remove("hidden");
 		} catch ( err ) {
 			informError("Word Counter error occured!", err)
@@ -499,6 +500,7 @@ function createNewDocument(){
 		autosaveEnabled = false;
 		fillDocName("");
 		fillEditorWithHTML("")
+		handleWordCounter();
 	} catch(error){
 		createNotification("There were some problems with new document creation!", "error")
 	autosaveEnabled = previousAutosave;
