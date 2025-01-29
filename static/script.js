@@ -642,7 +642,7 @@ function loadDataFromLocalStorageJson(jsonObject){
 		// TODO add support for current document
 		const existingDocument = localStorage.getItem(key)  
 		if ( existingDocument === value ) { continue }    // if document is the same, don't overwrite
-		else if ( !confirm(`!Do you want to overwrite '${key.replace(docPrefix, "")}'?`)){ continue } // for edited documents in both sources 
+		else if ( existingDocument != null && !confirm(`!Do you want to overwrite '${key.replace(docPrefix, "")}'?`)){ continue } // for edited documents in both sources 
 
 		// set remote value
 		localStorage.setItem(key, value);

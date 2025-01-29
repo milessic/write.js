@@ -5,6 +5,9 @@
 }
 
 @media (min-width: 1000px){
+	.mobile-btn {
+		display: none;
+	}
 	#sub-bar{
 		padding-top: 10px !important;
 	}
