@@ -55,6 +55,10 @@
 	}
 }
 @media only screen and (max-width: 999px){
+	.format-btn {
+		font-size: x-small;
+		padding: 7px !important;
+	}
 	#word-counter-container {
 		position: fixed;
 		right: 10px;
