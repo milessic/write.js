@@ -5,6 +5,9 @@
 }
 
 @media (min-width: 1000px){
+	.format-btn{
+		height: 31px;
+	}
 	.mobile-btn {
 		display: none;
 	}
@@ -56,6 +59,7 @@
 }
 @media only screen and (max-width: 999px){
 	.format-btn {
+		height: 25px;
 		font-size: x-small;
 		padding: 7px !important;
 	}
@@ -581,4 +585,15 @@ hr {
 #content input[type="checkbox"],
 #editor  input[type="checkbox"] {
 	margin-right: 10px;
+}
+
+#checkbox-icon-container {
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+	border: 1px solid #0b0b0b;
+	color: #0b0b0b;
+}
+.sub-bar-content {
+	display: contents;
 }
