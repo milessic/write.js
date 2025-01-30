@@ -976,3 +976,18 @@ function updateTitle(){
 	}
 	document.title = newName;
 }
+
+function saveBackup(){
+	try {
+		const data = getAllLocalStorageItems();
+		const blob = new Blob([JSON.stringify(data)], { type: "json"});
+		const link = document.createElement("a");
+		link.href = URL.createObjectURL(blob);
+		link.download = "writejs_backup.json";
+		link.click();
+		createNotification("Backup 'writejs_backup.json' has been created!<br>To laod it use console and function <b>loadDataFromLocalStorageJson(backupAsString)</b>", "info", notificationTimeoutLong, true);
+	} catch ( err ) {
+		informError("Cannot save backup!", err)
+	}
+
+}
