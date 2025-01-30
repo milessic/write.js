@@ -116,8 +116,15 @@ function formatText(command) {
 		adjustSelectionRange(1);
 	} else if (command === "inserttab") {
 		insertTab();
+	} else if ( command === "checkbox" ) {
+		const checkboxID = assignCheckboxId();
+		injectIntoDocument(`<input id="${checkboxID}" onclick="assignCheckboxValue('${checkboxID}')" type="checkbox"><span>  </span>`, true) // this span with 2 spaces is for mobile purposes 
+		adjustSelectionRange(1);
+		updateCaretPosition();
+		
 	}
 	focusEditor();
+	performAutoSave();
 }
 
 function toggleDarkMode(){
@@ -317,6 +324,7 @@ function performAutoSave(){
 		if (!content){return}
 		localStorage.setItem(docPrefix + name, content);
 		saveAsLastOpenedDocument(name)
+		console.log("saved");
 	} catch ( err ) {
 		informError("Autosave failure!\n\nPlease save manually!\n\nyou may report a bug or disable autosave", err)
 	}
@@ -990,4 +998,14 @@ function saveBackup(){
 		informError("Cannot save backup!", err)
 	}
 
+}
+
+function assignCheckboxId(){
+	return `editor-checkbox-${document.querySelectorAll('#editor input[type="checkbox"]').length + 1}`
+}
+
+function assignCheckboxValue(checkboxId){
+	const element = document.getElementById(checkboxId)
+	element.checked ? element.setAttribute("checked", "") : element.removeAttribute("checked");
+	performAutoSave();
 }

@@ -48,6 +48,7 @@
 		width: 60rem !important;
 		max-width: 70% !important;
 	}
+	#content,
 	#container li,
 	#editor li {
 		margin-left: 100px;
@@ -573,3 +574,7 @@ hr {
 	z-index:2;
 }
 
+#content input[type="checkbox"],
+#editor  input[type="checkbox"] {
+	margin-right: 10px;
+}
