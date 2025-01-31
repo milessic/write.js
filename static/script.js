@@ -762,7 +762,7 @@ function informError(notificationText, error, type="error"){
 function createInsertLinkModal(){
 	if ( document.querySelector(".insert-link-modal") ) { closeInsertLinkModal();return }
 	const c_div = document.createElement("div");
-	c_div.setAttribute("class","format-btn insert-link-modal");
+	c_div.setAttribute("class","insert-link-modal");
 	try {
 		c_div.innerHTML = `
 		<div class="insert-link-form">
@@ -1074,7 +1074,7 @@ function handleCheckboxEnter(e){
 				requestAnimationFrame(() => {
 					moveCaretToEndById(idToFocus)
 				})
-			} else if ( false && !isLowWidthViewport ) { // due to other issues, it is disabled on mobile
+			} else if ( false && !isLowWidthViewport ) { // due to other issues, it is disabled on mobile, apparently it may remove whole document for dekstops as well xD
 				caretPosition.commonAncestorContainer.parentNode.parentNode.parentNode.parentNode.parentNode.remove() // if you remove one parentNode, then there will be more space
 			} 
 		}

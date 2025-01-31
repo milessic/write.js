@@ -303,6 +303,7 @@ body {
     transition: background-color 0.3s;
 }
 
+
 .format-btn:hover {
     background-color: #ccc;
 }
@@ -552,13 +553,25 @@ hr {
 }
 
 .insert-link-modal{
-	position:absolute;
+
+	color: #0b0b0b;
+    background-color: #ddd;
+    border: none;
+    padding: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+	margin-top: 3px;
+
+	position:fixed;
+	width: 200px;
 	top:100px;
 	bottom:auto;
 	left:auto;
 	right:auto;
 	background-color: #fff !important;
 	z-index: 4;
+
 
 }
 
