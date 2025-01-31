@@ -1074,7 +1074,7 @@ function handleCheckboxEnter(e){
 				requestAnimationFrame(() => {
 					moveCaretToEndById(idToFocus)
 				})
-			} else if ( !isLowWidthViewport ) { // due to other issues, it is disabled on mobile
+			} else if ( false && !isLowWidthViewport ) { // due to other issues, it is disabled on mobile
 				caretPosition.commonAncestorContainer.parentNode.parentNode.parentNode.parentNode.parentNode.remove() // if you remove one parentNode, then there will be more space
 			} 
 		}
