@@ -7,7 +7,7 @@ let indentSize = 4;
 
 const notificationTimeout = 3000;
 const notificationTimeoutLong = 10000;
-const softreturnText = `
+const softReturnText = `
 `
 
 const baseTitle = "Write.JS";
@@ -60,9 +60,9 @@ window.addEventListener("load", function() {
 // Setup Events
 window.addEventListener("resize", handleWidth);
 window.addEventListener("keydown", handleMobileScrollEvent);
-document.getElementById("editor-container").addEventListener('keydown', (e) => {performAutoSave();changeTabBehavior(e)});
+document.getElementById("editor-container").addEventListener('keydown', (e) => {performAutoSave();changeTabBehavior(e);handleCheckboxEnter(e)});
 document.getElementById("editor-container").addEventListener('click', updateCaretPosition);
-document.getElementById("editor-container").addEventListener('keyup', () => {updateCaretPosition();handleWordCounter();});
+document.getElementById("editor-container").addEventListener('keyup', (e) => {updateCaretPosition();handleWordCounter()});
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
 document.getElementById('editor-container').addEventListener('click', focusEditor);
 document.getElementById("dark-mode-btn").addEventListener("click", toggleDarkMode);
@@ -112,16 +112,12 @@ function formatText(command) {
     } else if (command === "a"){
 		createInsertLinkModal();
 	} else if (command === "softreturn"){
-		injectIntoDocument(softreturnText, false);
+		injectIntoDocument(softReturnText, false);
 		adjustSelectionRange(1);
 	} else if (command === "inserttab") {
 		insertTab();
 	} else if ( command === "checkbox" ) {
-		const checkboxID = assignCheckboxId();
-		injectIntoDocument(`<input id="${checkboxID}" onclick="assignCheckboxValue('${checkboxID}')" type="checkbox"><span>  </span>`, true) // this span with 2 spaces is for mobile purposes 
-		adjustSelectionRange(1);
-		updateCaretPosition();
-		
+		insertCheckbox();
 	}
 	focusEditor();
 	performAutoSave();
@@ -324,7 +320,6 @@ function performAutoSave(){
 		if (!content){return}
 		localStorage.setItem(docPrefix + name, content);
 		saveAsLastOpenedDocument(name)
-		console.log("saved");
 	} catch ( err ) {
 		informError("Autosave failure!\n\nPlease save manually!\n\nyou may report a bug or disable autosave", err)
 	}
@@ -819,18 +814,39 @@ function injectHtml(html){
 	injectIntoDocument(html, true);
 }
 
-function injectIntoDocument(content, isHtml){
+function injectIntoDocument(content, isHtml, injectCheckbox=false){
 	if ( caretPosition ) {
 		try { 
 			let newNode = null;
+			let additionalNode = null;
 			if ( isHtml ){
 				newNode = document.createElement("span");
 				newNode.innerHTML = content;
+				if ( injectCheckbox ) {
+					newNode = document.createElement("input");
+					let checkboxId = assignUniqueId('checkbox');
+					newNode.id = checkboxId;
+					newNode.setAttribute("onclick",`assignCheckboxValue('${checkboxId}')`);
+					newNode.setAttribute("type", "checkbox");
+					const additionalNodeId = assignUniqueId('span', "checkbox");
+					additionalNode = document.createElement('span');
+					additionalNode.innerText = "  ";
+					additionalNode.setAttribute("contenteditable","true");
+					additionalNode.setAttribute("id", additionalNodeId);
+				}
 				caretPosition.deleteContents(); // delete selected text if it's selected
 			} else {
 				newNode = document.createTextNode(content);
 			}
-			caretPosition.insertNode(newNode);
+			// if injecting with Enter
+			if ( injectCheckbox ){
+				caretPosition.commonAncestorContainer.parentNode.appendChild(newNode);
+				// this way it works better on mobiles
+				caretPosition.commonAncestorContainer.parentNode.appendChild(additionalNode);
+				return caretPosition.commonAncestorContainer.parentNode
+			} else {
+				caretPosition.insertNode(newNode);
+			}
 		} catch ( err ) {
 			informError("Cannot perform action!", err)
 		}
@@ -1000,12 +1016,125 @@ function saveBackup(){
 
 }
 
-function assignCheckboxId(){
-	return `editor-checkbox-${document.querySelectorAll('#editor input[type="checkbox"]').length + 1}`
+function assignUniqueId(elementType, prefix=null){
+	if ( elementType === "checkbox" ){
+		return `editor-checkbox-${document.querySelectorAll('#editor input[type="checkbox"]').length + 1}`
+	} else {
+		let prefixText = ""
+		if ( prefix ) { 
+			prefixText = `${prefix}-`; 
+			return `editor-${prefix}${elementType}-${document.querySelectorAll(`#editor ${elementType}`).length + 1}`
+		}
+	}
 }
+
 
 function assignCheckboxValue(checkboxId){
 	const element = document.getElementById(checkboxId)
 	element.checked ? element.setAttribute("checked", "") : element.removeAttribute("checked");
 	performAutoSave();
 }
+function insertCheckbox(fromEnter=false){
+	// notify user that it is in development phase for mobiles
+	if ( isLowWidthViewport && !fromEnter ){ createNotification("Checkboxes are not working well on mobiles", "warning") }
+	const checkboxID = assignUniqueId("checkbox");
+	const spanId = assignUniqueId("span", "checkbox");
+	//updateCaretPosition();
+	requestAnimationFrame(() => {
+		if ( isLowWidthViewport ) { injectIntoDocument(softReturnText, false);}
+	})
+	nodeElement = injectIntoDocument(`<input id="${checkboxID}" onclick="assignCheckboxValue('${checkboxID}')" type="checkbox"><span id="${spanId}" contenteditable="true">  </span>`, true, fromEnter) // this span with 2 spaces is for mobile purposes 
+	//updateCaretPosition();
+	requestAnimationFrame(() => {
+		if ( isLowWidthViewport){
+			console.log(spanId)
+			setTimeout( () => {
+				moveCaretToEndById(spanId)
+				focusEditor();
+			
+			}, 1
+			)
+		} else {
+			console.log(2)
+			moveCaretToEndById(spanId)
+			focusEditor()
+		}
+	})
+
+	return nodeElement
+}
+function handleCheckboxEnter(e){
+	if ( e.key === "Enter"){
+		// handle actions with caret:
+		const parentElement = caretPosition.commonAncestorContainer.parentElement;
+		if ( parentElement.id.startsWith("editor-checkboxspan") ) {
+			if ( parentElement.innerText.trim() ){
+				const nodeEl = insertCheckbox(true)
+				const idToFocus = nodeEl.childNodes[2].id
+				requestAnimationFrame(() => {
+					moveCaretToEndById(idToFocus)
+				})
+			} else if ( !isLowWidthViewport ) { // due to other issues, it is disabled on mobile
+				caretPosition.commonAncestorContainer.parentNode.parentNode.parentNode.parentNode.parentNode.remove() // if you remove one parentNode, then there will be more space
+			} 
+		}
+	}
+}
+function simulateKeyPress(key, code, keyCode, which, howManyTimes=1) {
+	console.warn("doenst work in contenteditable")
+	for ( let i=0; i < howManyTimes; i++){
+    	const event = new KeyboardEvent('keydown', {
+    	    key: key,
+    	    code: code,
+    	    keyCode: keyCode,
+    	    which: which,
+    	    bubbles: true,
+    	    cancelable: true
+    	});
+		caretPosition.commonAncestorContainer.parentNode.dispatchEvent(event)
+	}
+
+}
+
+
+function moveCaretToNextElement() {
+	locator = 'span, input, button, textarea, select, a[href], [tabindex]:not([tabindex="-1"])'
+	locator = 'span, div,input, button, textarea, select, a[href], [tabindex]:not([tabindex="-1"])'
+    const focusableElements = Array.from(
+        document.querySelectorAll(locator)
+    ).filter(el => !el.disabled && el.offsetParent !== null); // Exclude disabled/hidden elements
+
+    const currentIndex = focusableElements.indexOf(document.activeElement);
+    if (currentIndex !== -1 && currentIndex < focusableElements.length - 1) {
+		const newEl = focusableElements[currentIndex + 1]
+		newEl.focus()
+    } 
+}
+
+function moveCaretToEndById(elementId) {
+    const element = document.getElementById(elementId);
+    if (!element) {
+        console.error(`Element with ID "${elementId}" not found.`);
+        return;
+    }
+    
+    element.focus(); // Focus the element
+    
+    if (window.getSelection && document.createRange) {
+        range = caretPosition
+        selection = window.getSelection();
+        
+        range.selectNodeContents(element);
+        range.collapse(false); // Move to end
+        
+        selection.removeAllRanges();
+        selection.addRange(range);
+    } else if (document.selection && document.body.createTextRange) { // For older IE
+        const range = document.body.createTextRange();
+        range.moveToElementText(element);
+        range.collapse(false);
+        range.select();
+    }
+}
+
+
