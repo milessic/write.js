@@ -1,3 +1,15 @@
+
+
+const test = { my: 'super', puper: [456, 567], awesome: 'pako' };
+
+const compressed = pako.deflate(JSON.stringify(test));
+
+const restored = JSON.parse(pako.inflate(compressed, { to: 'string' }));
+console.log(compressed)
+console.log(restored)
+
+
+
 let autosaveEnabled = 0;
 let documentNames = [];
 let caretPosition = null;
