@@ -76,6 +76,7 @@ document.getElementById("editor-container").addEventListener('keydown', (e) => {
 document.getElementById("editor-container").addEventListener('click', updateCaretPosition);
 document.getElementById("editor-container").addEventListener('keyup', (e) => {updateCaretPosition();handleWordCounter()});
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
+document.getElementById("login-btn").addEventListener('click', createAccountLoginModal);
 document.getElementById('editor-container').addEventListener('click', focusEditor);
 document.getElementById("dark-mode-btn").addEventListener("click", toggleDarkMode);
 document.getElementById("hamburger-menu").addEventListener("click", toggleMenu);
@@ -172,11 +173,14 @@ function toggleMenu(){
 	}
 }
 
+function getDocumntContentToExport(){
+	return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${getStyles()}</style>${fontStyleMark}</head><body><div id="content-container"><div id="content">${document.getElementById("editor").innerHTML}</div></div></body></html>`;
+}
 function exportDocument(){
 	try {
 		if (!validateDocumentName()){return}
     	const docName = document.getElementById("doc-name").value || "Untitled Document";
-    	const content = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${getStyles()}</style>${fontStyleMark}</head><body><div id="content-container"><div id="content">${document.getElementById("editor").innerHTML}</div></div></body></html>`;
+    	const content = getDocumntContentToExport();
     	const blob = new Blob([content], { type: "html" });
     	const link = document.createElement("a");
     	link.href = URL.createObjectURL(blob);
@@ -1149,4 +1153,57 @@ function moveCaretToEndById(elementId) {
     }
 }
 
+function createAccountLoginModal(){
+	const html = `
+	<div class="form-div">
+		<div class="form-field-label">
+			<label for="account-login">Login</label>
+			<input id="account-login">
+		</div>
+		<div class="form-field-label">
+			<label for="account-password">Password</label>
+			<input id="account-password" type="password">
+		</div>
+		<button onclick="sendLoginRequest()">Login</button>
+		<button onclick="createRegisterModal()">Create account!</button>
+		<button onclick="createForgottenPasswordModal()">I forgot password</button>
+	</div>
+	`
+	createModal("Login", html)
+}
 
+function createRegisterModal(){
+	closeAllModals();
+	const html = `
+	<div class="form-div">
+		<div class="form-field-label">
+			<label for="account-register-username">Login</label>
+			<input id="account-register-username">
+		</div>
+		<div class="form-field-label">
+			<label for="account-register-email">Email</label>
+			<input id="account-register-email" type="email">
+		</div>
+		<div class="form-field-label">
+			<label for="account-register-password">Password</label>
+			<input id="account-register-password" type="password">
+		</div>
+		<button onclick="sendRegisterRequest()">Register</button>
+	</div>
+	`
+	createModal("Login", html)
+}
+
+function createForgottenPasswordModal(){
+	closeAllModals();
+	const html = `
+	<div class="form-div">
+		<div class="form-field-label">
+			<label for="account-forgot-login">Login</label>
+			<input id="account-forgot-login">
+		</div>
+		<button onclick="sendForgottenPasswordRequest()">Send en e-mail</button>
+	</div>
+	`
+	createModal("Login", html)
+}
