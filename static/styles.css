@@ -14,22 +14,7 @@
 	#sub-bar{
 		padding-top: 10px !important;
 	}
-	#word-counter-container {
-		position: fixed;
-		right: 10px;
-		bottom: 10px;
-		left: auto;
-		top: auto;
-	}
 	#notifications-container{
-		display: flex;
-		flex-flow: column-reverse;
-		position: fixed;
-		left: auto;
-		right: auto;
-		top:auto;
-		bottom:10px;
-		height: 20px;
 		width: 600px;
 	}
 	#hamburger-button {
@@ -58,11 +43,6 @@
 	}
 }
 @media only screen and (max-width: 999px){
-	.format-btn {
-		height: 25px;
-		font-size: x-small;
-		padding: 7px !important;
-	}
 	#word-counter-container {
 		position: fixed;
 		right: 10px;
@@ -70,18 +50,13 @@
 		left: auto;
 		bottom: auto;
 	}
+	.format-btn {
+		height: 25px;
+		font-size: x-small;
+		padding: 7px !important;
+	}
 	#notifications-container{
-		display: flex;
-		flex-flow: column-reverse;
-		position: fixed;
-		left: auto;
-		right: auto;
-		margin-top: 30px;
-		top:30px;
-		bottom:auto;
-		height: 20px;
-		width: 100%;
-		max-width: 600px;
+		max-width: 95vw;
 	}
 	#hamburger-button {
 		font-size: 3rem;
@@ -609,4 +584,24 @@ hr {
 }
 .sub-bar-content {
 	display: contents;
+}
+
+#word-counter-container {
+	position: fixed;
+	right: 10px;
+	bottom: 10px;
+	left: auto;
+	top: auto;
+}
+
+#notifications-container{
+	display: flex;
+	flex-flow: column-reverse;
+	position: fixed;
+	left: auto;
+	right: auto;
+	top:auto;
+	bottom:10px;
+	height: 20px;
+	width: 600px;
 }
