@@ -1207,3 +1207,22 @@ function createForgottenPasswordModal(){
 	`
 	createModal("Login", html)
 }
+
+async function sendLoginRequest(){
+	try {
+		const loginEl = document.getElementById("account-login");
+		const passwEl = document.getElementById("account-password");
+		const payload = {
+			"username": loginEl.value,
+			"password": passwEl.value
+		}
+		const resp = fetch("/api/auth/token", {
+			"body": JSON.stringify(payload), // FIXME, it should be www-xurlencoded or sth like this
+			"method": "POST"
+		})
+		const respTest = await resp.json()
+		console.log(resp.status)
+	} catch ( err ) {
+		informError("Cannot login!", err);
+	}
+}
