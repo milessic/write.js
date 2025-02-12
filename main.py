@@ -1,7 +1,7 @@
 from fastapi import  FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from routers import auth, web
+from routers import auth, web, temp_notebooks
 from utils.controller import controller as c
 
 
@@ -19,6 +19,10 @@ templates = Jinja2Templates(directory="static")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Routers
-app.include_router(web.router, prefix="", tags=["web"], include_in_schema=False)
+#app.include_router(web.router, prefix="", tags=["web"], include_in_schema=False)
+app.include_router(web.router, prefix="", tags=["web"], include_in_schema=True)
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
+
+# this is temporary, really
+app.include_router(temp_notebooks.router, prefix="/api/notebooks", tags=["Notebooks"])
 

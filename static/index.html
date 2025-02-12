@@ -36,7 +36,12 @@
         	    	        <button id="open-doc-btn">Open Document</button>
         	    	        <button id="import-doc-btn">Import Document</button>
 							<hr>
+							{% if is_authenticated %}
+							<button id="account-btn">Account</button>
+							<button id="load-notebook-btn">Load Remote notebook</button>
+							{% else %}
 							<button id="login-btn">Login</button>
+							{% endif %}
 							<hr>
 							<button id="generate-md">Export as Markdown</button>
 							<button id="copy-md">Copy as Markdown</button>
@@ -88,6 +93,11 @@
     </div>
 	<div id="notifications-container"></div>
 	<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+	{% if is_authenticated %}
+    	<script src="static/script3.js?ver35"></script>
+	{% else %}
+    	<script src="static/script2.js?ver35"></script>
+	{% endif %}
     <script src="static/script.js?ver35"></script>
     <script src="static/auth_script.js?ver35"></script>
 </body>

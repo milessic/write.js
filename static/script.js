@@ -2,11 +2,6 @@
 
 const test = { my: 'super', puper: [456, 567], awesome: 'pako' };
 
-const compressed = pako.deflate(JSON.stringify(test));
-
-const restored = JSON.parse(pako.inflate(compressed, { to: 'string' }));
-console.log(compressed)
-console.log(restored)
 
 
 
@@ -76,7 +71,6 @@ document.getElementById("editor-container").addEventListener('keydown', (e) => {
 document.getElementById("editor-container").addEventListener('click', updateCaretPosition);
 document.getElementById("editor-container").addEventListener('keyup', (e) => {updateCaretPosition();handleWordCounter()});
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
-document.getElementById("login-btn").addEventListener('click', createAccountLoginModal);
 document.getElementById('editor-container').addEventListener('click', focusEditor);
 document.getElementById("dark-mode-btn").addEventListener("click", toggleDarkMode);
 document.getElementById("hamburger-menu").addEventListener("click", toggleMenu);
@@ -1153,60 +1147,7 @@ function moveCaretToEndById(elementId) {
     }
 }
 
-function createAccountLoginModal(){
-	const html = `
-	<div class="form-div">
-		<div class="form-field-label">
-			<label for="account-login">Login</label>
-			<input id="account-login">
-		</div>
-		<div class="form-field-label">
-			<label for="account-password">Password</label>
-			<input id="account-password" type="password">
-		</div>
-		<button onclick="sendLoginRequest()">Login</button>
-		<button onclick="createRegisterModal()">Create account!</button>
-		<button onclick="createForgottenPasswordModal()">I forgot password</button>
-	</div>
-	`
-	createModal("Login", html)
-}
 
-function createRegisterModal(){
-	closeAllModals();
-	const html = `
-	<div class="form-div">
-		<div class="form-field-label">
-			<label for="account-register-username">Login</label>
-			<input id="account-register-username">
-		</div>
-		<div class="form-field-label">
-			<label for="account-register-email">Email</label>
-			<input id="account-register-email" type="email">
-		</div>
-		<div class="form-field-label">
-			<label for="account-register-password">Password</label>
-			<input id="account-register-password" type="password">
-		</div>
-		<button onclick="sendRegisterRequest()">Register</button>
-	</div>
-	`
-	createModal("Login", html)
-}
-
-function createForgottenPasswordModal(){
-	closeAllModals();
-	const html = `
-	<div class="form-div">
-		<div class="form-field-label">
-			<label for="account-forgot-login">Login</label>
-			<input id="account-forgot-login">
-		</div>
-		<button onclick="sendForgottenPasswordRequest()">Send en e-mail</button>
-	</div>
-	`
-	createModal("Login", html)
-}
 
 async function sendLoginRequest(){
 	try {
@@ -1216,13 +1157,28 @@ async function sendLoginRequest(){
 			"username": loginEl.value,
 			"password": passwEl.value
 		}
-		const resp = fetch("/api/auth/token", {
-			"body": JSON.stringify(payload), // FIXME, it should be www-xurlencoded or sth like this
-			"method": "POST"
+		const resp = fetch("/api/auth/login/submit", {
+			"method": "POST",
+			"headers": {"Content-Type": "application/x-www-form-urlencoded"},
+			"body": new URLSearchParams(payload)
 		})
 		const respTest = await resp.json()
-		console.log(resp.status)
+		console.log(resp.status, respTest)
 	} catch ( err ) {
 		informError("Cannot login!", err);
 	}
 }
+
+function compressObject(input) {
+    const compressed = pako.deflate(input);  // Get Uint8Array
+    const b64 = btoa(String.fromCharCode(...compressed)); // Convert to Base64
+	return b64.replace(/\//g,"_").replace(/\+/g,"-");
+}
+
+function decompressObject(compressed) {
+	const b64 = compressed.replace(/-/g, "+").replace(/_/g, "/");
+    const binaryString = atob(b64); // Decode Base64
+    const byteArray = Uint8Array.from(binaryString, c => c.charCodeAt(0)); // Convert to Uint8Array
+    return pako.inflate(byteArray, { to: 'string' }); // Decompress
+}
+
