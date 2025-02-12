@@ -2,11 +2,6 @@
 
 const test = { my: 'super', puper: [456, 567], awesome: 'pako' };
 
-const compressed = pako.deflate(JSON.stringify(test));
-
-const restored = JSON.parse(pako.inflate(compressed, { to: 'string' }));
-console.log(compressed)
-console.log(restored)
 
 
 
@@ -172,11 +167,14 @@ function toggleMenu(){
 	}
 }
 
+function getDocumntContentToExport(){
+	return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${getStyles()}</style>${fontStyleMark}</head><body><div id="content-container"><div id="content">${document.getElementById("editor").innerHTML}</div></div></body></html>`;
+}
 function exportDocument(){
 	try {
 		if (!validateDocumentName()){return}
     	const docName = document.getElementById("doc-name").value || "Untitled Document";
-    	const content = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${getStyles()}</style>${fontStyleMark}</head><body><div id="content-container"><div id="content">${document.getElementById("editor").innerHTML}</div></div></body></html>`;
+    	const content = getDocumntContentToExport();
     	const blob = new Blob([content], { type: "html" });
     	const link = document.createElement("a");
     	link.href = URL.createObjectURL(blob);
@@ -1149,4 +1147,38 @@ function moveCaretToEndById(elementId) {
     }
 }
 
+
+
+async function sendLoginRequest(){
+	try {
+		const loginEl = document.getElementById("account-login");
+		const passwEl = document.getElementById("account-password");
+		const payload = {
+			"username": loginEl.value,
+			"password": passwEl.value
+		}
+		const resp = fetch("/api/auth/login/submit", {
+			"method": "POST",
+			"headers": {"Content-Type": "application/x-www-form-urlencoded"},
+			"body": new URLSearchParams(payload)
+		})
+		const respTest = await resp.json()
+		console.log(resp.status, respTest)
+	} catch ( err ) {
+		informError("Cannot login!", err);
+	}
+}
+
+function compressObject(input) {
+    const compressed = pako.deflate(input);  // Get Uint8Array
+    const b64 = btoa(String.fromCharCode(...compressed)); // Convert to Base64
+	return b64.replace(/\//g,"_").replace(/\+/g,"-");
+}
+
+function decompressObject(compressed) {
+	const b64 = compressed.replace(/-/g, "+").replace(/_/g, "/");
+    const binaryString = atob(b64); // Decode Base64
+    const byteArray = Uint8Array.from(binaryString, c => c.charCodeAt(0)); // Convert to Uint8Array
+    return pako.inflate(byteArray, { to: 'string' }); // Decompress
+}
 
