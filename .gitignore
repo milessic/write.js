@@ -176,3 +176,5 @@ cython_debug/
 **/output.xml
 *sqlite.db
 .DS_Store
+**.DS_Store
+*.DS_Store*
