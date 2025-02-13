@@ -400,6 +400,11 @@ function deleteDocumentInLocalStorage(name){
 	if ( !validateUserConsent() ) { return }
 	if ( showConfirm(`Delete document '${name}' ?`) ){
 		localStorage.removeItem(docPrefix + name);
+		if ( sendNotebook !== undefined ) {
+			if ( remoteAutoSaveEnabled || showConfirm("Do you want to send updated Notebook to the cloud?") ){
+				sendNotebookForce();
+			}
+		}
 		closeAllModals();
 		openDocumentFromLocalStorage();
 	}

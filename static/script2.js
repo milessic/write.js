@@ -150,3 +150,4 @@ async function sendRegisterRequest(){
 		informError("Cannot register user!", err, "error");
 	}
 }
+

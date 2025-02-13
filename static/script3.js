@@ -40,6 +40,10 @@ async function sendNotebook(){
 	// first fetch notebook and open Merge Editor if version of remote is same or higher
 	loadNotebook(true)
 	// then send to the remote
+	return await sendNotebookForce()
+
+}
+async function sendNotebookForce(){
 	try {
 		const payload = compressObject(JSON.stringify(getAllLocalStorageItems()));
 		const resp = await fetch("/api/notebooks/notebook", {
