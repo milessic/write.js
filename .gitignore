@@ -175,3 +175,4 @@ cython_debug/
 **/report.html
 **/output.xml
 *sqlite.db
+.DS_Store
