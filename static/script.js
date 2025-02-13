@@ -10,6 +10,7 @@ let indentSize = 4;
 
 const notificationTimeout = 3000;
 const notificationTimeoutLong = 10000;
+const base64icon = `data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJmZWF0aGVyIGZlYXRoZXItZWRpdCI+PHBhdGggZD0iTTExIDRINGEyIDIgMCAwIDAtMiAydjE0YTIgMiAwIDAgMCAyIDJoMTRhMiAyIDAgMCAwIDItMnYtNyI+PC9wYXRoPjxwYXRoIGQ9Ik0xOC41IDIuNWEyLjEyMSAyLjEyMSAwIDAgMSAzIDNMMTIgMTVsLTQgMSAxLTQgOS41LTkuNXoiPjwvcGF0aD48L3N2Zz4=`
 const softReturnText = `
 `
 
@@ -739,16 +740,23 @@ function createNotification( text, type, timeout=notificationTimeout, isHtml=fal
 
 		const div_text = document.createElement("div");
 		div_text.setAttribute("class", "notification-text");
+		const iconImg = `<img src="${base64icon}">`
 		if ( isHtml ){
-			div_text.innerHTML = text;
+			div_text.innerHTML = `${iconImg}${text}`;
 		} else {
+			div_text.innerHTML = iconImg;
 			div_text.innerText = text;
+			// handle bold
+			div_text.innerHTML = div_text.innerHTML.replace(/__/, "<strong>").replace(/__/, "</strong>");
 		}
+
 
 		const close = document.createElement("button");
 		close.setAttribute("class", "notification-close");
 		close.innerText = "X";
 		close.addEventListener("click", () => {closeNotification(n_div)});
+
+
 		
 		n_div.appendChild(div_text);
 		n_div.appendChild(close);
@@ -1031,15 +1039,41 @@ function updateTitle(){
 	document.title = newName;
 }
 
+function loadBackup(){
+	const inp = document.createElement("input");
+	inp.type = "file";
+	inp.setAttribute("accept", ".writejs");
+
+	inp.addEventListener("change", (e) => {
+		const reader = new FileReader();
+		const file = e.target.files[0];
+		if ( file ) {
+			reader.readAsText(file)
+			reader.onload = ( () => {
+				if ( showConfirm(`Do you want to REPLACE your notebook with ${file.name}`) ) {
+					const obj = `${reader.result}`;
+					loadNotebookFromJson(obj,false)
+				}
+			})
+		}
+	})
+
+	document.body.appendChild(inp);
+	inp.click();
+	document.body.removeChild(inp);
+	console.log(inp.value)
+
+}
 function saveBackup(){
 	try {
-		const data = getAllLocalStorageItems();
-		const blob = new Blob([JSON.stringify(data)], { type: "json"});
+		const data = JSON.stringify(getAllLocalStorageItems());
+		const compressedData = compressObject(data);
+		const blob = new Blob([compressedData], { type: "writejs"});
 		const link = document.createElement("a");
 		link.href = URL.createObjectURL(blob);
-		link.download = "writejs_backup.json";
+		link.download = "writejs_backup.writejs";
 		link.click();
-		createNotification("Backup 'writejs_backup.json' has been created!<br>To laod it use console and function <b>loadDataFromLocalStorageJson(backupAsString)</b>", "info", notificationTimeoutLong, true);
+		createNotification("Backup 'writejs_backup.writejs' has been created!<br>To laod it use console and function <b>loadDataFromLocalStorageJson(backupAsString)</b>", "info", notificationTimeoutLong, true);
 	} catch ( err ) {
 		informError("Cannot save backup!", err)
 	}

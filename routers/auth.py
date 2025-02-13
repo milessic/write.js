@@ -263,7 +263,7 @@ async def forgot_password_api(request:Request, payload:ForgotPasswordModel):
         raise HTTPException(400, c.locales.get_with_request("txt_error_username_or_email_has_to_be_provided", request))
     user_data = c.db.get_user_data(login)
     if user_data is None:
-        raise HTTPException(400, c.locales.get_with_request("txt_error_user_has_not_been_found", request).format(login))
+        raise HTTPException(404, c.locales.get_with_request("txt_error_user_has_not_been_found", request).format(login))
     user_id = user_data[3]
     user_email = user_data[1]
     user_username = user_data[0]
@@ -280,7 +280,7 @@ async def forgot_password_api(request:Request, payload:ForgotPasswordModel):
 
     # Send mail
     # TODO add to queue instead of sending mail from here
-    await send_mail("Auth - Forgot Password", user_email, content)
+    await send_mail("Write.JS - Forgot Password", user_email, content)
 
     # kill all user's sesions
     c.db.kill_all_access_tokens_for_user(user_id)

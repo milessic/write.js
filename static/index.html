@@ -40,7 +40,7 @@
 							<button id="account-btn">Account</button>
 							<button id="load-notebook-btn">Load Remote notebook</button>
 							{% else %}
-							<button id="login-btn">Login</button>
+							<button id="login-btn">Login / Register</button>
 							{% endif %}
 							<hr>
 							<button id="generate-md">Export as Markdown</button>
@@ -54,7 +54,8 @@
         	    	        <button id="toggle-autosave-btn">Toggle Autosave</button>
 							<hr>
         	    	        <button id="clearall-btn" onclick="purgeLocalStorage()">Clear localStorage</button>
-							<button id="backup-btn" onclick="saveBackup()">Save backup</button>
+							<button id="backup-btn" onclick="saveBackup()">Export Notebook</button>
+							<button id="backup-btn" onclick="loadBackup()">Import Notebook</button>
 							<hr>
 							<a id="contact" href="mailto:writejs.help@gmail.com?subject=Write.js Bug or Feedback&body=Please describe the problem">Report a bug/feedback!</a>
         	    	    </div>
@@ -92,7 +93,10 @@
         </div>
     </div>
 	<div id="notifications-container"></div>
+	<!--
 	<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+	-->
+	<script src="static/pako.js?ver39"></script>
 	{% if is_authenticated %}
     	<script src="static/script3.js?ver39"></script>
 	{% else %}

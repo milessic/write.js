@@ -4,7 +4,7 @@
 
 document.getElementById("login-btn").addEventListener('click', () => {createAccountLoginModal()});
 window.addEventListener("load", () => {
-	const html = `<p><strong>Write.JS</strong> is much better with account!</p><br><button onclick="createRegisterModal();closeAllNotifications();">Create your own right now!</button>`
+	const html = `<p><strong>Write.JS</strong> is much better with account!</p><br><button onclick="createRegisterModal();closeAllNotifications();">Create your own right now!</button>  or  <button onclick="createAccountLoginModalWithNotificationClose()">Login to your existing account</button>`
 	createNotification(html, "info", null, true);
 })
 function createAccountLoginModal(username=null){
@@ -73,45 +73,6 @@ function createForgottenPasswordModal(){
 	createModal("Forgot your password? - Write.JS", html)
 }
 
-async function handleForgotPassword(){
-	try {
-		const loginElement = document.getElementById("login");
-		const payload = {
-			"login": loginElement.value
-		}
-		if ( !payload.login ) {
-			loginElement.classList.add("field-error");
-			addToNotificationDiv("Username or E-mail has to be filled in!","error")
-			return
-		}
-		const resp = await fetch("/api/auth/forgot-password", {
-			"method": "POST",
-			"credentials": "include",
-			"headers": {"Content-Type": "application/json"},
-			"body": JSON.stringify(payload)
-		});
-		const respData = await resp.json();
-		if ( resp.status != 200 ){
-			addToNotificationDiv(`${JSON.stringify(respData)}`,"error")
-			document.getElementById("user-info-container").innerText = JSON.stringify(respData, null, "\t")
-			throw new Error("Cannot  change password!")
-		}
-		if ( resp.status === 200 ) {
-			addToNotificationDiv(`Password reset mail has been sent!`, 'success')
-			loginElement.value = "";
-			loginElement.classList.remove("field-error");
-		}
-		if ( resp.redirected) {
-			window.location.href = resp.url;  // Manually follow the redirect
-			return;
-		} else {
-			window.location.href = "/?passwordresetsent=1"
-		}
-	} catch ( err ) {
-		console.error(err)
-		addToNotificationDiv("Cannot send changePassword!", "error")
-	}
-}
 
 async function sendRegisterRequest(){
 	try {
@@ -151,3 +112,36 @@ async function sendRegisterRequest(){
 	}
 }
 
+async function sendForgottenPasswordRequest(){
+	try {
+		const val = document.getElementById("account-forgot-login").value;
+		if ( !val ) { createNotification("You have to fill Login with username or E-mail address!", "error", null);return}
+		const payload = {
+			login: val
+		}
+		const resp = await fetch("/api/auth/forgot-password",
+			{
+				method: "POST",
+				body: JSON.stringify(payload),
+				headers: {"Content-Type": "application/json"}
+			}
+		);
+		if ( resp.status === 200 ) {
+			createNotification("Password reset mail has been sent.", "info", notificationTimeoutLong, true);
+			return
+		} else if ( resp.status ){
+			createNotification("Cannot sent password reset mail, please check your login!.", "error", null, true);
+			return
+		}
+		createNotification("Cannot sent password reset mail!\nPlease try again...", "error", notificationTimeoutLong, true);
+	} catch ( err ) {
+		informError("Cannot sent password reset mail!\nPlease try again...", "error");
+	}
+
+
+}
+
+function createAccountLoginModalWithNotificationClose(){
+	closeAllNotifications();
+	createAccountLoginModal();
+}

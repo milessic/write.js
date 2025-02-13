@@ -87,12 +87,14 @@ async function loadNotebookFromEvent(e){
 	await loadNotebook();
 }
 async function loadNotebook(excludeCurrentDocument=false){
-	console.log('ln', excludeCurrentDocument);
 	const encodedNotebook = await fetchNotebook();
-	const jsonObject = decompressObject(encodedNotebook)
+	loadNotebookFromJson(encodedNotebook, excludeCurrentDocument);
+}
+
+function loadNotebookFromJson(json, excludeCurrentDocument=true){
+	jsonObject = decompressObject(json);
 	loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument)
 	loadLastOpenedDocument()
-	console.log(1)
 }
 
 function createChangePasswordModal(){
