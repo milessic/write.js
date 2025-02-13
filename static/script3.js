@@ -1,11 +1,25 @@
 /*
  * This script file is authenticated user
  */
-let notebook = null
-setTimeout( () => { fetchNotebook() }, 1)
 
+
+let remoteAutoSaveTimeout;
+let notebook = null;
+let remoteAutoSaveEnabled = true;
+const remoteAutoSaveValue = 5000;
+const remoteForceAutoSaveValue = 60000;
+const refreshTokensTimeout = 360000
+setTimeout( () => { loadNotebook() }, 1)
+
+// Events
 document.getElementById("save-btn").addEventListener("click", sendNotebook);
 document.getElementById("load-notebook-btn").addEventListener("click", loadNotebook);
+
+//window.addEventListener("load", loadNotebook)
+//window.addEventListener("load", refreshTokens)
+window.addEventListener("load", (e) => {
+	refreshTokens();
+})
 
 document.getElementById("account-btn").addEventListener('click', createAccountModal);
 function createAccountModal(){
@@ -88,7 +102,7 @@ async function fetchUserData(){
 		});
 		const respData = await resp.json();
 		if ( resp.status !== 200 ){
-			addToNotificationDiv(`Status of /api/auth/me was ${resp.status} instead of 200!`,"error")
+			createNotification(`Status of /api/auth/me was ${resp.status} instead of 200!`,"error", notificationTimeoutLong)
 		}
 		return respData
 	} catch (err) {
@@ -121,8 +135,11 @@ async function refreshTokens(){
 			return;
 		}
 		const respData = await resp.json();
-		if ( resp.status != 200 ){
-			addToNotificationDiv(`Cannot read refresh tokens!`, "error")
+		if ( resp.status === 400 ){ // scenario for to fast refresh TODO - make it better
+
+			return
+		} else if ( resp.status != 200 ){
+			createNotification(`Cannot read refresh tokens!`, "error", notificationTimeoutLong)
 			throw new Error("Refresh Token response is not 200!");
 		}
 		startRefreshTokenTimer(respData);
@@ -130,7 +147,8 @@ async function refreshTokens(){
 		window.alert(err)
 		setTimeout( 
 			() => { refreshTokens() },
-			30000
+			refreshTokensTimeout
+			
 		)
 	}
 }
@@ -157,7 +175,7 @@ async function changePassword(){
 		if ( !payload.old_password || !payload.new_password ){
 			oldPasswordElement.classList.add("field-error");
 			newPasswordElement.classList.add("field-error");
-			addToNotificationDiv("Passwords have to be filled in!","error")
+			createNotification("Passwords have to be filled in!","error", null)
 			return
 		}
 		oldPasswordElement.classList.remove("error");
@@ -170,16 +188,35 @@ async function changePassword(){
 		});
 		const respData = await resp.json();
 		if ( resp.status != 200 ){
-			addToNotificationDiv(`${JSON.stringify(respData)}`,"error")
+			createNotification(`${JSON.stringify(respData)}`,"error", notificationTimeoutLong)
 			document.getElementById("user-info-container").innerText = JSON.stringify(respData, null, "\t")
 			throw new Error("Cannot  change password!")
 		}
 		if ( resp.status === 200 ) {
-			addToNotificationDiv(`Password changed!`, 'success')
+			createNotification(`Password changed!`, 'success', notificationTimeoutLong)
 			document.getElementById("user-info-container").innerText = JSON.stringify({"msg":"password changed"}, null, "\t")
 		}
 	} catch ( err ) {
 		console.error(err)
-		addToNotificationDiv("Cannot send changePassword!", "error")
+		createNotification("Cannot send changePassword!", "error", null)
 	}
+}
+
+
+function handleRemoteAutosave(){
+	if ( !remoteAutoSaveEnabled ) { return }
+	clearTimeout(remoteAutoSaveTimeout);
+	remoteAutoSaveTimeout = setTimeout(perofrmRemoteAutosave, remoteAutoSaveValue);
+}
+
+function perofrmRemoteAutosave(){
+	if ( !remoteAutoSaveEnabled ) { return }
+	sendNotebook();
+}
+
+function firstLoginOnDevice(){
+	closeAllModals();
+	openDocumentFromLocalStorage();
+	startRefreshTokenTimer({"access_token_expires": 63});
+	createNotification("Welcome back!", "info")
 }

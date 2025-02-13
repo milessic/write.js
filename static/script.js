@@ -288,15 +288,20 @@ function createOpenDocumentModal(documentNames){
 
 function saveDocumentToLocalStorage(){
 	if ( !validateUserConsent() ) { return }
+	let documentNameValue = ''
 	try { 
-		let documentNameValue = getDocumentName();
+		documentNameValue = getDocumentName();
 		let documentText = getDocumentText();
 		if ( !validateDocumentName() ){return}
 		localStorage.setItem(docPrefix + documentNameValue, documentText);
 		saveAsLastOpenedDocument(documentNameValue);
-		createNotification(`Document '${documentNameValue}' saved!`, "info");
 	} catch ( err ) {
 		informError("Could not save document!", err)
+	}
+	try{
+		createNotification(`Document '${documentNameValue}' saved!`, "info");
+	} catch ( err ) {
+		informError("Could not create notification that confirms that document is saved ( document is saved )", err)
 	}
 }
 
@@ -328,6 +333,9 @@ function performAutoSave(){
 		if (!content){return}
 		localStorage.setItem(docPrefix + name, content);
 		saveAsLastOpenedDocument(name)
+		if ( typeof handleRemoteAutosave !== "undefined" ){
+			handleRemoteAutosave();
+		}
 	} catch ( err ) {
 		informError("Autosave failure!\n\nPlease save manually!\n\nyou may report a bug or disable autosave", err)
 	}
@@ -1184,26 +1192,35 @@ function decompressObject(compressed) {
 
 function handleQueries(){
 	const params = new URLSearchParams(window.location.search);
-	console.log(params)
 	if (params.get("status") === "success"){
 		const text = "Congratulations!"
 			+ "You can login as "
 			+ `${params.get('username')}`;
 		createNotification(text, "info");
+		removeParams('status', 'username');
 	} else if ( params.get("msg") === "loginsuccess" ){
 		createNotification("You logged in.", "info", notificationTimeoutLong);
+		removeParams('msg');
+		if ( typeof firstLoginOnDevice !== undefined){
+			firstLoginOnDevice();
+		}
 	} else if ( params.get("status") === "unknownfailure" ){
 		const text = "Unfortunately there were some unexpeted error!"
 		createNotification(text, "error")
+		removeParams('status');
 	} else if ( params.get("logout") == 1 ) {
 		createNotification(`You have been logged out.`, 'info');
+		removeParams('logout');
 	} else if ( newPass = params?.get("newpassword") ) {
 		createNotification(`Your new password is __${newPass}__\nChange it immedeitaly after login!`, "info", null)
+		removeParams('newpassword');
 	} else if ( params.get("passwordresetsent") ) {
 		createNotification(`Password reset mail has been sent!`, 'info');
+		removeParams('passwordresetsent');
 	} else if ( params.get("status") === "failure" ){
 		for ( let key of params.keys()){
-			if ( key === "status" ) { continue }
+			removeParams('status');
+			if ( key === "status" ) { continue } 
 			switch ( key ) {
 				case "password":
 					createNotification(`<p><strong>Password</strong> has to be:</p>
@@ -1211,25 +1228,46 @@ function handleQueries(){
 						<li>at least 6 characters long</li>
 						<li>at max 32 characters longlong</li>
 						</ul>`, "error", notificationTimeoutLong, true)
+					removeParams('password');
 					break;
 				case "email":
 					createNotification(`This <strong>Email</strong> is already taken`, "error", notificationTimeoutLong, true)
+					removeParams('email');
 					break
 				case "username":
 					createNotification(`This <strong>Username</strong> is already taken`, "error", notificationTimeoutLong, true)
+					removeParams('username');
 					break
 				case "message":
 					if ( params.get(key) === "invalidpassword" ){
 						createNotification(`Invalid Password for user __${params.get('login')}__`, "error", notificationTimeoutLong)
+						removeParams('message', 'login');
 						return
 					} else if ( params.get(key) === 'forgotpassworderror' ){
 						createNotification(`Cannot perform password reset!\nIf you wanted to reset your password, do it again`, "error", notificationTimeoutLong)
+						removeParams('message');
 						return
 					}
+					createNotification(`There was some other issue, sorry!`, 'error', notificationTimeoutLong)
+					removeParams('message');
 				default:
 					createNotification(`There was some other issue, sorry!`, 'error', notificationTimeoutLong)
+					removeParams("status");
 					break;
 			}
 		}
 	}
 }
+
+function removeParams(...params) {
+	for ( let paramName of params ){
+    	let searchParams = new URLSearchParams(window.location.search);
+    	searchParams.delete(paramName);
+    	if (history.replaceState) {
+    	    let searchString = searchParams.toString().length > 0 ? '?' + searchParams.toString() : '';
+    	    let newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname +  searchString + window.location.hash;
+    	    history.replaceState(null, '', newUrl);
+    	}
+	}
+}
+
