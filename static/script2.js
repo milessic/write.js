@@ -1,8 +1,13 @@
 /*
  * This script file is for not-logged user
  */
+
 document.getElementById("login-btn").addEventListener('click', createAccountLoginModal);
-function createAccountLoginModal(){
+window.addEventListener("load", (e) => {
+	const html = `<p><strong>Write.JS</strong> is much better with account!</p><br><button onclick="createRegisterModal();closeAllNotifications();">Create your own right now!</button>`
+	createNotification(html, "info", null, true);
+})
+function createAccountLoginModal(username=null){
 	const html = `
 	<div class="form-div">
 		<form method="POST" action="/api/auth/login/submit">
@@ -21,6 +26,9 @@ function createAccountLoginModal(){
 	</div>
 	`
 	createModal("Login", html)
+	if ( username ){
+		document.getElementById("login").value = username;
+	}
 }
 
 function createRegisterModal(){
@@ -42,7 +50,7 @@ function createRegisterModal(){
 		<button onclick="sendRegisterRequest()">Register</button>
 	</div>
 	`
-	createModal("Login", html)
+	createModal("Register", html)
 }
 
 function createForgottenPasswordModal(){
@@ -96,5 +104,43 @@ async function handleForgotPassword(){
 	} catch ( err ) {
 		console.error(err)
 		addToNotificationDiv("Cannot send changePassword!", "error")
+	}
+}
+
+async function sendRegisterRequest(){
+	try {
+		const userEl = document.getElementById("account-register-username");
+		const emaiEl = document.getElementById("account-register-email");
+		const passEl = document.getElementById("account-register-password");
+		const payload = {
+			"username": userEl.value,
+			"email": emaiEl.value,
+			"password": passEl.value
+		}
+		let errors = ""
+		for ( const [k,v] of Object.entries(payload)){ if (v){continue} errors = `${errors}\n- ${k} has to be filled in!` }
+		if ( errors ) { createNotification(errors, "error", null); return }
+		userEl.value = "";
+		emaiEl.value = "";
+		passEl.value = "";
+		const resp = await fetch("/api/auth/register",
+			{
+				method: "POST",
+				body: JSON.stringify(payload),
+				headers: {"Content-Type": "application/json"}
+			}
+		)
+		const respText = await resp.json();
+		if ( resp.status == 201 || resp.status == 200 ){
+			closeAllModals();
+			const html = `<p>You can login as <strong>${payload.username}</strong>!</p><br><button onclick="createAccountLoginModal('${payload.username}');closeAllNotifications();">Login now!</button>`
+			closeAllNotifications();
+			createNotification(html, "info", null, true);
+			return
+		}
+		createNotification(`There were some problems with register:\n ${JSON.stringify(respText, null, "\t")}`, "error", null);
+		return
+	} catch (err){
+		informError("Cannot register user!", err, "error");
 	}
 }

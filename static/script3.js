@@ -13,7 +13,7 @@ setTimeout( () => { loadNotebook() }, 1)
 
 // Events
 document.getElementById("save-btn").addEventListener("click", sendNotebook);
-document.getElementById("load-notebook-btn").addEventListener("click", loadNotebook);
+document.getElementById("load-notebook-btn").addEventListener("click", loadNotebookFromEvent);
 
 //window.addEventListener("load", loadNotebook)
 //window.addEventListener("load", refreshTokens)
@@ -37,6 +37,9 @@ function createAccountModal(){
 }
 
 async function sendNotebook(){
+	// first fetch notebook and open Merge Editor if version of remote is same or higher
+	loadNotebook(true)
+	// then send to the remote
 	try {
 		const payload = compressObject(JSON.stringify(getAllLocalStorageItems()));
 		const resp = await fetch("/api/notebooks/notebook", {
@@ -76,11 +79,16 @@ async function fetchNotebook(){
 	}
 }
 
-async function loadNotebook(){
+async function loadNotebookFromEvent(e){
+	await loadNotebook();
+}
+async function loadNotebook(excludeCurrentDocument=false){
+	console.log('ln', excludeCurrentDocument);
 	const encodedNotebook = await fetchNotebook();
 	const jsonObject = decompressObject(encodedNotebook)
-	loadDataFromLocalStorageJson(jsonObject)
+	loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument)
 	loadLastOpenedDocument()
+	console.log(1)
 }
 
 function createChangePasswordModal(){
@@ -216,6 +224,7 @@ function perofrmRemoteAutosave(){
 
 function firstLoginOnDevice(){
 	closeAllModals();
+	loadNotebook();
 	openDocumentFromLocalStorage();
 	startRefreshTokenTimer({"access_token_expires": 63});
 	createNotification("Welcome back!", "info")

@@ -648,7 +648,8 @@ function getAllLocalStorageItems() {
 	return data
 }
 
-function loadDataFromLocalStorageJson(jsonObject){
+function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false){
+	console.log('ldfls', excludeCurrentDocument)
 	if ( !validateUserConsent() ) { return }
 	let dataObject = JSON.parse(jsonObject);
 	if ( typeof(dataObject) != 'object' ){
@@ -662,6 +663,7 @@ function loadDataFromLocalStorageJson(jsonObject){
 
 		// check for documents that are different
 		// TODO add support for current document
+		if ( key === docPrefix + getDocumentName() && excludeCurrentDocument ) { console.log('skipping current doc');continue }
 		const existingDocument = localStorage.getItem(key)  
 		if ( existingDocument === value ) { continue }    // if document is the same, don't overwrite
 		else if ( existingDocument != null && !confirm(`!Do you want to overwrite '${key.replace(docPrefix, "")}'?`)){ continue } // for edited documents in both sources 
@@ -762,11 +764,15 @@ function closeNotification(notificationDiv){
 }
 
 function handleExistingNotifications(text, type, isHtml){
+	try {
 	document.querySelectorAll(".notification-container").forEach((e) => {
 		if ( e.classList.contains(`notification-${type}`) && (e.childNodes[0].innerText === text || e.childNotes[0].innerHTML === text ) ) {
 			e.remove();
 		} 
 	})
+	} catch (err) {
+		console.error(isHtml, err);
+	}
 }
 
 function closeAllNotifications(){
