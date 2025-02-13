@@ -2,30 +2,32 @@
  * This script file is for not-logged user
  */
 
-document.getElementById("login-btn").addEventListener('click', createAccountLoginModal);
-window.addEventListener("load", (e) => {
+document.getElementById("login-btn").addEventListener('click', () => {createAccountLoginModal()});
+window.addEventListener("load", () => {
 	const html = `<p><strong>Write.JS</strong> is much better with account!</p><br><button onclick="createRegisterModal();closeAllNotifications();">Create your own right now!</button>`
 	createNotification(html, "info", null, true);
 })
 function createAccountLoginModal(username=null){
+	closeAllModals();
 	const html = `
 	<div class="form-div">
 		<form method="POST" action="/api/auth/login/submit">
 			<div class="form-field-label">
 				<label for="login">Login</label>
-				<input type="text" name="username" id="login">
+				<input type="text" name="username" id="login" placeholder="Username or E-mail address">
 			</div>
 			<div class="form-field-label">
 				<label for="password">Password</label>
-				<input id="password" name="password" type="password">
+				<input id="password" name="password" type="password" placeholder="******">
 			</div>
 			<button type="submit">Login</button>
 		</form>
+		<hr>
 		<button onclick="createRegisterModal()">Create account!</button>
 		<button onclick="createForgottenPasswordModal()">I forgot password</button>
 	</div>
 	`
-	createModal("Login", html)
+	createModal("Login - Write.JS", html)
 	if ( username ){
 		document.getElementById("login").value = username;
 	}
@@ -37,20 +39,22 @@ function createRegisterModal(){
 	<div class="form-div">
 		<div class="form-field-label">
 			<label for="account-register-username">Login</label>
-			<input id="account-register-username">
+			<input id="account-register-username" placeholder="Your unique username!">
 		</div>
 		<div class="form-field-label">
 			<label for="account-register-email">Email</label>
-			<input id="account-register-email" type="email">
+			<input id="account-register-email" type="email" placeholder="Your E-mail address">
 		</div>
 		<div class="form-field-label">
 			<label for="account-register-password">Password</label>
-			<input id="account-register-password" type="password">
+			<input id="account-register-password" type="password" placeholder="Secure password that is 6-32 characters long">
 		</div>
 		<button onclick="sendRegisterRequest()">Register</button>
+		<hr>
+		<span>Already have an account? <button onclick="createAccountLoginModal()">Login</button></span>
 	</div>
 	`
-	createModal("Register", html)
+	createModal("Register - Write.JS", html)
 }
 
 function createForgottenPasswordModal(){
@@ -59,12 +63,14 @@ function createForgottenPasswordModal(){
 	<div class="form-div">
 		<div class="form-field-label">
 			<label for="account-forgot-login">Login</label>
-			<input id="account-forgot-login">
+			<input id="account-forgot-login" placeholder="Your username or E-mail address">
 		</div>
-		<button onclick="sendForgottenPasswordRequest()">Send en e-mail</button>
+		<button onclick="sendForgottenPasswordRequest()">Send an e-mail</button>
+		<hr>
+		<button onclick="createAccountLoginModal()">Okay, I remember now</button>
 	</div>
 	`
-	createModal("Login", html)
+	createModal("Forgot your password? - Write.JS", html)
 }
 
 async function handleForgotPassword(){

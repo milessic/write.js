@@ -282,6 +282,7 @@ function createOpenDocumentModal(documentNames){
 	<div id="menu-modal" class="menu overflow">
 		${namesElements}
 	</div>`);
+	document.querySelector(".modal-content").classList.add("no-margin-left-on-mobile");
 
 
 }

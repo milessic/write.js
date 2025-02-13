@@ -25,7 +25,7 @@
 	}
 	#menu-modal {
 		overflow-y: scroll;
-    	max-height: 715px;
+    	height: 650px;
     	scroll-behavior: smooth;
     	overflow-x: unset;
 	}
@@ -43,6 +43,9 @@
 	}
 }
 @media only screen and (max-width: 999px){
+	.no-margin-left-on-mobile {
+		margin-left: 0px !important;
+	}
 	#word-counter-container {
 		position: fixed;
 		right: 10px;
@@ -71,7 +74,8 @@
 	}
 	#menu-modal {
 		overflow-x: scroll;
-    	height: 90vh;
+    	height: 80vh;
+		width: 100vw;
 	}
 	#hamburger-button button {
 		font-size: 4rem !important;
@@ -94,8 +98,8 @@
 	.modal-container {
 		max-width: 100% !important;
 		max-height: 100% !important;
-		/*width: 100% !important;
-		height: 100% !important;*/
+		width: 100% !important;
+		height: 100% !important;
 	}
 	.content-container,
 	.editor-container {
@@ -178,6 +182,8 @@ body {
 	padding: 10px 30px;
 }
 
+
+.form-field-label input,
 .top-bar input {
     flex: 1;
     margin-right: 10px;
@@ -186,6 +192,7 @@ body {
 	padding: 10px;
 }
 
+.form-div button,
 .double-buttons button,
 .create-link-buttons button,
 .top-bar button {
@@ -226,7 +233,6 @@ body {
 
 .notification-container button,
 .close-button,
-.form-div button,
 .menu a,
 .menu button {
 	text-align: center;
@@ -245,6 +251,7 @@ body {
 
 .double-buttons button:hover,
 .create-link-buttons button:hover,
+.form-div button:hover,
 .top-bar button:hover,
 .notification-container button:hover,
 .menu a:hover,
@@ -381,6 +388,10 @@ hr {
 	position: absolute;
 	bottom: 100px;
 	*/
+}
+
+#menu-modal {
+	background-color: #c5c5c5;
 }
 
 #menu-modal a,
@@ -605,4 +616,17 @@ hr {
 	bottom:10px;
 	height: 20px;
 	width: 600px;
+}
+
+.form-field-label {
+	display: flex;
+	flex-direction: column;
+}
+
+.form-field-label input {
+	border: 1px solid #d9d9d9;
+}
+
+.form-div button {
+	margin-top: 10px;
 }
