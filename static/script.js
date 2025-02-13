@@ -1,8 +1,4 @@
-
-
 const test = { my: 'super', puper: [456, 567], awesome: 'pako' };
-
-
 
 
 let autosaveEnabled = 0;
@@ -43,6 +39,7 @@ if ( userConsent ){
 	setAutosaveText();
 	documentNames = getDocumentNamesFromLocalStorage();
 }
+
 let boldState = false;
 let italicState = false;
 let underlineState = false;
@@ -62,6 +59,7 @@ window.addEventListener("load", function() {
 	if ( wordCounterEnabled ){
 		handleWordCounter();
 	};
+	handleQueries();
 })
 
 // Setup Events
@@ -741,7 +739,9 @@ function createNotification( text, type, timeout=notificationTimeout, isHtml=fal
 
 		document.querySelector("#notifications-container").appendChild(n_div)
 
-		setTimeout(() => closeNotification(n_div), timeout);
+		if ( timeout ){
+			setTimeout(() => closeNotification(n_div), timeout);
+		}
 		return n_div;
 	} catch ( err ) {
 		window.alert(`${text}\n\n\n${err}`)
@@ -1182,3 +1182,54 @@ function decompressObject(compressed) {
     return pako.inflate(byteArray, { to: 'string' }); // Decompress
 }
 
+function handleQueries(){
+	const params = new URLSearchParams(window.location.search);
+	console.log(params)
+	if (params.get("status") === "success"){
+		const text = "Congratulations!"
+			+ "You can login as "
+			+ `${params.get('username')}`;
+		createNotification(text, "info");
+	} else if ( params.get("msg") === "loginsuccess" ){
+		createNotification("You logged in.", "info", notificationTimeoutLong);
+	} else if ( params.get("status") === "unknownfailure" ){
+		const text = "Unfortunately there were some unexpeted error!"
+		createNotification(text, "error")
+	} else if ( params.get("logout") == 1 ) {
+		createNotification(`You have been logged out.`, 'info');
+	} else if ( newPass = params?.get("newpassword") ) {
+		createNotification(`Your new password is __${newPass}__\nChange it immedeitaly after login!`, "info", null)
+	} else if ( params.get("passwordresetsent") ) {
+		createNotification(`Password reset mail has been sent!`, 'info');
+	} else if ( params.get("status") === "failure" ){
+		for ( let key of params.keys()){
+			if ( key === "status" ) { continue }
+			switch ( key ) {
+				case "password":
+					createNotification(`<p><strong>Password</strong> has to be:</p>
+						<ul>
+						<li>at least 6 characters long</li>
+						<li>at max 32 characters longlong</li>
+						</ul>`, "error", notificationTimeoutLong, true)
+					break;
+				case "email":
+					createNotification(`This <strong>Email</strong> is already taken`, "error", notificationTimeoutLong, true)
+					break
+				case "username":
+					createNotification(`This <strong>Username</strong> is already taken`, "error", notificationTimeoutLong, true)
+					break
+				case "message":
+					if ( params.get(key) === "invalidpassword" ){
+						createNotification(`Invalid Password for user __${params.get('login')}__`, "error", notificationTimeoutLong)
+						return
+					} else if ( params.get(key) === 'forgotpassworderror' ){
+						createNotification(`Cannot perform password reset!\nIf you wanted to reset your password, do it again`, "error", notificationTimeoutLong)
+						return
+					}
+				default:
+					createNotification(`There was some other issue, sorry!`, 'error', notificationTimeoutLong)
+					break;
+			}
+		}
+	}
+}

@@ -58,3 +58,43 @@ function createForgottenPasswordModal(){
 	`
 	createModal("Login", html)
 }
+
+async function handleForgotPassword(){
+	try {
+		const loginElement = document.getElementById("login");
+		const payload = {
+			"login": loginElement.value
+		}
+		if ( !payload.login ) {
+			loginElement.classList.add("field-error");
+			addToNotificationDiv("Username or E-mail has to be filled in!","error")
+			return
+		}
+		const resp = await fetch("/api/auth/forgot-password", {
+			"method": "POST",
+			"credentials": "include",
+			"headers": {"Content-Type": "application/json"},
+			"body": JSON.stringify(payload)
+		});
+		const respData = await resp.json();
+		if ( resp.status != 200 ){
+			addToNotificationDiv(`${JSON.stringify(respData)}`,"error")
+			document.getElementById("user-info-container").innerText = JSON.stringify(respData, null, "\t")
+			throw new Error("Cannot  change password!")
+		}
+		if ( resp.status === 200 ) {
+			addToNotificationDiv(`Password reset mail has been sent!`, 'success')
+			loginElement.value = "";
+			loginElement.classList.remove("field-error");
+		}
+		if ( resp.redirected) {
+			window.location.href = resp.url;  // Manually follow the redirect
+			return;
+		} else {
+			window.location.href = "/?passwordresetsent=1"
+		}
+	} catch ( err ) {
+		console.error(err)
+		addToNotificationDiv("Cannot send changePassword!", "error")
+	}
+}
