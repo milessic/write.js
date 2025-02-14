@@ -129,12 +129,13 @@ function formatText(command) {
 	performAutoSave();
 }
 
-function toggleDarkMode(){
+function toggleDarkMode(setDarkModeState=true){
     document.body.classList.toggle("dark-mode");
     document.querySelector("#editor-container").classList.toggle("dark-mode");
 	document.querySelector(".top-bar-root").classList.toggle("dark-mode-dark");
 	document.querySelector("#sub-bar").classList.toggle("dark-mode-medium");
 	document.querySelectorAll(".notification-container").forEach((e) => e.classList.toggle("dark-mode-medium"))
+	if (!setDarkModeState){return}
 	if ( darkModeEnabled) {
 		setDarkMode(0);
 	} else {
@@ -401,7 +402,7 @@ function deleteDocumentInLocalStorage(name){
 	if ( !validateUserConsent() ) { return }
 	if ( showConfirm(`Delete document '${name}' ?`) ){
 		localStorage.removeItem(docPrefix + name);
-		if ( sendNotebook !== undefined ) {
+		if ( sendNotebook !== 'undefined' ) {
 			if ( remoteAutoSaveEnabled || showConfirm("Do you want to send updated Notebook to the cloud?") ){
 				sendNotebookForce();
 			}
@@ -656,7 +657,6 @@ function getAllLocalStorageItems() {
 }
 
 function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false){
-	console.log('ldfls', excludeCurrentDocument)
 	if ( !validateUserConsent() ) { return }
 	let dataObject = JSON.parse(jsonObject);
 	if ( typeof(dataObject) != 'object' ){
@@ -665,15 +665,13 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false){
 	}
 
 	for ( const [key, value] of Object.entries(dataObject) ){
-		if ( !key.startsWith(docPrefix) ) { continue }
-
-
+		if ( key  === lastOpenedKey ) { continue }
 		// check for documents that are different
 		// TODO add support for current document
 		if ( key === docPrefix + getDocumentName() && excludeCurrentDocument ) { console.log('skipping current doc');continue }
 		const existingDocument = localStorage.getItem(key)  
 		if ( existingDocument === value ) { continue }    // if document is the same, don't overwrite
-		else if ( existingDocument != null && !confirm(`!Do you want to overwrite '${key.replace(docPrefix, "")}'?`)){ continue } // for edited documents in both sources 
+		else if ( existingDocument != null && !showConfirm(`!Do you want to overwrite '${key.replace(docPrefix, "")}'?`)){ continue } // for edited documents in both sources 
 
 		// set remote value
 		localStorage.setItem(key, value);
@@ -779,11 +777,12 @@ function closeNotification(notificationDiv){
 
 function handleExistingNotifications(text, type, isHtml){
 	try {
-	document.querySelectorAll(".notification-container").forEach((e) => {
-		if ( e.classList.contains(`notification-${type}`) && (e.childNodes[0].innerText === text || e.childNotes[0].innerHTML === text ) ) {
-			e.remove();
-		} 
-	})
+		document.querySelectorAll(".notification-container").forEach((e) => {
+			if ( e.classList.contains(`notification-${type}`) && (e.childNodes[0].innerText === text || e.childNodes[0].innerHTML === text ) ) {
+				console.log(2)
+				e.remove();
+			} 
+		})
 	} catch (err) {
 		console.error(isHtml, err);
 	}
@@ -1001,13 +1000,15 @@ function userConsentModal(){
 	createModal("Do you agree to cookies and storing data in LocalStorage?", html)
 }
 
-function setUserConsent(value){
-	if ( value === 1 ){
+function setUserConsent(value, reloadAfter=true){
+	if ( value == 1 ){
 		userConsent = 1
 		localStorage.setItem(userConsentKey, value);
 		closeAllModals();
 		closeAllNotifications();
-		window.location.reload()
+		if ( reloadAfter ) {
+			window.location.reload()
+		}
 	} else {
 		userConsent = 0;
 		closeAllModals();
@@ -1061,7 +1062,6 @@ function loadBackup(){
 	document.body.appendChild(inp);
 	inp.click();
 	document.body.removeChild(inp);
-	console.log(inp.value)
 
 }
 function saveBackup(){
@@ -1111,7 +1111,6 @@ function insertCheckbox(fromEnter=false){
 	//updateCaretPosition();
 	requestAnimationFrame(() => {
 		if ( isLowWidthViewport){
-			console.log(spanId)
 			setTimeout( () => {
 				moveCaretToEndById(spanId)
 				focusEditor();
@@ -1119,7 +1118,6 @@ function insertCheckbox(fromEnter=false){
 			}, 1
 			)
 		} else {
-			console.log(2)
 			moveCaretToEndById(spanId)
 			focusEditor()
 		}
@@ -1217,7 +1215,6 @@ async function sendLoginRequest(){
 			"body": new URLSearchParams(payload)
 		})
 		const respTest = await resp.json()
-		console.log(resp.status, respTest)
 	} catch ( err ) {
 		informError("Cannot login!", err);
 	}
@@ -1247,15 +1244,30 @@ function handleQueries(){
 	} else if ( params.get("msg") === "loginsuccess" ){
 		createNotification("You logged in.", "info", notificationTimeoutLong);
 		removeParams('msg');
-		if ( typeof firstLoginOnDevice !== undefined){
-			firstLoginOnDevice();
+		if ( typeof firstLoginOnDevice !== 'undefined'){
+			setTimeout(firstLoginOnDevice, 500);
 		}
 	} else if ( params.get("status") === "unknownfailure" ){
 		const text = "Unfortunately there were some unexpeted error!"
 		createNotification(text, "error")
 		removeParams('status');
-	} else if ( params.get("logout") == 1 ) {
-		createNotification(`You have been logged out.`, 'info');
+	} else if ( params.get("logout")) {
+		if ( typeof createAccountLoginModal !== 'undefined') {
+			if ( params.get("logout") === "p" ) {
+				createNotification(`You have been logged out.`, 'info');
+			} else {
+				const tempUserConsent = userConsent
+				localStorage.clear();
+				setUserConsent(tempUserConsent, false);
+				removeParams('logout');
+				const postLogoutA = document.createElement("a");
+				postLogoutA.href="?logout=p";
+				document.body.appendChild(postLogoutA);
+				postLogoutA.click();
+			}
+		} else {
+			createNotification(`Have someone tried to log you out?\nPlease be safe!`, "warning", null)
+		}
 		removeParams('logout');
 	} else if ( newPass = params?.get("newpassword") ) {
 		createNotification(`Your new password is __${newPass}__\nChange it immedeitaly after login!`, "info", null)

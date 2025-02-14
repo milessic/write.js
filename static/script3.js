@@ -231,7 +231,8 @@ function perofrmRemoteAutosave(){
 function firstLoginOnDevice(){
 	closeAllModals();
 	loadNotebook();
-	openDocumentFromLocalStorage();
+	if ( localStorage.getItem(darkModeKey)){ setDarkMode(1);toggleDarkMode(false)}
 	startRefreshTokenTimer({"access_token_expires": 63});
 	createNotification("Welcome back!", "info")
+	setTimeout(openDocumentFromLocalStorage, 100);
 }
