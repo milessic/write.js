@@ -327,9 +327,9 @@ function checkIfDocumentNameExists(name){
 }
 
 function performAutoSave(){
+	if (!autosaveEnabled){return}
 	if ( !validateUserConsent() ) { return }
 	try {
-		if (!autosaveEnabled){return}
 		if (!validateDocumentName(false)){return};
 		let name = getDocumentName();
 		let content = getDocumentText();
@@ -993,14 +993,14 @@ function userConsentModal(){
 		<br>
 		<hr>
 		<br>
-		<strong>If you have some data already written, you may just agree and <b>reload</b></strong>
+		<strong>If you have some data already written, agree, <br>then save documents / enable AutoSave feature</strong>
 	</div>
 	</div>
 	`
 	createModal("Do you agree to cookies and storing data in LocalStorage?", html)
 }
 
-function setUserConsent(value, reloadAfter=true){
+function setUserConsent(value, reloadAfter=false){
 	if ( value == 1 ){
 		userConsent = 1
 		localStorage.setItem(userConsentKey, value);
