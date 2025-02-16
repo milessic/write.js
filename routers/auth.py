@@ -121,8 +121,11 @@ async def get_refresh_token_api(request:Request, response:Response, payload:dict
             c.db.set_access_token_as_inactive_for_user(user_id, old_refresh_token)
 
         # set new tokens
-        response.set_cookie("access_token", access_token)
-        response.set_cookie("refresh_token", refresh_token)
+        # TODO make this a function
+        access_cookie_expires = c.ACCESS_TOKEN_EXPIRES_MINUTES * 60
+        refresh_cookie_expires = c.REFRESH_TOKEN_EXPIRES_MINUTES * 60
+        response.set_cookie(key="access_token", value=access_token, httponly=True, max_age=access_cookie_expires, expires=access_cookie_expires)
+        response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, max_age=refresh_cookie_expires, expires=refresh_cookie_expires)
         return {"access_token": access_token, "refresh_token": refresh_token, "access_token_expires": access_token_expires, "refresh_token_expires": refresh_token_expires}
     return RedirectResponse("/?logout=1", 303)
 
@@ -166,6 +169,7 @@ async def submit_login_form(
     refresh_token = login_resp.get("refresh_token")
     if access_token and refresh_token:
         response = RedirectResponse("/?msg=loginsuccess", status_code=status.HTTP_303_SEE_OTHER, )
+        # TODO make this a function
         access_cookie_expires = c.ACCESS_TOKEN_EXPIRES_MINUTES * 60
         refresh_cookie_expires = c.REFRESH_TOKEN_EXPIRES_MINUTES * 60
         response.set_cookie(key="access_token", value=access_token, httponly=True, max_age=access_cookie_expires, expires=access_cookie_expires)
