@@ -226,7 +226,7 @@ function handleRemoteAutosave(){
 
 function perofrmRemoteAutosave(){
 	if ( !remoteAutoSaveEnabled ) { return }
-	sendNotebook();
+	sendNotebookForce(); // TODO user sendNotebook, but doens't fetch existing document
 }
 
 function firstLoginOnDevice(){
