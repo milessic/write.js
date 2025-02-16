@@ -55,6 +55,7 @@ async function sendNotebookForce(){
 		if ( resp.status != 201 ){
 			throw new Error(resp);
 		}
+		createNotification("Notebook pushed to remote", "info", notificationTimeoutShort)
 
 	} catch(err) {
 		informError("Sync error! Cannot send notebook to the cloud!", err);

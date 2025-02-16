@@ -166,8 +166,10 @@ async def submit_login_form(
     refresh_token = login_resp.get("refresh_token")
     if access_token and refresh_token:
         response = RedirectResponse("/?msg=loginsuccess", status_code=status.HTTP_303_SEE_OTHER, )
-        response.set_cookie(key="access_token", value=access_token, httponly=True, max_age=c.ACCESS_TOKEN_EXPIRES_MINUTES * 60)
-        response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, max_age=c.REFRESH_TOKEN_EXPIRES_MINUTES* 60)
+        access_cookie_expires = c.ACCESS_TOKEN_EXPIRES_MINUTES * 60
+        refresh_cookie_expires = c.REFRESH_TOKEN_EXPIRES_MINUTES * 60
+        response.set_cookie(key="access_token", value=access_token, httponly=True, max_age=access_cookie_expires, expires=access_cookie_expires)
+        response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, max_age=refresh_cookie_expires, expires=refresh_cookie_expires)
     else:
         return {"msg", "ERROR"}
     return response
