@@ -22,7 +22,6 @@ async def read_index(request:Request):
         if e.status_code != 401:
             raise
         is_authenticated = False
-    print(is_authenticated)
 
     return templates.TemplateResponse("index.html", {"request": request, "is_authenticated": is_authenticated})
 
