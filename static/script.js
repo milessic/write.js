@@ -1,5 +1,10 @@
-const test = { my: 'super', puper: [456, 567], awesome: 'pako' };
-
+const baseTitle = "Write.JS";
+const userLoggedInKey = "__userLoggedIn__";
+const userConsentKey = "__userConsent__";
+const lastOpenedKey= "__lastOpened__";
+const docPrefix = "__doc__";
+const autosaveKey = "__autosave__";
+const darkModeKey = "__darkModeEnabled__";
 
 let autosaveEnabled = 0;
 let documentNames = [];
@@ -7,6 +12,7 @@ let caretPosition = null;
 let selection = null;
 let wordCounterEnabled = true;
 let indentSize = 4;
+let userLoggedIn = getUserLoggedIn();
 
 const notificationTimeoutShort = 1500;
 const notificationTimeout = 3000;
@@ -15,12 +21,6 @@ const base64icon = `data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My
 const softReturnText = `
 `
 
-const baseTitle = "Write.JS";
-const userConsentKey = "__userConsent__";
-const lastOpenedKey= "__lastOpened__";
-const docPrefix = "__doc__";
-const autosaveKey = "__autosave__";
-const darkModeKey = "__darkModeEnabled__";
 
 let userConsent = localStorage.getItem(userConsentKey);
 let darkModeEnabled = 0;
@@ -304,6 +304,8 @@ function saveDocumentToLocalStorage(){
 		let documentText = getDocumentText();
 		if ( !validateDocumentName() ){return}
 		localStorage.setItem(docPrefix + documentNameValue, documentText);
+		setUserLoggedIn(null);
+		setUserConsent(userConsent);
 		saveAsLastOpenedDocument(documentNameValue);
 	} catch ( err ) {
 		informError("Could not save document!", err)
@@ -419,8 +421,20 @@ function deleteDocumentInLocalStorage(name){
 	}
 }
 
-function closeAllModals(){
-	document.querySelectorAll(".modal-container").forEach((e) => {e.remove()})
+function closeAllModals(...excludeTitles){
+	console.log(excludeTitles)
+	if ( excludeTitles.length ){
+		document.querySelectorAll(".modal-container").forEach((e) => {
+			excludeTitles.forEach( (t) => {
+				if ( !e.querySelector("h3").innerText.startsWith(t)){
+					e.remove();
+					deleteOverlay();
+				} 
+			})
+		})
+		return
+	}
+	document.querySelectorAll(".modal-container").forEach((e) => { e.remove() })
 	deleteOverlay();
 }
 
@@ -676,6 +690,7 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false){
 		// check for documents that are different
 		// TODO add support for current document
 		if ( key === docPrefix + getDocumentName() && excludeCurrentDocument ) { console.log('skipping current doc');continue }
+		if ( key === userLoggedInKey ) { continue }
 		const existingDocument = localStorage.getItem(key)  
 		if ( existingDocument === value ) { continue }    // if document is the same, don't overwrite
 		else if ( existingDocument != null && !showConfirm(`!Do you want to overwrite '${key.replace(docPrefix, "")}'?`)){ continue } // for edited documents in both sources 
@@ -687,10 +702,13 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false){
 }
 
 
-function purgeLocalStorage(){
-	if ( confirm("Do you really want to delete everything from Browser?") ){
+function purgeLocalStorage(doConfirm=true){
+	if ( !doConfirm ){ 
+		localStorage.clear();
+	} else if ( confirm("Do you really want to delete everything from Browser?") ){
 		localStorage.clear();
 	}
+	setUserLoggedIn(userLoggedIn);
 }
 
 function handleWidth(){
@@ -786,7 +804,6 @@ function handleExistingNotifications(text, type, isHtml){
 	try {
 		document.querySelectorAll(".notification-container").forEach((e) => {
 			if ( e.classList.contains(`notification-${type}`) && (e.childNodes[0].innerText === text || e.childNodes[0].innerHTML === text ) ) {
-				console.log(2)
 				e.remove();
 			} 
 		})
@@ -1011,8 +1028,7 @@ function setUserConsent(value, reloadAfter=false){
 	if ( value == 1 ){
 		userConsent = 1
 		localStorage.setItem(userConsentKey, value);
-		closeAllModals();
-		closeAllNotifications();
+		closeAllModals("Login");
 		if ( reloadAfter ) {
 			window.location.reload()
 		}
@@ -1262,15 +1278,19 @@ function handleQueries(){
 		if ( typeof createAccountLoginModal !== 'undefined') {
 			if ( params.get("logout") === "p" ) {
 				createNotification(`You have been logged out.`, 'info');
+			} else if ( params.get("logout") === "o" ) {
+				createLoginExpiredNotification();
 			} else {
 				const tempUserConsent = userConsent
-				localStorage.clear();
+				purgeLocalStorage(false);
+				const logoutOption = params.get("logout");
 				setUserConsent(tempUserConsent, false);
 				removeParams('logout');
 				const postLogoutA = document.createElement("a");
-				postLogoutA.href="?logout=p";
+				postLogoutA.href="?logout=" + (logoutOption === "3" ? "o" : "p"); // 3 is in case of 401, remaining ones are casual loggout
 				document.body.appendChild(postLogoutA);
 				postLogoutA.click();
+				setUserLoggedIn(false);
 			}
 		} else {
 			createNotification(`Have someone tried to log you out?\nPlease be safe!`, "warning", null)
@@ -1312,6 +1332,11 @@ function handleQueries(){
 						createNotification(`Cannot perform password reset!\nIf you wanted to reset your password, do it again`, "error", notificationTimeoutLong)
 						removeParams('message');
 						return
+					} else if ( params.get(key) === "invaliduseroremail" ){
+						createAccountLoginModal()
+						createNotification(`Cannot login with this login! Try again!`, "error", null, false)
+						removeParams('message');
+						return
 					}
 					createNotification(`There was some other issue, sorry!`, 'error', notificationTimeoutLong)
 					removeParams('message');
@@ -1350,4 +1375,23 @@ function setEventForFilteringChildrenNodes(relatedInput, baseElQuerySelector, cl
 			else {e.classList.remove("burried") }
 		})
 	})
+}
+
+function getUserLoggedIn(){
+	const val = localStorage.getItem(userLoggedInKey);
+	return val === "1" ? true : val === "0" ? false : null
+}
+
+function setUserLoggedIn(state){
+	"set true, false or null"
+	const stateAsStr = state === true ? "1" : state === false ? "0" : "null";
+	userLoggedIn = state;
+	localStorage.setItem(userLoggedInKey, stateAsStr)
+}
+
+function createLoginExpiredNotification(){
+	setTimeout( () => {
+		createNotification(`Your session has expired! <br><button onclick='createAccountLoginModal()'>Login again</button>`, 'error', null, true);
+		setUserConsent(userConsent);
+	}, 100);
 }

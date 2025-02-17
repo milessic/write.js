@@ -2,10 +2,16 @@
  * This script file is for not-logged user
  */
 
+if ( userLoggedIn === true ) {
+	purgeLocalStorage(false);
+	createLoginExpiredNotification();
+}
 document.getElementById("login-btn").addEventListener('click', () => {createAccountLoginModal()});
 window.addEventListener("load", () => {
-	const html = `<p><strong>Write.JS</strong> is much better with account!</p><br><button onclick="createRegisterModal();closeAllNotifications();">Create your own right now!</button>  or  <button onclick="createAccountLoginModalWithNotificationClose()">Login to your existing account</button>`
-	createNotification(html, "info", null, true);
+	if ( !userLoggedIn ){
+		const html = `<p><strong>Write.JS</strong> is much better with account!</p><br><button onclick="createRegisterModal();closeAllNotifications();">Create your own right now!</button>  or  <button onclick="createAccountLoginModalWithNotificationClose()">Login to your existing account</button>`
+		createNotification(html, "info", null, true);
+	}
 })
 function createAccountLoginModal(username=null){
 	closeAllModals();
@@ -14,11 +20,11 @@ function createAccountLoginModal(username=null){
 		<form method="POST" action="/api/auth/login/submit">
 			<div class="form-field-label">
 				<label for="login">Login</label>
-				<input type="text" name="username" id="login" placeholder="Username or E-mail address">
+				<input type="text" name="username" id="login" placeholder="Username or E-mail address" required>
 			</div>
 			<div class="form-field-label">
 				<label for="password">Password</label>
-				<input id="password" name="password" type="password" placeholder="******">
+				<input id="password" name="password" type="password" placeholder="******" required>
 			</div>
 			<button type="submit">Login</button>
 		</form>
@@ -39,15 +45,15 @@ function createRegisterModal(){
 	<div class="form-div">
 		<div class="form-field-label">
 			<label for="account-register-username">Login</label>
-			<input id="account-register-username" placeholder="Your unique username!">
+			<input id="account-register-username" placeholder="Your unique username!" required>
 		</div>
 		<div class="form-field-label">
 			<label for="account-register-email">Email</label>
-			<input id="account-register-email" type="email" placeholder="Your E-mail address">
+			<input id="account-register-email" type="email" placeholder="Your E-mail address" required>
 		</div>
 		<div class="form-field-label">
 			<label for="account-register-password">Password</label>
-			<input id="account-register-password" type="password" placeholder="Secure password that is 6-32 characters long">
+			<input id="account-register-password" type="password" placeholder="Secure password that is 6-32 characters long" required>
 		</div>
 		<button onclick="sendRegisterRequest()">Register</button>
 		<hr>

@@ -1,3 +1,4 @@
+setUserLoggedIn(true);
 /*
  * This script file is authenticated user
  */
@@ -71,6 +72,8 @@ async function fetchNotebook(){
 		if ( resp.status == 404 ){
 			createNewNotebookModal();
 			return null
+		} else if ( resp.status === 401 ) {
+			window.location = "?logout=3";
 		} else if ( resp.status != 200 ){
 			throw new Error(resp);
 		}
