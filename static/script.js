@@ -282,10 +282,16 @@ function createOpenDocumentModal(documentNames){
 		namesElements += `<div class="double-button-div"><button onclick="loadDocumentFromLocalStorage('${name}');closeAllModals()">${name}</button><button class="delete-btn" onclick="deleteDocumentInLocalStorage('${name}');">Delete</button></div>\n`
 	}
 	createModal("Open document", `<div>This modal design is temporary, I promise</div>
+	<div id="search-container">
+	<label for="modal-search">Type to begin search</label>
+	<input id="modal-search" placeholder="..." type="text">
+	<button id="clear-modal-search">Clear</button>
+	</div>
 	<div id="menu-modal" class="menu overflow">
 		${namesElements}
 	</div>`);
 	document.querySelector(".modal-content").classList.add("no-margin-left-on-mobile");
+	setEventForFilteringChildrenNodes("#modal-search", "#menu-modal .double-button-div", "#clear-modal-search")
 
 
 }
@@ -1330,3 +1336,18 @@ function removeParams(...params) {
 	}
 }
 
+function setEventForFilteringChildrenNodes(relatedInput, baseElQuerySelector, clearButtonQuerySelector=null){
+	const inpu = document.querySelector(relatedInput);
+	const elements = document.querySelectorAll(`${baseElQuerySelector}`)
+	if ( clearButtonQuerySelector ){
+		document.querySelector(clearButtonQuerySelector).addEventListener("click", () => {inpu.value = "";elements.forEach((e)=>{e.classList.remove("burried")})})
+	}
+	inpu.addEventListener("input",() =>{
+			elements.forEach((e) => {
+			const searchEl = e.childNodes[0]
+			const reg = new RegExp(inpu.value, "i");
+			if ( !searchEl.innerText.match(reg) ) { e.classList.add("burried") }
+			else {e.classList.remove("burried") }
+		})
+	})
+}

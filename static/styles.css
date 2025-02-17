@@ -630,3 +630,7 @@ hr {
 .form-div button {
 	margin-top: 10px;
 }
+
+.burried {
+	display: none;
+}
