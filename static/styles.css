@@ -435,6 +435,10 @@ hr {
 	margin-left: 50px;
 }
 
+.modal-content h3 {
+	margin-top: 10px;
+}
+
 /* width */
 ::-webkit-scrollbar {
   width: 10px;
@@ -628,9 +632,23 @@ hr {
 }
 
 .form-div button {
-	margin-top: 10px;
+	margin-top: 1px;
 }
 
 .burried {
 	display: none;
+}
+
+.error {
+	border: 1px solid red !important;
+	background-color: #FFEBBE;
+}
+
+div[class="form-field-label"]:not(:first-child) label {
+	margin-top: 10px;
+}
+
+.form-field-label input[type="checkbox"] {
+	margin-left: 10px;
+	margin-right: auto;
 }

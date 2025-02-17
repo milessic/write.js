@@ -1280,6 +1280,8 @@ function handleQueries(){
 				createNotification(`You have been logged out.`, 'info');
 			} else if ( params.get("logout") === "o" ) {
 				createLoginExpiredNotification();
+			} else if ( params.get("logout") === "i" ) {
+				createAccountDeletedNotification();
 			} else {
 				const tempUserConsent = userConsent
 				purgeLocalStorage(false);
@@ -1287,7 +1289,7 @@ function handleQueries(){
 				setUserConsent(tempUserConsent, false);
 				removeParams('logout');
 				const postLogoutA = document.createElement("a");
-				postLogoutA.href="?logout=" + (logoutOption === "3" ? "o" : "p"); // 3 is in case of 401, remaining ones are casual loggout
+				postLogoutA.href="?logout=" + (logoutOption === "3" ? "o" : logoutOption === "4" ? "i" : "p"); // 3 is in case of 401, 4 is in case of delete, remaining ones are casual loggout
 				document.body.appendChild(postLogoutA);
 				postLogoutA.click();
 				setUserLoggedIn(false);
@@ -1392,6 +1394,14 @@ function setUserLoggedIn(state){
 function createLoginExpiredNotification(){
 	setTimeout( () => {
 		createNotification(`Your session has expired! <br><button onclick='createAccountLoginModal()'>Login again</button>`, 'error', null, true);
+		setUserConsent(userConsent);
+	}, 100);
+}
+
+
+function createAccountDeletedNotification(){
+	setTimeout( () => {
+		createNotification(`Your account is deleted.<br><button onclick="createRegisterModal()">You can create a new account</button>`, 'error', null, true);
 		setUserConsent(userConsent);
 	}, 100);
 }

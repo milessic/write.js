@@ -294,7 +294,7 @@ async def forgot_password_api(request:Request, payload:ForgotPasswordModel):
     return {"msg": c.locales.get_with_request("txt_mail_sent", request)}
 
 @router.post("/delete", status_code=204)
-async def delete_user(request:Request, payload:DeleteUserModel, token_data:dict=Depends(get_access_token)):
+async def delete_user(response:Response, request:Request, payload:DeleteUserModel, token_data:dict=Depends(get_access_token)):
     data = json_to_dict(payload)
     user_data = c.db.get_user_data(token_data.get("sub"))
     is_user_sure = data.get("are_you_sure")
@@ -304,8 +304,13 @@ async def delete_user(request:Request, payload:DeleteUserModel, token_data:dict=
 
     if is_user_sure\
     and unhash_password(data.get("old_password"),password):
+        # delete user
         c.db.delete_user(username, user_id)
-        return 
+        # delete notebooks and all other things
+        c.db.delete_user_content(user_id)
+        response.delete_cookie("refresh_token")
+        response.delete_cookie("access_token")
+        return {"detail":"deleted"}
 
     if not is_user_sure:
         raise HTTPException(400, c.locales.get_with_request("txt_errors_user_delete_user_is_not_sure", request))

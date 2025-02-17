@@ -138,4 +138,7 @@ class DbClient():
             return self._execute(get_notebook, user_id)[0][0][0]
         except IndexError:
             return None
+    def delete_user_content(self, user_id:int):
+        delete_notebook = {"sqlite3":"DELETE FROM notebooks WHERE user_id=(?)"}
+        self._execute(delete_notebook, user_id)
     # END

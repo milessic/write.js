@@ -23,18 +23,118 @@ window.addEventListener("load", (e) => {
 })
 
 document.getElementById("account-btn").addEventListener('click', createAccountModal);
-function createAccountModal(){
+async function createAccountModal(){
 	const html = `
 	<div class="form-div">
-		<form method="GET" action="/api/auth/user/logout/">
-			<button type="submit">Logout</button>
+		<h3>Logout</h3>
+		<div class="double-button-div">
+			<form method="GET" action="/api/auth/user/logout/">
+				<button type="submit">Logout</button>
+			</form>
+			<form method="GET" action="/api/auth/user/logout/all">
+				<button type="submit">Logout from All devices</button>
+			</form>
+			</div>
+		<h3>Update Password</h3>
+		<hr>
+		<form id="form-update-password">
+			<div class="form-field-label">
+				<label for="old_password">Old Password</label>
+				<input name="old_password" id="old_password" placeholder="your current password" required type="password">
+			</div>
+			<div class="form-field-label">
+				<label for="new_password">New Password</label>
+				<input name="new_password" id="new_password" placeholder="your new password" required type="password">
+			</div>
+			<br>
+			<button type="submit">Update password</button>
+			</form>
+		<h3>Delete account</h3>
+		<hr>
+		<form id="form-delete-account">
+			<div class="form-field-label">
+				<label for="old_password">Password</label>
+				<input name="old_password" id="password" placeholder="your current password" required type="password">
+			</div>
+			<div class="form-field-label">
+				<label for="are_you_sure">Are you sure?</label>
+				<div>
+				<input name="are_you_sure" id="are_you_sure" placeholder="Are you sure?" required type="checkbox"><span>    I'm sure</span>
+				</div>
+			</div>
+			<br>
+			<button type="submit">Delete</button>
 		</form>
-		<form method="GET" action="/api/auth/user/logout/all">
-			<button type="submit">Logout from All devices</button>
-		</form>
+		<h3>Who am I?</h3>
+		<button id="who-am-i">Tell me please</button>
 	</div>
 	`
-	createModal("Login", html)
+	createModal("Account", html)
+	// set events
+	// udpate password
+	document.querySelector("#form-update-password").addEventListener("submit", async (e) => {
+		e.preventDefault();
+		const oldEl = document.getElementById("old_password");
+		const newEl = document.getElementById("new_password");
+		try {
+			const payload = {
+				old_password: oldEl.value,
+				new_password: newEl.value
+			}
+			// send request
+			const resp = await fetch("/api/auth/user/password/update", {
+				method: "POST",
+				body: JSON.stringify(payload),
+				headers: {"Content-Type": "application/json"},
+				credentials: "include"
+			})
+			const respText = await resp.json();
+			if ( resp.status === 200 ){
+				closeAllModals();
+				createNotification("Password changed succesfully!", "info")
+				oldEl.classList.remove("error");
+				newEl.classList.remove("error");
+				return
+			}
+			createNotification(`Cannot change password, due to\n${JSON.stringify(respText, null, "\t")}`,  "error", notificationTimeoutLong)
+			oldEl.classList.add("error");
+			newEl.classList.add("error");
+		} catch ( err ) {
+			informError("Cannot change password!",err)
+		}
+	})
+	// delete password
+	document.querySelector("#form-delete-account").addEventListener("submit", async (e) => {
+		e.preventDefault();
+		if ( !showConfirm("Do you really want to delete your account and ALL your documents?")){ return }
+		const oldEl = document.getElementById("password");
+		const newEl = document.getElementById("are_you_sure");
+		console.log(newEl)
+		try {
+			console.log(newEl)
+			const payload = {
+				old_password: oldEl.value,
+				are_you_sure: newEl.value
+			}
+			// send request
+			const resp = await fetch("/api/auth/delete", {
+				method: "POST",
+				body: JSON.stringify(payload),
+				headers: {"Content-Type": "application/json"},
+				credentials: "include"
+			})
+			if ( resp.status === 204 ){
+				console.log(1)
+				window.location = "?logout=4"
+				return
+			}
+			createNotification(`Cannot delete user!`,  "error", notificationTimeoutLong)
+			oldEl.classList.add("error");
+			newEl.classList.add("error");
+		} catch ( err ) {
+			informError("Cannot change password!",err)
+		}
+	})
 }
 
 async function sendNotebook(){
