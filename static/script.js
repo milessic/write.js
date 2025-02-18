@@ -62,6 +62,16 @@ window.addEventListener("load", function() {
 		handleWordCounter();
 	};
 	handleQueries();
+	setTimeout(()=>{
+		createNotification("This is a development environemnt!<hr>In case of questions: <button id='this-is-dev-btn'>Contact Write.JS</button>","warning", notificationTimeoutLong*2, true);
+		document.getElementById("this-is-dev-btn").addEventListener("click", () => {
+			const a = document.createElement("a");
+			a.href = 'mailto:writejs.help@gmail.com?subject=Write.JS question';
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+		})
+	}, 4000)
 })
 
 // Setup Events
@@ -1405,4 +1415,14 @@ function createAccountDeletedNotification(){
 		createNotification(`Your account is deleted.<br><button onclick="createRegisterModal()">You can create a new account</button>`, 'error', null, true);
 		setUserConsent(userConsent);
 	}, 100);
+}
+
+function countDocuments(){
+	let count = 0;
+	for ( let e of Object.entries(localStorage)){
+		if ( e.startsWith(docPrefix)){
+			count ++;
+		}
+	}
+	return count;
 }
