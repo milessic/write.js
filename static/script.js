@@ -422,7 +422,6 @@ function deleteDocumentInLocalStorage(name){
 }
 
 function closeAllModals(...excludeTitles){
-	console.log(excludeTitles)
 	if ( excludeTitles.length ){
 		document.querySelectorAll(".modal-container").forEach((e) => {
 			excludeTitles.forEach( (t) => {
@@ -1295,7 +1294,8 @@ function handleQueries(){
 				setUserLoggedIn(false);
 			}
 		} else {
-			createNotification(`Have someone tried to log you out?\nPlease be safe!`, "warning", null)
+			console.warn('logout param for authenticated user:','params logout', params.get("logout"))
+			//createNotification(`Have someone tried to log you out?\nPlease be safe!`, "warning", null)  // this is commented as it looks that browser can add some shady params during reload
 		}
 		removeParams('logout');
 	} else if ( newPass = params?.get("newpassword") ) {

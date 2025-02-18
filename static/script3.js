@@ -165,15 +165,19 @@ async function sendNotebookForce(){
 
 async function fetchNotebook(){
 	try {
-		const resp = await fetch("/api/notebooks/notebook", {
-			method: "GET",
-			credentials: "include"
-		})
-		if ( resp.status == 404 ){
-			createNewNotebookModal();
-			return null
-		} else if ( resp.status === 401 ) {
+		let resp;
+			resp = await fetch("/api/notebooks/notebook", {
+				method: "GET",
+				credentials: "include"
+			})
+		if ( resp.status === 404 ){
+		createNewNotebookModal();
+		return 
+		}
+		console.warn("lol")
+		if ( resp.status === 401 ) {
 			window.location = "?logout=3";
+			return null;
 		} else if ( resp.status != 200 ){
 			throw new Error(resp);
 		}
@@ -192,7 +196,10 @@ async function loadNotebookFromEvent(e){
 }
 async function loadNotebook(excludeCurrentDocument=false){
 	const encodedNotebook = await fetchNotebook();
-	loadNotebookFromJson(encodedNotebook, excludeCurrentDocument);
+	if ( encodedNotebook ){
+		loadNotebookFromJson(encodedNotebook, excludeCurrentDocument);
+		return
+	}
 }
 
 function loadNotebookFromJson(json, excludeCurrentDocument=true){
@@ -339,4 +346,20 @@ function firstLoginOnDevice(){
 	startRefreshTokenTimer({"access_token_expires": 63});
 	createNotification("Welcome back!", "info")
 	setTimeout(openDocumentFromLocalStorage, 100);
+}
+
+function createNewNotebookModal(){
+	closeAllModals();
+	const html = `
+	<h3>Welcome to Write.JS!</h3>
+	<hr>
+	<span>Check contents of menu to see what functions can you use!</span>
+	<hr>
+	<div class="form-div">
+	<button id="welcome-ok"><img src="${base64icon}"></img>Start your Write.JS journey right now!</button>
+	</div>
+	`
+	createModal("Welcome", html);
+	// events
+	document.getElementById("welcome-ok").addEventListener("click",() => {closeAllModals()})
 }
