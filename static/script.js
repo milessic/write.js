@@ -219,6 +219,7 @@ function fillDocName(name){
 }
 function fillEditorWithHTML(html){
     document.getElementById("editor").innerHTML = html;
+	window.scrollTo(0, 1000);
 }
 function toggleFormattingBar(){
     const subBar = document.getElementById("sub-bar");
