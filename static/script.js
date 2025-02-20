@@ -1,14 +1,10 @@
-
-
-const test = { my: 'super', puper: [456, 567], awesome: 'pako' };
-
-const compressed = pako.deflate(JSON.stringify(test));
-
-const restored = JSON.parse(pako.inflate(compressed, { to: 'string' }));
-console.log(compressed)
-console.log(restored)
-
-
+const baseTitle = "Write.JS";
+const userLoggedInKey = "__userLoggedIn__";
+const userConsentKey = "__userConsent__";
+const lastOpenedKey= "__lastOpened__";
+const docPrefix = "__doc__";
+const autosaveKey = "__autosave__";
+const darkModeKey = "__darkModeEnabled__";
 
 let autosaveEnabled = 0;
 let documentNames = [];
@@ -16,18 +12,15 @@ let caretPosition = null;
 let selection = null;
 let wordCounterEnabled = true;
 let indentSize = 4;
+let userLoggedIn = getUserLoggedIn();
 
+const notificationTimeoutShort = 1500;
 const notificationTimeout = 3000;
 const notificationTimeoutLong = 10000;
+const base64icon = `data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJmZWF0aGVyIGZlYXRoZXItZWRpdCI+PHBhdGggZD0iTTExIDRINGEyIDIgMCAwIDAtMiAydjE0YTIgMiAwIDAgMCAyIDJoMTRhMiAyIDAgMCAwIDItMnYtNyI+PC9wYXRoPjxwYXRoIGQ9Ik0xOC41IDIuNWEyLjEyMSAyLjEyMSAwIDAgMSAzIDNMMTIgMTVsLTQgMSAxLTQgOS41LTkuNXoiPjwvcGF0aD48L3N2Zz4=`
 const softReturnText = `
 `
 
-const baseTitle = "Write.JS";
-const userConsentKey = "__userConsent__";
-const lastOpenedKey= "__lastOpened__";
-const docPrefix = "__doc__";
-const autosaveKey = "__autosave__";
-const darkModeKey = "__darkModeEnabled__";
 
 let userConsent = localStorage.getItem(userConsentKey);
 let darkModeEnabled = 0;
@@ -48,6 +41,7 @@ if ( userConsent ){
 	setAutosaveText();
 	documentNames = getDocumentNamesFromLocalStorage();
 }
+
 let boldState = false;
 let italicState = false;
 let underlineState = false;
@@ -67,6 +61,17 @@ window.addEventListener("load", function() {
 	if ( wordCounterEnabled ){
 		handleWordCounter();
 	};
+	handleQueries();
+	setTimeout(()=>{
+		createNotification("This is a development environemnt!<hr>In case of questions: <button id='this-is-dev-btn'>Contact Write.JS</button>","warning", notificationTimeoutLong*2, true);
+		document.getElementById("this-is-dev-btn").addEventListener("click", () => {
+			const a = document.createElement("a");
+			a.href = 'mailto:writejs.help@gmail.com?subject=Write.JS question';
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+		})
+	}, 4000)
 })
 
 // Setup Events
@@ -135,12 +140,13 @@ function formatText(command) {
 	performAutoSave();
 }
 
-function toggleDarkMode(){
+function toggleDarkMode(setDarkModeState=true){
     document.body.classList.toggle("dark-mode");
     document.querySelector("#editor-container").classList.toggle("dark-mode");
 	document.querySelector(".top-bar-root").classList.toggle("dark-mode-dark");
 	document.querySelector("#sub-bar").classList.toggle("dark-mode-medium");
 	document.querySelectorAll(".notification-container").forEach((e) => e.classList.toggle("dark-mode-medium"))
+	if (!setDarkModeState){return}
 	if ( darkModeEnabled) {
 		setDarkMode(0);
 	} else {
@@ -172,11 +178,14 @@ function toggleMenu(){
 	}
 }
 
+function getDocumntContentToExport(){
+	return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${getStyles()}</style>${fontStyleMark}</head><body><div id="content-container"><div id="content">${document.getElementById("editor").innerHTML}</div></div></body></html>`;
+}
 function exportDocument(){
 	try {
 		if (!validateDocumentName()){return}
     	const docName = document.getElementById("doc-name").value || "Untitled Document";
-    	const content = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${getStyles()}</style>${fontStyleMark}</head><body><div id="content-container"><div id="content">${document.getElementById("editor").innerHTML}</div></div></body></html>`;
+    	const content = getDocumntContentToExport();
     	const blob = new Blob([content], { type: "html" });
     	const link = document.createElement("a");
     	link.href = URL.createObjectURL(blob);
@@ -220,6 +229,7 @@ function fillDocName(name){
 }
 function fillEditorWithHTML(html){
     document.getElementById("editor").innerHTML = html;
+	window.scrollTo(0, 1000);
 }
 function toggleFormattingBar(){
     const subBar = document.getElementById("sub-bar");
@@ -283,24 +293,38 @@ function createOpenDocumentModal(documentNames){
 		namesElements += `<div class="double-button-div"><button onclick="loadDocumentFromLocalStorage('${name}');closeAllModals()">${name}</button><button class="delete-btn" onclick="deleteDocumentInLocalStorage('${name}');">Delete</button></div>\n`
 	}
 	createModal("Open document", `<div>This modal design is temporary, I promise</div>
+	<div id="search-container">
+	<label for="modal-search">Type to begin search</label>
+	<input id="modal-search" placeholder="..." type="text">
+	<button id="clear-modal-search">Clear</button>
+	</div>
 	<div id="menu-modal" class="menu overflow">
 		${namesElements}
 	</div>`);
+	document.querySelector(".modal-content").classList.add("no-margin-left-on-mobile");
+	setEventForFilteringChildrenNodes("#modal-search", "#menu-modal .double-button-div", "#clear-modal-search")
 
 
 }
 
 function saveDocumentToLocalStorage(){
 	if ( !validateUserConsent() ) { return }
+	let documentNameValue = ''
 	try { 
-		let documentNameValue = getDocumentName();
+		documentNameValue = getDocumentName();
 		let documentText = getDocumentText();
 		if ( !validateDocumentName() ){return}
 		localStorage.setItem(docPrefix + documentNameValue, documentText);
+		setUserLoggedIn(null);
+		setUserConsent(userConsent);
 		saveAsLastOpenedDocument(documentNameValue);
-		createNotification(`Document '${documentNameValue}' saved!`, "info");
 	} catch ( err ) {
 		informError("Could not save document!", err)
+	}
+	try{
+		createNotification(`Document '${documentNameValue}' saved!`, "info");
+	} catch ( err ) {
+		informError("Could not create notification that confirms that document is saved ( document is saved )", err)
 	}
 }
 
@@ -323,15 +347,18 @@ function checkIfDocumentNameExists(name){
 }
 
 function performAutoSave(){
+	if (!autosaveEnabled){return}
 	if ( !validateUserConsent() ) { return }
 	try {
-		if (!autosaveEnabled){return}
 		if (!validateDocumentName(false)){return};
 		let name = getDocumentName();
 		let content = getDocumentText();
 		if (!content){return}
 		localStorage.setItem(docPrefix + name, content);
 		saveAsLastOpenedDocument(name)
+		if ( typeof handleRemoteAutosave !== "undefined" ){
+			handleRemoteAutosave();
+		}
 	} catch ( err ) {
 		informError("Autosave failure!\n\nPlease save manually!\n\nyou may report a bug or disable autosave", err)
 	}
@@ -395,13 +422,29 @@ function deleteDocumentInLocalStorage(name){
 	if ( !validateUserConsent() ) { return }
 	if ( showConfirm(`Delete document '${name}' ?`) ){
 		localStorage.removeItem(docPrefix + name);
+		if ( sendNotebook !== 'undefined' ) {
+			if ( remoteAutoSaveEnabled || showConfirm("Do you want to send updated Notebook to the cloud?") ){
+				sendNotebookForce();
+			}
+		}
 		closeAllModals();
 		openDocumentFromLocalStorage();
 	}
 }
 
-function closeAllModals(){
-	document.querySelectorAll(".modal-container").forEach((e) => {e.remove()})
+function closeAllModals(...excludeTitles){
+	if ( excludeTitles.length ){
+		document.querySelectorAll(".modal-container").forEach((e) => {
+			excludeTitles.forEach( (t) => {
+				if ( !e.querySelector("h3").innerText.startsWith(t)){
+					e.remove();
+					deleteOverlay();
+				} 
+			})
+		})
+		return
+	}
+	document.querySelectorAll(".modal-container").forEach((e) => { e.remove() })
 	deleteOverlay();
 }
 
@@ -644,7 +687,7 @@ function getAllLocalStorageItems() {
 	return data
 }
 
-function loadDataFromLocalStorageJson(jsonObject){
+function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false){
 	if ( !validateUserConsent() ) { return }
 	let dataObject = JSON.parse(jsonObject);
 	if ( typeof(dataObject) != 'object' ){
@@ -653,14 +696,14 @@ function loadDataFromLocalStorageJson(jsonObject){
 	}
 
 	for ( const [key, value] of Object.entries(dataObject) ){
-		if ( !key.startsWith(docPrefix) ) { continue }
-
-
+		if ( key  === lastOpenedKey ) { continue }
 		// check for documents that are different
 		// TODO add support for current document
+		if ( key === docPrefix + getDocumentName() && excludeCurrentDocument ) { console.log('skipping current doc');continue }
+		if ( key === userLoggedInKey ) { continue }
 		const existingDocument = localStorage.getItem(key)  
 		if ( existingDocument === value ) { continue }    // if document is the same, don't overwrite
-		else if ( existingDocument != null && !confirm(`!Do you want to overwrite '${key.replace(docPrefix, "")}'?`)){ continue } // for edited documents in both sources 
+		else if ( existingDocument != null && !showConfirm(`!Do you want to overwrite '${key.replace(docPrefix, "")}'?`)){ continue } // for edited documents in both sources 
 
 		// set remote value
 		localStorage.setItem(key, value);
@@ -669,10 +712,13 @@ function loadDataFromLocalStorageJson(jsonObject){
 }
 
 
-function purgeLocalStorage(){
-	if ( confirm("Do you really want to delete everything from Browser?") ){
+function purgeLocalStorage(doConfirm=true){
+	if ( !doConfirm ){ 
+		localStorage.clear();
+	} else if ( confirm("Do you really want to delete everything from Browser?") ){
 		localStorage.clear();
 	}
+	setUserLoggedIn(userLoggedIn);
 }
 
 function handleWidth(){
@@ -727,23 +773,32 @@ function createNotification( text, type, timeout=notificationTimeout, isHtml=fal
 
 		const div_text = document.createElement("div");
 		div_text.setAttribute("class", "notification-text");
+		const iconImg = `<img src="${base64icon}">`
 		if ( isHtml ){
-			div_text.innerHTML = text;
+			div_text.innerHTML = `${iconImg}${text}`;
 		} else {
+			div_text.innerHTML = iconImg;
 			div_text.innerText = text;
+			// handle bold
+			div_text.innerHTML = div_text.innerHTML.replace(/__/, "<strong>").replace(/__/, "</strong>");
 		}
+
 
 		const close = document.createElement("button");
 		close.setAttribute("class", "notification-close");
 		close.innerText = "X";
 		close.addEventListener("click", () => {closeNotification(n_div)});
+
+
 		
 		n_div.appendChild(div_text);
 		n_div.appendChild(close);
 
 		document.querySelector("#notifications-container").appendChild(n_div)
 
-		setTimeout(() => closeNotification(n_div), timeout);
+		if ( timeout ){
+			setTimeout(() => closeNotification(n_div), timeout);
+		}
 		return n_div;
 	} catch ( err ) {
 		window.alert(`${text}\n\n\n${err}`)
@@ -756,11 +811,15 @@ function closeNotification(notificationDiv){
 }
 
 function handleExistingNotifications(text, type, isHtml){
-	document.querySelectorAll(".notification-container").forEach((e) => {
-		if ( e.classList.contains(`notification-${type}`) && (e.childNodes[0].innerText === text || e.childNotes[0].innerHTML === text ) ) {
-			e.remove();
-		} 
-	})
+	try {
+		document.querySelectorAll(".notification-container").forEach((e) => {
+			if ( e.classList.contains(`notification-${type}`) && (e.childNodes[0].innerText === text || e.childNodes[0].innerHTML === text ) ) {
+				e.remove();
+			} 
+		})
+	} catch (err) {
+		console.error(isHtml, err);
+	}
 }
 
 function closeAllNotifications(){
@@ -968,20 +1027,21 @@ function userConsentModal(){
 		<br>
 		<hr>
 		<br>
-		<strong>If you have some data already written, you may just agree and <b>reload</b></strong>
+		<strong>If you have some data already written, agree, <br>then save documents / enable AutoSave feature</strong>
 	</div>
 	</div>
 	`
 	createModal("Do you agree to cookies and storing data in LocalStorage?", html)
 }
 
-function setUserConsent(value){
-	if ( value === 1 ){
+function setUserConsent(value, reloadAfter=false){
+	if ( value == 1 ){
 		userConsent = 1
 		localStorage.setItem(userConsentKey, value);
-		closeAllModals();
-		closeAllNotifications();
-		window.location.reload()
+		closeAllModals("Login");
+		if ( reloadAfter ) {
+			window.location.reload()
+		}
 	} else {
 		userConsent = 0;
 		closeAllModals();
@@ -1013,15 +1073,40 @@ function updateTitle(){
 	document.title = newName;
 }
 
+function loadBackup(){
+	const inp = document.createElement("input");
+	inp.type = "file";
+	inp.setAttribute("accept", ".writejs");
+
+	inp.addEventListener("change", (e) => {
+		const reader = new FileReader();
+		const file = e.target.files[0];
+		if ( file ) {
+			reader.readAsText(file)
+			reader.onload = ( () => {
+				if ( showConfirm(`Do you want to REPLACE your notebook with ${file.name}`) ) {
+					const obj = `${reader.result}`;
+					loadNotebookFromJson(obj,false)
+				}
+			})
+		}
+	})
+
+	document.body.appendChild(inp);
+	inp.click();
+	document.body.removeChild(inp);
+
+}
 function saveBackup(){
 	try {
-		const data = getAllLocalStorageItems();
-		const blob = new Blob([JSON.stringify(data)], { type: "json"});
+		const data = JSON.stringify(getAllLocalStorageItems());
+		const compressedData = compressObject(data);
+		const blob = new Blob([compressedData], { type: "writejs"});
 		const link = document.createElement("a");
 		link.href = URL.createObjectURL(blob);
-		link.download = "writejs_backup.json";
+		link.download = "writejs_backup.writejs";
 		link.click();
-		createNotification("Backup 'writejs_backup.json' has been created!<br>To laod it use console and function <b>loadDataFromLocalStorageJson(backupAsString)</b>", "info", notificationTimeoutLong, true);
+		createNotification("Backup 'writejs_backup.writejs' has been created!<br>To laod it use console and function <b>loadDataFromLocalStorageJson(backupAsString)</b>", "info", notificationTimeoutLong, true);
 	} catch ( err ) {
 		informError("Cannot save backup!", err)
 	}
@@ -1059,7 +1144,6 @@ function insertCheckbox(fromEnter=false){
 	//updateCaretPosition();
 	requestAnimationFrame(() => {
 		if ( isLowWidthViewport){
-			console.log(spanId)
 			setTimeout( () => {
 				moveCaretToEndById(spanId)
 				focusEditor();
@@ -1067,7 +1151,6 @@ function insertCheckbox(fromEnter=false){
 			}, 1
 			)
 		} else {
-			console.log(2)
 			moveCaretToEndById(spanId)
 			focusEditor()
 		}
@@ -1150,3 +1233,196 @@ function moveCaretToEndById(elementId) {
 }
 
 
+
+async function sendLoginRequest(){
+	try {
+		const loginEl = document.getElementById("account-login");
+		const passwEl = document.getElementById("account-password");
+		const payload = {
+			"username": loginEl.value,
+			"password": passwEl.value
+		}
+		const resp = fetch("/api/auth/login/submit", {
+			"method": "POST",
+			"headers": {"Content-Type": "application/x-www-form-urlencoded"},
+			"body": new URLSearchParams(payload)
+		})
+		const respTest = await resp.json()
+	} catch ( err ) {
+		informError("Cannot login!", err);
+	}
+}
+
+function compressObject(input) {
+    const compressed = pako.deflate(input);  // Get Uint8Array
+    const b64 = btoa(String.fromCharCode(...compressed)); // Convert to Base64
+	return b64.replace(/\//g,"_").replace(/\+/g,"-");
+}
+
+function decompressObject(compressed) {
+	const b64 = compressed.replace(/-/g, "+").replace(/_/g, "/");
+    const binaryString = atob(b64); // Decode Base64
+    const byteArray = Uint8Array.from(binaryString, c => c.charCodeAt(0)); // Convert to Uint8Array
+    return pako.inflate(byteArray, { to: 'string' }); // Decompress
+}
+
+function handleQueries(){
+	const params = new URLSearchParams(window.location.search);
+	if (params.get("status") === "success"){
+		const text = "Congratulations!"
+			+ "You can login as "
+			+ `${params.get('username')}`;
+		createNotification(text, "info");
+		removeParams('status', 'username');
+	} else if ( params.get("msg") === "loginsuccess" ){
+		createNotification("You logged in.", "info", notificationTimeoutLong);
+		removeParams('msg');
+		if ( typeof firstLoginOnDevice !== 'undefined'){
+			setTimeout(firstLoginOnDevice, 500);
+		}
+	} else if ( params.get("status") === "unknownfailure" ){
+		const text = "Unfortunately there were some unexpeted error!"
+		createNotification(text, "error")
+		removeParams('status');
+	} else if ( params.get("logout")) {
+		if ( typeof createAccountLoginModal !== 'undefined') {
+			if ( params.get("logout") === "p" ) {
+				createNotification(`You have been logged out.`, 'info');
+			} else if ( params.get("logout") === "o" ) {
+				createLoginExpiredNotification();
+			} else if ( params.get("logout") === "i" ) {
+				createAccountDeletedNotification();
+			} else {
+				const tempUserConsent = userConsent
+				purgeLocalStorage(false);
+				const logoutOption = params.get("logout");
+				setUserConsent(tempUserConsent, false);
+				removeParams('logout');
+				const postLogoutA = document.createElement("a");
+				postLogoutA.href="?logout=" + (logoutOption === "3" ? "o" : logoutOption === "4" ? "i" : "p"); // 3 is in case of 401, 4 is in case of delete, remaining ones are casual loggout
+				document.body.appendChild(postLogoutA);
+				postLogoutA.click();
+				setUserLoggedIn(false);
+			}
+		} else {
+			console.warn('logout param for authenticated user:','params logout', params.get("logout"))
+			//createNotification(`Have someone tried to log you out?\nPlease be safe!`, "warning", null)  // this is commented as it looks that browser can add some shady params during reload
+		}
+		removeParams('logout');
+	} else if ( newPass = params?.get("newpassword") ) {
+		createNotification(`Your new password is __${newPass}__\nChange it immedeitaly after login!`, "info", null)
+		removeParams('newpassword');
+	} else if ( params.get("passwordresetsent") ) {
+		createNotification(`Password reset mail has been sent!`, 'info');
+		removeParams('passwordresetsent');
+	} else if ( params.get("status") === "failure" ){
+		for ( let key of params.keys()){
+			removeParams('status');
+			if ( key === "status" ) { continue } 
+			switch ( key ) {
+				case "password":
+					createNotification(`<p><strong>Password</strong> has to be:</p>
+						<ul>
+						<li>at least 6 characters long</li>
+						<li>at max 32 characters longlong</li>
+						</ul>`, "error", notificationTimeoutLong, true)
+					removeParams('password');
+					break;
+				case "email":
+					createNotification(`This <strong>Email</strong> is already taken`, "error", notificationTimeoutLong, true)
+					removeParams('email');
+					break
+				case "username":
+					createNotification(`This <strong>Username</strong> is already taken`, "error", notificationTimeoutLong, true)
+					removeParams('username');
+					break
+				case "message":
+					if ( params.get(key) === "invalidpassword" ){
+						createNotification(`Invalid Password for user __${params.get('login')}__`, "error", notificationTimeoutLong)
+						removeParams('message', 'login');
+						return
+					} else if ( params.get(key) === 'forgotpassworderror' ){
+						createNotification(`Cannot perform password reset!\nIf you wanted to reset your password, do it again`, "error", notificationTimeoutLong)
+						removeParams('message');
+						return
+					} else if ( params.get(key) === "invaliduseroremail" ){
+						createAccountLoginModal()
+						createNotification(`Cannot login with this login! Try again!`, "error", null, false)
+						removeParams('message');
+						return
+					}
+					createNotification(`There was some other issue, sorry!`, 'error', notificationTimeoutLong)
+					removeParams('message');
+				default:
+					createNotification(`There was some other issue, sorry!`, 'error', notificationTimeoutLong)
+					removeParams("status");
+					break;
+			}
+		}
+	}
+}
+
+function removeParams(...params) {
+	for ( let paramName of params ){
+    	let searchParams = new URLSearchParams(window.location.search);
+    	searchParams.delete(paramName);
+    	if (history.replaceState) {
+    	    let searchString = searchParams.toString().length > 0 ? '?' + searchParams.toString() : '';
+    	    let newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname +  searchString + window.location.hash;
+    	    history.replaceState(null, '', newUrl);
+    	}
+	}
+}
+
+function setEventForFilteringChildrenNodes(relatedInput, baseElQuerySelector, clearButtonQuerySelector=null){
+	const inpu = document.querySelector(relatedInput);
+	const elements = document.querySelectorAll(`${baseElQuerySelector}`)
+	if ( clearButtonQuerySelector ){
+		document.querySelector(clearButtonQuerySelector).addEventListener("click", () => {inpu.value = "";elements.forEach((e)=>{e.classList.remove("burried")})})
+	}
+	inpu.addEventListener("input",() =>{
+			elements.forEach((e) => {
+			const searchEl = e.childNodes[0]
+			const reg = new RegExp(inpu.value, "i");
+			if ( !searchEl.innerText.match(reg) ) { e.classList.add("burried") }
+			else {e.classList.remove("burried") }
+		})
+	})
+}
+
+function getUserLoggedIn(){
+	const val = localStorage.getItem(userLoggedInKey);
+	return val === "1" ? true : val === "0" ? false : null
+}
+
+function setUserLoggedIn(state){
+	"set true, false or null"
+	const stateAsStr = state === true ? "1" : state === false ? "0" : "null";
+	userLoggedIn = state;
+	localStorage.setItem(userLoggedInKey, stateAsStr)
+}
+
+function createLoginExpiredNotification(){
+	setTimeout( () => {
+		createNotification(`Your session has expired! <br><button onclick='createAccountLoginModal()'>Login again</button>`, 'error', null, true);
+		setUserConsent(userConsent);
+	}, 100);
+}
+
+
+function createAccountDeletedNotification(){
+	setTimeout( () => {
+		createNotification(`Your account is deleted.<br><button onclick="createRegisterModal()">You can create a new account</button>`, 'error', null, true);
+		setUserConsent(userConsent);
+	}, 100);
+}
+
+function countDocuments(){
+	let count = 0;
+	for ( let e of Object.entries(localStorage)){
+		if ( e.startsWith(docPrefix)){
+			count ++;
+		}
+	}
+	return count;
+}

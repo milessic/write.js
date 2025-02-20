@@ -1,0 +1,27 @@
+{
+	"txt_error_user_not_found_500": "User was not found! But that's quite strange ...",
+	"txt_error_cannot_change_password": "Cannot change password!",
+	"txt_password_changed": "Password has been changed",
+	"txt_error_username_or_email_has_to_be_provided": "Username or E-mail has to be provided!",
+	"txt_error_user_has_not_been_found": "User {} has not been found!",
+	"txt_mail_sent": "Mail has been sent",
+	"txt_error_jwt_user_not_found": "Oopsie, user_id not found for '{}'!",
+	"txt_error_jwt_token_not_provided": "Token not provided",
+	"txt_error_jwt_invalid_or_expired_token": "Invalid or expired token",
+	"txt_error_login_or_email_doesnt_exist": "Login or Email doesn't exist!",
+	"txt_error_invalid_password": "Password is not correct",
+	"txt_error_user_is_blocked": "User is blocked! Please try again later or contact support!",
+	"txt_errors_unexpected_errors": "Errors were '{}' which is unexpected!",
+	"txt_errors_username_is_already_taken": "Username is already taken! Use other one",
+	"txt_errors_username_invalid_characters": "Username contains illegal characters",
+	"txt_errors_username_some_other_problem": "Some other problem with username - {}",
+	"txt_errors_password_too_short": "Password is too short! It has to be at least {} characters long!",
+	"txt_errors_password_too_long": "Password is too long! It has to be maximum {} characters long!",
+	"txt_errors_password_some_other_problem": "Some other problem with password - {}",
+	"txt_errors_email_some_other_problem": "Some other problem with email - {}",
+	"txt_errors_email_taken": "This E-mail address is already taken!",
+	"txt_errors_email_invalid": "This E-mail address is not a proper E-mail address!",
+	"txt_errors_user_delete_wrong_password": "Cannot delete user, invalid password!",
+	"txt_errors_user_delete_user_is_not_sure": "Cannot delete user, user is not sure!"
+
+}

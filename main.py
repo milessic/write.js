@@ -1,28 +1,28 @@
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
-from pathlib import Path
+from fastapi import  FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from routers import auth, web, temp_notebooks
+from utils.controller import controller as c
 
-app = FastAPI()
 
 
-# Base directory for static files
-STATIC_DIR = Path(__file__).parent / "static"
+# FastAPI stuff
+app = FastAPI(
+        name="writejs",
+        docs_url=c.SWAGGER_URL,
+        redoc_url=c.REDOC_URL,
+        openapi_url=c.OPENAPI_URL
+        )
 
-@app.get("/", response_class=FileResponse)
-async def read_index():
-    """Serve the index.html file."""
-    return STATIC_DIR / "index.html"
+# Templates and static files
+templates = Jinja2Templates(directory="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.get("/styles.css", response_class=FileResponse)
-async def read_styles():
-    return STATIC_DIR / "styles.css"
+# Routers
+#app.include_router(web.router, prefix="", tags=["web"], include_in_schema=False)
+app.include_router(web.router, prefix="", tags=["web"], include_in_schema=True)
+app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 
-@app.get("/script.js", response_class=FileResponse)
-async def read_scriptx():
-    return STATIC_DIR / "script.js"
-
-@app.get("/favicon.svg", response_class=FileResponse)
-async def read_favicon():
-    """Serve the favicon.svg file."""
-    return STATIC_DIR / "favicon.svg"
+# this is temporary, really
+app.include_router(temp_notebooks.router, prefix="/api/notebooks", tags=["Notebooks"])
 
