@@ -128,7 +128,7 @@ class DbClient():
     # THESE ARE TEMPORARY THINGS!!!!!!!
     # START
     def create_notebook(self, user_id, notebook):
-        create_notebooks = {"sqlite3":"CREATE TABLE IF NOT EXISTS notebooks( notebook_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, notebook_content TEXT)"}
+        create_notebooks = {"sqlite3":"CREATE TABLE IF NOT EXISTS notebooks( notebook_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, notebook_content TEXT, created TEXT DEFAULT CURRENT_TIMESTAMP)"}
         self._execute(create_notebooks)
         create_notebook = {"sqlite3": "INSERT INTO notebooks ( user_id, notebook_content) VALUES ( (?), (?) )"}
         self._execute(create_notebook, user_id, notebook)
