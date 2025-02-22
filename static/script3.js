@@ -66,11 +66,31 @@ async function createAccountModal(){
 			<button type="submit">Delete</button>
 		</form>
 		<h3>Who am I?</h3>
-		<button id="who-am-i">Tell me please</button>
+		<div id="user-info">
+		<pre></pre>
+		</div>
 	</div>
 	`
 	createModal("Account", html)
 	// set events
+	// Who am i
+	 try{
+		const resp = await fetch("/api/auth/me", 
+			{
+				method: "GET",
+				credentials: "include"
+			});
+		const respText = await resp.json();
+		if (resp.ok){
+			const txt = `${respText.username}\n${respText.email}`
+			document.querySelector("#user-info pre").innerText = txt;
+		} else {
+			console.error(resp);
+			createNotification("Cannot fetch info about you, sorry!", "error", notificationTimeoutLong)
+		}
+	 } catch (err){
+			informError('Cannot fetch user data', err, 'error');
+		}
 	// udpate password
 	document.querySelector("#form-update-password").addEventListener("submit", async (e) => {
 		e.preventDefault();
