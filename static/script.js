@@ -1350,6 +1350,12 @@ function handleQueries(){
 						createNotification(`Cannot login with this login! Try again!`, "error", null, false)
 						removeParams('message');
 						return
+					} else if ( params.get(key) === "userisblocked"){
+						createNotification(`Please wait 15 minutes and try again.`, 'error', null, false);
+						removeParams('message');
+						removeParams('login');
+						removeParams("status");
+						return
 					}
 					createNotification(`There was some other issue, sorry!`, 'error', notificationTimeoutLong)
 					removeParams('message');
