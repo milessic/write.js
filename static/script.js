@@ -96,19 +96,32 @@ document.getElementById("copy-md").addEventListener("click", copyMarkdown);
 document.getElementById("generate-pdf").addEventListener("click", generatePDF);
 document.getElementById("contact").addEventListener("click", () => createNotification("Thank you!", 'info'))
 documentNameObject.addEventListener("change", updateTitle);
+// toolbar
+document.getElementById("tb-btn-h1").addEventListener("click", () => { formatText("h1") } );
+document.getElementById("tb-btn-h2").addEventListener("click", () => { formatText("h2") } );
+document.getElementById("tb-btn-text").addEventListener("click", () => { formatText("div") } );
+document.getElementById("tb-btn-bl").addEventListener("click", () => { formatText("ul") } );
+document.getElementById("tb-btn-nl").addEventListener("click", () => { formatText("ol") } );
+document.getElementById("tb-btn-cl").addEventListener("click", () => { formatText("checkbox") } );
+document.getElementById("tb-btn-hr").addEventListener("click", () => { formatText("hr") } );
+document.getElementById("tb-btn-code").addEventListener("click", () => { formatText("code") } );
+document.getElementById("tb-btn-bold").addEventListener("click", () => { formatText("bold") } );
+document.getElementById("tb-btn-italic").addEventListener("click", () => { formatText("italic") } );
+document.getElementById("tb-btn-underline").addEventListener("click", () => { formatText("underline") } );
+document.getElementById("tb-btn-link").addEventListener("click", () => { formatText("link") } );
+document.getElementById("tb-btn-softreturn").addEventListener("click", () => { formatText("softreturn") } );
+document.getElementById("tb-btn-inserttab").addEventListener("click", () => { formatText("inserttab") } );
+
 
 function formatText(command) {
     const editor = document.getElementById("editor");
 
     if (command === "bold") {
         document.execCommand("bold", false, null);
-		document.getElementById("bold-btn").classList.toggle("format-btn-active");
     } else if (command === "italic") {
         document.execCommand("italic", false, null);
-		document.getElementById("italic-btn").classList.toggle("format-btn-active");
     } else if (command === "underline") {
         document.execCommand("underline", false, null);
-		document.getElementById("underline-btn").classList.toggle("format-btn-active");
     } else if (command === "h1") {
         document.execCommand("formatBlock", false, "h1");
     } else if (command === "h2") {
