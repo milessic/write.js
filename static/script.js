@@ -700,7 +700,7 @@ function getAllLocalStorageItems() {
 	return data
 }
 
-function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false){
+function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, loadLastOpened=true){
 	if ( !validateUserConsent() ) { return }
 	let dataObject = JSON.parse(jsonObject);
 	if ( typeof(dataObject) != 'object' ){
@@ -721,7 +721,9 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false){
 		// set remote value
 		localStorage.setItem(key, value);
 	}
-	loadLastOpenedDocument();
+	if (loadLastOpened){
+		loadLastOpenedDocument();
+	}
 }
 
 
@@ -1444,4 +1446,12 @@ function countDocuments(){
 		}
 	}
 	return count;
+}
+
+function loadNotebookFromJson(json, excludeCurrentDocument=true, loadLastOpened=true){
+	jsonObject = decompressObject(json);
+	loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument, loadLastOpened);
+	if (loadLastOpened){
+		loadLastOpenedDocument(excludeCurrentDocument, loadLastOpened);
+	}
 }

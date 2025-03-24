@@ -159,7 +159,7 @@ async function createAccountModal(){
 
 async function sendNotebook(){
 	// first fetch notebook and open Merge Editor if version of remote is same or higher
-	loadNotebook(true)
+	loadNotebook(true, false);
 	// then send to the remote
 	return await sendNotebookForce()
 
@@ -194,7 +194,6 @@ async function fetchNotebook(){
 		createNewNotebookModal();
 		return 
 		}
-		console.warn("lol")
 		if ( resp.status === 401 ) {
 			window.location = "?logout=3";
 			return null;
@@ -214,19 +213,14 @@ async function fetchNotebook(){
 async function loadNotebookFromEvent(e){
 	await loadNotebook();
 }
-async function loadNotebook(excludeCurrentDocument=false){
+async function loadNotebook(excludeCurrentDocument=false, loadLastDocument=true){
 	const encodedNotebook = await fetchNotebook();
 	if ( encodedNotebook ){
-		loadNotebookFromJson(encodedNotebook, excludeCurrentDocument);
+		loadNotebookFromJson(encodedNotebook, excludeCurrentDocument, loadLastDocument);
 		return
 	}
 }
 
-function loadNotebookFromJson(json, excludeCurrentDocument=true){
-	jsonObject = decompressObject(json);
-	loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument)
-	loadLastOpenedDocument()
-}
 
 function createChangePasswordModal(){
 	// assign enter events
