@@ -108,7 +108,7 @@ document.getElementById("tb-btn-code").addEventListener("click", () => { formatT
 document.getElementById("tb-btn-bold").addEventListener("click", () => { formatText("bold") } );
 document.getElementById("tb-btn-italic").addEventListener("click", () => { formatText("italic") } );
 document.getElementById("tb-btn-underline").addEventListener("click", () => { formatText("underline") } );
-document.getElementById("tb-btn-link").addEventListener("click", () => { formatText("link") } );
+document.getElementById("tb-btn-link").addEventListener("click", () => { formatText("a") } );
 document.getElementById("tb-btn-softreturn").addEventListener("click", () => { formatText("softreturn") } );
 document.getElementById("tb-btn-inserttab").addEventListener("click", () => { formatText("inserttab") } );
 
