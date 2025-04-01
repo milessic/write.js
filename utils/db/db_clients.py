@@ -1,5 +1,6 @@
 from utils.db.sqlte3_connector import SqLite3Connector
 from utils.auth import queries as auth
+from utils.docs import queries as docs
 from fastapi import status, HTTPException
 
 
@@ -38,6 +39,11 @@ class DbClient():
                 self._execute(
                         query
                         )
+
+        for f in dir(docs):
+            if f.startswith("create_table"):
+                query = getattr(docs, f)
+                self._execute(query)
 
     # USERS - users
     def create_user(self, user_details:dict):
