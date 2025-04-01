@@ -48,6 +48,11 @@ class DbClient():
     # USERS - users
     def create_user(self, user_details:dict):
         self._execute(auth.create_user_record, *[user_details["username"], user_details["password"], user_details["email"]])
+        # create portfolio
+        user_id = u[3] if (u:=self.get_user_data(user_details["username"])) else None
+        if user_id is None:
+            raise HTTPException(500, "user creation error!")
+        self._execute(docs.portfolios["insert"], user_id, "[]")
 
     def delete_user(self, username:str, user_id:int):
         self._execute(auth.delete_user, username, user_id) 
@@ -130,6 +135,15 @@ class DbClient():
     def reset_failed_login_attempts(self, user_id:int) -> None:
         self._execute(auth.reset_failed_login_attempts, user_id)
 
+    # PORTFOLIO
+    def get_portfolio(self, user_id) -> str:
+        try:
+            return self._execute(docs.portfolios["select"], user_id)[0][0][0]
+        except:
+            return ""
+
+    def update_portfolio(self, user_id, portfolio_object):
+        self._execute(docs.portfolios["update"], portfolio_object, user_id)
 
     # THESE ARE TEMPORARY THINGS!!!!!!!
     # START

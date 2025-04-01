@@ -101,45 +101,46 @@ create_table_portfolios = {
 }
 
 documents = {
-        "insert": "INSERT INTO documents (doc_name, share_type_id) VALUES (?, ?);",
-        "update": "UPDATE documents SET doc_name = ?, share_type_id = ? WHERE doc_id = ?;",
-        "delete": "DELETE FROM documents WHERE doc_id = ?;"
+        "insert": {"sqlite3": "INSERT INTO documents (doc_name, share_type_id) VALUES (?, ?);"},
+        "update": {"sqlite3": "UPDATE documents SET doc_name = ?, share_type_id = ? WHERE doc_id = ?;"},
+        "delete": {"sqlite3": "DELETE FROM documents WHERE doc_id = ?;"}
 }
 share_types = {
-        "insert": "INSERT INTO share_types (share_type_description) VALUES (?);",
-        "update": "UPDATE share_types SET share_type_description = ? WHERE share_type_id = ?;",
-        "delete": "DELETE FROM share_types WHERE share_type_id = ?;"
+        "insert": {"sqlite3": "INSERT INTO share_types (share_type_description) VALUES (?);"},
+        "update": {"sqlite3": "UPDATE share_types SET share_type_description = ? WHERE share_type_id = ?;"},
+        "delete": {"sqlite3": "DELETE FROM share_types WHERE share_type_id = ?;"}
 },
 accesses = {
-        "insert": "INSERT INTO acesses (user_id, document_id, access_type_id) VALUES (?, ?, ?);",
-        "update": "UPDATE acesses SET access_type_id = ? WHERE user_id = ? AND document_id = ?;",
-        "delete": "DELETE FROM acesses WHERE user_id = ? AND document_id = ?;"
+        "insert": {"sqlite3": "INSERT INTO acesses (user_id, document_id, access_type_id) VALUES (?, ?, ?);"},
+        "update": {"sqlite3": "UPDATE acesses SET access_type_id = ? WHERE user_id = ? AND document_id = ?;"},
+        "delete": {"sqlite3": "DELETE FROM acesses WHERE user_id = ? AND document_id = ?;"}
 }
 
 access_types= {
-        "insert": "INSERT INTO acess_types (access_type_name) VALUES (?);",
-        "update": "UPDATE acess_types SET access_type_name = ? WHERE access_type_id = ?;",
-        "delete": "DELETE FROM acess_types WHERE access_type_id = ?;"
+        "insert": {"sqlite3": "INSERT INTO acess_types (access_type_name) VALUES (?);"},
+        "update": {"sqlite3": "UPDATE acess_types SET access_type_name = ? WHERE access_type_id = ?;"},
+        "delete": {"sqlite3": "DELETE FROM acess_types WHERE access_type_id = ?;"}
 },
 revisions = {
-        "insert": "INSERT INTO revisions (doc_version, content, doc_id) VALUES (?, ?, ?);",
-        "update": "UPDATE revisions SET doc_version = ?, content = ? WHERE revision_id = ?;",
-        "delete": "DELETE FROM revisions WHERE revision_id = ?;"
+        "insert": {"sqlite3": "INSERT INTO revisions (doc_version, content, doc_id) VALUES (?, ?, ?);"},
+        "update": {"sqlite3": "UPDATE revisions SET doc_version = ?, content = ? WHERE revision_id = ?;"},
+        "delete": {"sqlite3": "DELETE FROM revisions WHERE revision_id = ?;"}
 },
 
 chunks= {
-        "insert": "INSERT INTO chunks (revision_id, chunk_num, chunk_content) VALUES (?, ?, ?);",
-        "update": "UPDATE chunks SET chunk_content = ? WHERE revision_id = ? AND chunk_num = ?;",
-        "delete": "DELETE FROM chunks WHERE revision_id = ? AND chunk_num = ?;"
+        "insert": {"sqlite3": "INSERT INTO chunks (revision_id, chunk_num, chunk_content) VALUES (?, ?, ?);"},
+        "update": {"sqlite3": "UPDATE chunks SET chunk_content = ? WHERE revision_id = ? AND chunk_num = ?;"},
+        "delete": {"sqlite3": "DELETE FROM chunks WHERE revision_id = ? AND chunk_num = ?;"}
 }
 
 user_settings = {
-        "insert": "INSERT INTO user_settings (user_id, settings_object) VALUES (?, ?);",
-        "update": "UPDATE user_settings SET settings_object = ? WHERE user_id = ?;",
-        "delete": "DELETE FROM user_settings WHERE user_id = ?;"
+        "insert": {"sqlite3": "INSERT INTO user_settings (user_id, settings_object) VALUES (?, ?);"},
+        "update": {"sqlite3": "UPDATE user_settings SET settings_object = ? WHERE user_id = ?;"},
+        "delete": {"sqlite3": "DELETE FROM user_settings WHERE user_id = ?;"}
 }
 
 portfolios = {
-        "insert": "INSERT INTO portfolios (user_id, portfolio_object) VALUES (?, ?);",
-        "update": "UPDATE portfolios SET portfolio_object= ? WHERE user_id = ?;"
+        "select": {"sqlite3": "SELECT portfolio_object FROM portfolios WHERE user_id = ?"},
+        "insert": {"sqlite3": "INSERT INTO portfolios (user_id, portfolio_object) VALUES (?, ?);"},
+        "update": {"sqlite3": "UPDATE portfolios SET portfolio_object= ? WHERE user_id = ?;"}
 }
