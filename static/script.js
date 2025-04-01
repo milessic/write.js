@@ -148,6 +148,8 @@ function formatText(command) {
 		insertTab();
 	} else if ( command === "checkbox" ) {
 		insertCheckbox();
+	} else {
+		console.error("Not supported command - ", command);
 	}
 	focusEditor();
 	performAutoSave();
@@ -1454,4 +1456,12 @@ function loadNotebookFromJson(json, excludeCurrentDocument=true, loadLastOpened=
 	if (loadLastOpened){
 		loadLastOpenedDocument(excludeCurrentDocument, loadLastOpened);
 	}
+}
+
+function createFlashcardByQuerySelector(selector, text1="key",text2="value"){
+	const e = document.createElement("div");
+	e.classList.add("flashcard");
+	e.innerHTML = `<flashcard><key class='key'>${text1}</key><value class='val'>${text2}</value></flashcard>
+	`
+	document.querySelector(selector).appendChild(e)
 }
