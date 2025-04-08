@@ -162,3 +162,13 @@ def check_if_user_can_login(user_id:int, controller:Controller=c) -> None:
     if ( controller.db.get_failed_login_attempts(user_id, expires) > controller.MAX_LOGIN_ATTEMPTS ) :
         raise UserIsBlocked()
 
+def parse_auth_payload_and_return_login(auth_payload:dict) -> tuple[str,int]:
+    login = auth_payload.get("sub")
+    if login is None:
+        raise HTTPException(500, "Could not proceed credentials")
+    user = c.db.get_user_data(login)
+    if user is None:
+        raise HTTPException(500, "User error")
+    user_id = user[3]
+    return (str(login), int(user_id))
+
