@@ -3,6 +3,7 @@ from utils.auth import queries as auth
 from utils.docs import queries as docs
 from fastapi import status, HTTPException
 
+default_user_settings = """{"autosave":2,"formatting":1,"darkmode":0,"left_widget":0,"right_widget":0,"fullpage_content":0,"markdown_export":0,"flashcards_enabled":1,"default_doc":0,"keep_session":1,"session":[],"lang":"__"}"""
 
 class DbClient():
     def __init__(self, database_name:str, database_type:str="sqlite3", init_tables_at_start:bool=True):
@@ -53,6 +54,7 @@ class DbClient():
         if user_id is None:
             raise HTTPException(500, "user creation error!")
         self._execute(docs.portfolios["insert"], user_id, "[]")
+        self._execute(docs.user_settings["insert"], user_id, default_user_settings)
 
     def delete_user(self, username:str, user_id:int):
         self._execute(auth.delete_user, username, user_id) 
@@ -144,6 +146,58 @@ class DbClient():
 
     def update_portfolio(self, user_id, portfolio_object):
         self._execute(docs.portfolios["update"], portfolio_object, user_id)
+
+    # DOCUMENTS
+    def create_document(self, doc_name:str, share_type_id:int, content:str, dir:str, user_id:int):
+        self._execute(docs.documents["insert"], doc_name, share_type_id, content, dir, user_id)
+
+    def get_document_share_type(self, doc_id) -> int:
+        content = int(float(self._execute(docs.documents["select_share_type"], doc_id)[0][0]))
+        if isinstance(content, str):
+            return content
+        raise HTTPException(404, f"Err12339a Didn't find document with id {doc_id}")
+
+    def get_document_name(self, doc_id) -> str:
+        content = self._execute(docs.documents["select_name"], doc_id)[0][0]
+        if isinstance(content, str):
+            return content
+        raise HTTPException(404, f"Err12339b Didn't find document with id {doc_id}")
+
+    def get_document_content(self, doc_id) -> str:
+        content = self._execute(docs.documents["select_content"], doc_id)[0][0][0]
+        if content:
+            return content
+        raise HTTPException(404, f"Err12339c Didn't find document with id {doc_id}")
+
+    def get_documents_info_for_portfolio(self, user_id) -> str:
+        content = self._execute(docs.documents["select_for_portfolio"], user_id)[0]
+        if content:
+            return content
+        raise HTTPException(404, f"Err12339c Didn't find portfolio with id {user_id}")
+
+    def update_document(self, doc_id:str, *, share_type_id=None, doc_name=None, content=None, dir=None):
+        if share_type_id is not None:
+            self._execute(docs.documents["update_share_type_id"], share_type_id, doc_id)
+        if content is not None:
+            self._execute(docs.documents["update_content"], content, doc_id)
+        if dir is not None:
+            self._execute(docs.documents["update_dir"], content, dir)
+        if doc_name is not None:
+            self._execute(docs.documents["update_name"], doc_name, doc_id)
+            return
+        assert any([(share_type_id is not None),(doc_name is not None),(content is not None)]), "ERR84901, Both share_type_id and co_name are None!"
+
+    # --- this is handled by create_user()
+    # def crete_user_settings(self, username:str, settings_object:str):
+    #     user_id = self.get_user_id_from_username(username)
+    #     self._execute(docs.documents["insert"], user_id, settings_object)
+
+    def update_user_settings(self, *, user_id=None, username=None, settings_object:str):
+        if user_id is None:
+            assert username is not None, "ERR8014 username and user_id are Nones!"
+            user_id = self.get_user_id_from_username(username)
+        self._execute(docs.documents["insert"], user_id, settings_object)
+
 
     # THESE ARE TEMPORARY THINGS!!!!!!!
     # START
