@@ -1,5 +1,6 @@
 import json
 from utils.docs.models import PortfolioUpdateModel
+from utils.controller import controller as c
 
 class PortfolioDocument:
     def __init__(self, doc_id:str|int, doc_data:dict): 
@@ -8,7 +9,7 @@ class PortfolioDocument:
         self.dir:str = doc_data["dir"]
         self.name:str = doc_data["name"]
         self.created_at:str = doc_data["created_at"]
-        self.versions:list = doc_data["versions"]
+        #self.versions:list = doc_data["versions"]
 
     @property
     def doc_content(self) -> dict:
@@ -17,13 +18,18 @@ class PortfolioDocument:
                     "dir": self.dir,
                     "name": self.name,
                     "created_at": self.created_at,
-                    "versions": self.versions,
+                    #"versions": self.versions,
                 }
 
 
 class Portfolio:
-    def __init__(self, obj:dict):
+    def __init__(self, obj:dict, user_id=None):
         self.docs = {PortfolioDocument(k,v) for k,v in obj.items()}
+        self.user_id = user_id
+
+    def save(self):
+        assert self.user_id is not None,  "Err44938 user_id is None"
+        c.db.update_portfolio(self.user_id, self.return_as_json())
 
     def is_doc_exists(self, doc_id:int) -> bool:
         for d in self.docs:
@@ -31,8 +37,11 @@ class Portfolio:
                 return True
         return False
 
+    def return_as_dict(self):
+        return {d.doc_id:d.doc_content for d in self.docs}
+
     def return_as_json(self):
-        dict_data = {d.doc_id:d.doc_content for d in self.docs}
+        dict_data = self.return_as_dict()
         return json.dumps(dict_data)
 
     def add_new_document(self, update_obj:PortfolioUpdateModel):
@@ -44,7 +53,7 @@ class Portfolio:
                         "dir": update_obj.dir,
                         "name": update_obj.name,
                         "created_at": update_obj.created_at,
-                        "versions": update_obj.version,
+                        #"versions": update_obj.version,
                     }
                     )
                 )
@@ -58,7 +67,7 @@ class Portfolio:
                     d.dir = v
                 if (v:=update_obj.__dict__.get("name")):
                     d.name= v
-                d.versions.append(update_obj.version)
+                #d.versions.append(update_obj.version)
                 return
 
 
