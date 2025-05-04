@@ -297,7 +297,7 @@ body {
 #content-container,
 .editor-container {
 	position: absolute;
-	top: 30px;
+	top: 170px;
 	bottom: auto;
 	left: auto;
 	right: auto;
@@ -310,6 +310,7 @@ body {
 	display: block;
 }
 #content-container{
+	top: 30px;
 	padding: 50px;
 }
 
