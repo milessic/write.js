@@ -483,6 +483,66 @@ function loadLastOpenedDocument(){
 	}
 }
 
+function markdownToHtml(markdown) {
+    // Escape HTML to prevent injection
+    markdown = markdown.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // Code blocks
+    markdown = markdown.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+
+    // Inline code
+    markdown = markdown.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+    // Headers
+    markdown = markdown.replace(/^###### (.*$)/gim, '<h6>$1</h6>');
+    markdown = markdown.replace(/^##### (.*$)/gim, '<h5>$1</h5>');
+    markdown = markdown.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
+    markdown = markdown.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+    markdown = markdown.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+    markdown = markdown.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+
+    // Bold
+    markdown = markdown.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    markdown = markdown.replace(/__(.*?)__/g, '<strong>$1</strong>');
+
+    // Italic
+    markdown = markdown.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    markdown = markdown.replace(/_(.*?)_/g, '<em>$1</em>');
+
+    // Blockquotes
+    markdown = markdown.replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>');
+
+    // Lists
+    markdown = markdown.replace(/^\s*[-+*] (.*)$/gim, '<li>$1</li>');
+    markdown = markdown.replace(/^\s*\d+\.\s+(.*)$/gim, '<li>$1</li>');
+    markdown = markdown.replace(/(<li>.*<\/li>)/gim, '<ul>$1</ul>');
+    markdown = markdown.replace(/<ul>(\s*<li>.*<\/li>\s*)+<\/ul>/gim, match => {
+        return match.replace(/<ul>/g, '<ul>').replace(/<\/ul>/g, '</ul>');
+    });
+
+    // Images
+    markdown = markdown.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2" />');
+
+    // Links
+    markdown = markdown.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+    // Horizontal rule
+    markdown = markdown.replace(/^(-{3,}|\*{3,})$/gim, '<hr />');
+
+    // Paragraphs
+    markdown = markdown.replace(/^\s*(?!<h|<ul|<pre|<blockquote|<hr|<img|<p|<li|<code)(.+)$/gim, '<p>$1</p>');
+
+    // Line breaks
+    markdown = markdown.replace(/\n/g, '<br />');
+
+    return markdown;
+}
+
+function populateMarkdown(markdown){
+fillEditorWithHTML(markdownToHtml(markdown))
+
+}
+
 function exportMarkdown(){
 	try {
 		if (!validateDocumentName()){return}

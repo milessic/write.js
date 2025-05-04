@@ -36,7 +36,7 @@
 		width: 60rem !important;
 		max-width: 70% !important;
 	}
-	#content,
+	#content li,
 	#container li,
 	#editor li {
 		margin-left: 100px;
@@ -118,6 +118,9 @@
 	font-family: 'Cousine';
 }
 
+#content-container * {
+	margin: 1px;
+}
 .transitions-enabled *,
 .transitions-enabled {
 	transition: background-color 0.3s ease, color .1s ease-out, margin var(--transition-speed), padding var(--transition-speed);
@@ -294,7 +297,7 @@ body {
 #content-container,
 .editor-container {
 	position: absolute;
-	top: 170px;
+	top: 30px;
 	bottom: auto;
 	left: auto;
 	right: auto;
@@ -306,7 +309,13 @@ body {
 	height: initial;
 	display: block;
 }
+#content-container{
+	padding: 50px;
+}
 
+#content-container hr{
+	margin: 10px;
+}
 .content,
 .editor {
     width: 100%;
