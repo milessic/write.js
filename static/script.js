@@ -1491,8 +1491,7 @@ function createInsertHtmlModal(){
 	const html = `
 	<h1>Insert HTML into textarea below:</h1>
 	<div class="form-div">
-	<textarea id="htmltobeappended" style="width:100%;height: 40vh;">
-	</textarea>
+	<textarea id="htmltobeappended" style="width:100%;height: 40vh;"></textarea>
 	<hr>
 	<button id="insertinto-html">Replace current document with provided HTML</button>
 	<button id="append-html">Append HTML into document</button>
@@ -1509,8 +1508,7 @@ function createInsertMarkdownModal(){
 	const html = `
 	<h1>Insert Markdown into textarea below:</h1>
 	<div class="form-div">
-	<textarea id="markdowntobeappended" style="width:100%;height: 40vh;">
-	</textarea>
+	<textarea id="markdowntobeappended" style="width:100%;height: 40vh;"></textarea>
 	<hr>
 	<button id="insertinto-markdown">Replace current document with provided Markdown</button>
 	<button id="append-markdown">Append Markdown into document</button>
