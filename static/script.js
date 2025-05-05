@@ -91,6 +91,8 @@ document.getElementById("import-doc-btn").addEventListener("click", importDocume
 document.getElementById("toggle-format-btn").addEventListener("click", toggleFormattingBar);
 document.getElementById("spellcheck-btn").addEventListener("click", toggleSpellCheck);
 document.getElementById("toggle-autosave-btn").addEventListener("click", toggleAutosave);
+document.getElementById("insert-or-append-html").addEventListener("click", createInsertHtmlModal);
+document.getElementById("insert-or-append-markdown").addEventListener("click", createInsertMarkdownModal);
 document.getElementById("generate-md").addEventListener("click", exportMarkdown);
 document.getElementById("copy-md").addEventListener("click", copyMarkdown);
 document.getElementById("generate-pdf").addEventListener("click", generatePDF);
@@ -215,21 +217,29 @@ function exportDocument(){
     	link.click();
 		createNotification(`Document '${link.download}' saved on the machine!`, 'info')
 	} catch ( err ) {
-		informError("Could not export file as HTML!\n\nPlease report a bug", err)
+		informError("C,.markdown,.MD,mdould not export file as HTML!\n\nPlease report a bug", err)
 	}
 }
 
 function importDocument(){
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".html";
+    input.accept = ".html,.markdown,.MD,md";
     input.onchange = (e) => {
         const file = e.target.files[0];
         if (file) {
+        	const fileType = file.type;
             const reader = new FileReader();
             reader.onload = (event) => {
 				fillDocName(file.name);
-				const documentContent = stripImportToOnlyContent(event.target.result)
+				let documentContent = stripImportToOnlyContent(event.target.result)
+				// Markdown
+				if ( fileType === "text/markdown"){
+					if (window.confirm("Load Markdown as HTML?")){
+						documentContent = markdownToHtml(documentContent);
+
+					}
+				}
                 fillEditorWithHTML(documentContent);
             };
             reader.readAsText(file);
@@ -242,7 +252,12 @@ function fillDocName(name){
 	document.getElementById("doc-name").value = name;
 	updateTitle();
 }
-function fillEditorWithHTML(html){
+function fillEditorWithHTML(html, append=false){
+	if (append){
+    	document.getElementById("editor").innerHTML = `${editor.innerHTML}<br>${html}`;
+		window.scrollTo(0, 1000);
+		return
+	}
     document.getElementById("editor").innerHTML = html;
 	window.scrollTo(0, 1000);
 }
@@ -482,6 +497,12 @@ function loadLastOpenedDocument(){
 	saveAsLastOpenedDocument(null);
 	}
 }
+
+function markdownToHtml(markdown) {
+	const converter = new showdown.Converter();
+	return converter.makeHtml(markdown);
+}
+
 
 function exportMarkdown(){
 	try {
@@ -1464,4 +1485,44 @@ function createFlashcardByQuerySelector(selector, text1="key",text2="value"){
 	e.innerHTML = `<flashcard><key class='key'>${text1}</key><value class='val'>${text2}</value></flashcard>
 	`
 	document.querySelector(selector).appendChild(e)
+}
+
+function createInsertHtmlModal(){
+	const html = `
+	<h1>Insert HTML into textarea below:</h1>
+	<div class="form-div">
+	<textarea id="htmltobeappended" style="width:100%;height: 40vh;"></textarea>
+	<hr>
+	<button id="insertinto-html">Replace current document with provided HTML</button>
+	<button id="append-html">Append HTML into document</button>
+	</div>
+	`
+	createModal("Insert HTML", html);
+	document.getElementById("insertinto-html").addEventListener("click",() => { fillEditorWithHTML(document.getElementById(`htmltobeappended`).value, false);closeAllModals() })
+	document.getElementById("append-html").addEventListener("click",() => { fillEditorWithHTML(document.getElementById(`htmltobeappended`).value, true) ; closeAllModals()})
+}
+
+
+
+function createInsertMarkdownModal(){
+	const html = `
+	<h1>Insert Markdown into textarea below:</h1>
+	<div class="form-div">
+	<textarea id="markdowntobeappended" style="width:100%;height: 40vh;"></textarea>
+	<hr>
+	<button id="insertinto-markdown">Replace current document with provided Markdown</button>
+	<button id="append-markdown">Append Markdown into document</button>
+	</div>
+	`
+	createModal("Insert Markdown", html);
+	document.getElementById("insertinto-markdown").addEventListener("click",() => { 
+		const generatedHtml = markdownToHtml(document.getElementById(`markdowntobeappended`).value);
+		fillEditorWithHTML(generatedHtml, false);
+		closeAllModals() 
+	})
+	document.getElementById("append-markdown").addEventListener("click",() => { 
+		const generatedHtml = markdownToHtml(document.getElementById(`markdowntobeappended`).value);
+		fillEditorWithHTML(generatedHtml, true);
+		closeAllModals()
+	})
 }
