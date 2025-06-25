@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Optional
 from fastapi.responses import RedirectResponse
 
 from fastapi import (
@@ -6,6 +6,7 @@ from fastapi import (
     HTTPException,
     status,
     Form,
+    Query,
     Response,
     APIRouter,
     Request,
@@ -28,29 +29,41 @@ from utils.templates.mailing import render_mail
 from utils.mailing.mailing import send_mail
 from utils.localizations.localizations import localizations
 
-
 router = APIRouter()
 
 
 @router.post("/register")
-async def register(request: Request, register_model: RegisterModel):
+async def register(
+    request: Request,
+    register_model: RegisterModel,
+):
     data_as_dict = json_to_dict(register_model)
     username = data_as_dict.get("username")
     password = data_as_dict.get("password")
     email = data_as_dict.get("email")
     errors = []
     # username
-    if err := validate_username(username, c.db):
+    if err := validate_username(
+        username,
+        c.db,
+    ):
         errors.append(generate_username_response(err, request))
     # email
-    if err := validate_email(email, c.db):
+    if err := validate_email(
+        email,
+        c.db,
+    ):
         print("errors", errors)
         errors.append(generate_email_response(err, request))
     # password
-    if err := validate_password(password):
+    if err := validate_password(
+        password,
+    ):
         errors.append(generate_password_response(err, request))
     print(errors)
-    if len(errors):
+    if len(
+        errors,
+    ):
         raise HTTPException(status_code=400, detail=errors)
     # hash password
     data_as_dict["password"] = hash_password(password)
@@ -62,28 +75,56 @@ async def register(request: Request, register_model: RegisterModel):
 
 
 @router.get("/user/logout")
-async def logout(request: Request, response: Response):
-    response = RedirectResponse("/?logout=1", status_code=status.HTTP_303_SEE_OTHER)
+async def logout(
+    request: Request,
+    response: Response,
+    writejs_non_web_client: Optional[str] = Query(default="0"),
+):
+    redirect_url_base = handle_client_url_for_redirect(
+        writejs_non_web_client_header=writejs_non_web_client
+    )
+    print(
+        "REDIRECT URL for user logout ",
+        "<",
+        redirect_url_base,
+        ">",
+        "raw",
+        "<",
+        writejs_non_web_client,
+        ">",
+    )
+    response = RedirectResponse(
+        redirect_url_base + "/?logout=1", status_code=status.HTTP_303_SEE_OTHER
+    )
     response.delete_cookie(key="access_token")
     token = request.cookies.get("access_token")
     response.delete_cookie(key="access_token")
     if token is not None:
         if user_id := c.db.get_user_id_from_username(
-            decode_token(token).get("sub", "")
+            decode_token(token).get("sub", ""),
         ):
             c.db.set_access_token_as_inactive_for_user(user_id, token)
     return response
 
 
 @router.get("/user/logout/all")
-async def logout_from_all(request: Request, response: Response):
-    response = RedirectResponse("/?logout=all", status_code=status.HTTP_303_SEE_OTHER)
+async def logout_from_all(
+    request: Request,
+    response: Response,
+    writejs_non_web_client: Optional[str] = Query(default="0"),
+):
+    redirect_url_base = handle_client_url_for_redirect(
+        writejs_non_web_client_header=writejs_non_web_client
+    )
+    response = RedirectResponse(
+        redirect_url_base + "/?logout=all", status_code=status.HTTP_303_SEE_OTHER
+    )
     response.delete_cookie(key="access_token")
     token = request.cookies.get("access_token")
     response.delete_cookie(key="access_token")
     if token is not None:
         if user_id := c.db.get_user_id_from_username(
-            decode_token(token).get("sub", "")
+            decode_token(token).get("sub", ""),
         ):
             c.db.kill_all_access_tokens_for_user(user_id)
     return response
@@ -105,7 +146,10 @@ async def login(
     check_if_user_can_login(user_id=user_id)  # raises exception if they cannot login
 
     # check if password is correct
-    if not unhash_password(form_data.password, user_data[2]):
+    if not unhash_password(
+        form_data.password,
+        user_data[2],
+    ):
         # add new failed attempt
         c.db.create_failed_login_record(
             user_id=user_id,
@@ -126,9 +170,15 @@ async def get_refresh_token_api(
     request: Request,
     response: Response,
     payload: dict = Depends(get_access_token_or_return_to_homepage),
+    writejs_non_web_client: Optional[str] = Header(default="0"),
 ):
-    if payload.get("return_to_homepage"):
-        return RedirectResponse("/", status.HTTP_303_SEE_OTHER)
+    redirect_url_base = handle_client_url_for_redirect(
+        writejs_non_web_client_header=writejs_non_web_client
+    )
+    if payload.get(
+        "return_to_homepage",
+    ):
+        return RedirectResponse(redirect_url_base + "/", status.HTTP_303_SEE_OTHER)
     login = payload.get("sub")
     user_id = c.db.get_user_id_from_username(login)
 
@@ -173,11 +223,14 @@ async def get_refresh_token_api(
             "access_token_expires": access_token_expires,
             "refresh_token_expires": refresh_token_expires,
         }
-    return RedirectResponse("/?logout=1", 303)
+    return RedirectResponse(redirect_url_base + "/?logout=1", 303)
 
 
 @router.get("/me")
-async def get_my_details(request: Request, payload: dict = Depends(get_access_token)):
+async def get_my_details(
+    request: Request,
+    payload: dict = Depends(get_access_token),
+):
     login = payload.get("sub")
     if login is None:
         raise HTTPException(500, "Could not proceed credentials")
@@ -200,7 +253,11 @@ async def submit_login_form(
     response: Response,
     username: str = Form(),
     password: str = Form(),
+    writejs_non_web_client: Optional[str] = Form(default="0"),
 ):
+    redirect_url_base = handle_client_url_for_redirect(
+        writejs_non_web_client_header=writejs_non_web_client
+    )
     # perform login
     login_form = OAuth2PasswordRequestForm(username=username, password=password)
     try:
@@ -209,23 +266,25 @@ async def submit_login_form(
     # Handle login errors
     except InvalidUsernameOrEmail:
         return RedirectResponse(
-            "/?status=failure&message=invaliduseroremail",
+            redirect_url_base + "/?status=failure&message=invaliduseroremail",
             status_code=status.HTTP_303_SEE_OTHER,
         )
     except InvalidPassword:
         return RedirectResponse(
-            f"/?status=failure&message=invalidpassword&login={username}",
+            redirect_url_base
+            + f"/?status=failure&message=invalidpassword&login={username}",
             status_code=status.HTTP_303_SEE_OTHER,
         )
     except UserIsBlocked:
         return RedirectResponse(
-            f"/?status=failure&message=userisblocked&login={username}",
+            redirect_url_base
+            + f"/?status=failure&message=userisblocked&login={username}",
             status_code=status.HTTP_303_SEE_OTHER,
         )
     except Exception as err:
         print(str(err))
         return RedirectResponse(
-            f"/?status=unknownfailure",
+            redirect_url_base + f"/?status=unknownfailure",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
@@ -234,7 +293,7 @@ async def submit_login_form(
     refresh_token = login_resp.get("refresh_token")
     if access_token and refresh_token:
         response = RedirectResponse(
-            "/?msg=loginsuccess",
+            redirect_url_base + "/?msg=loginsuccess",
             status_code=status.HTTP_303_SEE_OTHER,
         )
         # TODO make this a function
@@ -265,6 +324,9 @@ async def submit_register_form(
     email: str = Form(),
     password: str = Form(),
 ):
+    redirect_url_base = handle_client_url_for_redirect(
+        writejs_non_web_client_header=writejs_non_web_client
+    )
     register_model = RegisterModel(
         **{"username": username, "email": email, "password": password}
     )
@@ -273,44 +335,63 @@ async def submit_register_form(
     except Exception as e:
         print("ERR on submit" + str(type(e)) + str(e))
         errors = ""
-        if "Username" in str(e):
+        if "Username" in str(
+            e,
+        ):
             errors += "username=alreadytaken&"
-        if "Email" in str(e):
+        if "Email" in str(
+            e,
+        ):
             errors += "email=alreadytaken&"
-        if "Password" in str(e):
+        if "Password" in str(
+            e,
+        ):
             errors += "password=invalid"
         if errors:
             errors = errors.removesuffix("&")
             return RedirectResponse(
-                f"/register?status=failure&{errors}",
+                redirect_url_base + f"/register?status=failure&{errors}",
                 status_code=status.HTTP_303_SEE_OTHER,
             )
         return RedirectResponse(
-            f"/register?status=unknownfailure", status_code=status.HTTP_303_SEE_OTHER
+            redirect_url_base + f"/register?status=unknownfailure",
+            status_code=status.HTTP_303_SEE_OTHER,
         )
     if register_response.get("message") == "registered":
         return RedirectResponse(
-            f"/?status=success&username={username}",
+            redirect_url_base + f"/?status=success&username={username}",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
 
 @router.get("/logout", include_in_schema=False)
-async def ui_logout(request: Request, response: Response):
-    response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+async def ui_logout(
+    request: Request,
+    response: Response,
+    writejs_non_web_client: Optional[str] = Form(default="0"),
+):
+    redirect_url_base = handle_client_url_for_redirect(
+        writejs_non_web_client_header=writejs_non_web_client
+    )
+    print("REDIRECT URL for logout ", redirect_url_base)
+    response = RedirectResponse(
+        redirect_url_base + "/", status_code=status.HTTP_303_SEE_OTHER
+    )
     token = request.cookies.get("access_token")
     response.delete_cookie(key="access_token")
     response.delete_cookie(key="refresh_token")
     if token is not None:
         if user_id := c.db.get_user_id_from_username(
-            decode_token(token).get("sub", "")
+            decode_token(token).get("sub", ""),
         ):
             c.db.set_access_token_as_inactive_for_user(user_id, token)
     return response
 
 
 @router.get("/token")
-async def get_token_expiry_date(request: Request):
+async def get_token_expiry_date(
+    request: Request,
+):
     token_data = decode_token(request.cookies.get("access_token"))
     return {"access_token_expires": token_data.get("exp")}
 
@@ -326,17 +407,19 @@ async def update_password(
         (login := token_data.get("sub")) is not None
         and (user_data := c.db.get_user_data(login)) is not None
         and (new_password := json_to_dict(payload).get("new_password")) is not None
-        and (old_password := json_to_dict(payload).get("old_password")) is not None
+        and (old_password := json_to_dict(payload).get("old_password")) is not None,
     ):
         # validate old password
         old_password_from_db = user_data[2]
-        if not (unhash_password(old_password, old_password_from_db)):
+        if not (unhash_password(old_password, old_password_from_db),):
             raise HTTPException(
                 401,
                 c.locales.get_with_request("txt_error_cannot_change_password", request),
             )
         # validate new password
-        if errors := validate_password(new_password):
+        if errors := validate_password(
+            new_password,
+        ):
             raise HTTPException(400, generate_password_response(errors, request))
         # update password
         user_id = user_data[3]
@@ -348,12 +431,24 @@ async def update_password(
 
 
 @router.get("/user/password/reset/{user_id}/{guid}")
-async def reset_password(user_id: int, guid: str, request: Request):
+async def reset_password(
+    user_id: int,
+    guid: str,
+    request: Request,
+    writejs_non_web_client: Optional[str] = Header(default="0"),
+):
+    redirect_url_base = handle_client_url_for_redirect(
+        writejs_non_web_client_header=writejs_non_web_client
+    )
     # check if guid exsits in db and is active
     if not c.db.check_if_guid_is_valuable_and_not_expired_for_password_reset(
-        guid, get_epoch_now(), user_id
+        guid,
+        get_epoch_now(),
+        user_id,
     ):
-        return RedirectResponse("/?status=failure&message=forgotpassworderror", 303)
+        return RedirectResponse(
+            redirect_url_base + "/?status=failure&message=forgotpassworderror", 303
+        )
     # generate new password
     new_password = generate_random_password()
     hashed_password = hash_password(new_password)
@@ -365,11 +460,14 @@ async def reset_password(user_id: int, guid: str, request: Request):
     c.db.deactivate_forgotten_password_records_for_user(user_id)
 
     # return login page with new password as query to make frontend handle this
-    return RedirectResponse(f"/?newpassword={new_password}", 303)
+    return RedirectResponse(redirect_url_base + f"/?newpassword={new_password}", 303)
 
 
 @router.post("/forgot-password")
-async def forgot_password_api(request: Request, payload: ForgotPasswordModel):
+async def forgot_password_api(
+    request: Request,
+    payload: ForgotPasswordModel,
+):
     # get user data
     payload_dict = json_to_dict(payload)
     if (login := payload_dict.get("login")) is None:
@@ -438,7 +536,10 @@ async def delete_user(
         )
     username, password, user_id = user_data[0], user_data[2], user_data[3]
 
-    if is_user_sure and unhash_password(data.get("old_password"), password):
+    if is_user_sure and unhash_password(
+        data.get("old_password"),
+        password,
+    ):
         # delete user
         c.db.delete_user(username, user_id)
         # delete notebooks and all other things

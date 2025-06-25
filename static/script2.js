@@ -27,6 +27,7 @@ function createAccountLoginModal(username=null){
 				<label for="password">Password</label>
 				<input id="password" name="password" type="password" placeholder="******" required>
 			</div>
+			<input type="hidden" name="writejs_non_web_client" value="${client_url}" />
 			<button type="submit">Login</button>
 		</form>
 		<hr>

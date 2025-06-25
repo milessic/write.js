@@ -29,9 +29,11 @@ async function createAccountModal(){
 		<h3>Logout</h3>
 		<div class="double-button-div">
 			<form method="GET" action="${url}/api/auth/user/logout/">
+				<input type="hidden" name="writejs_non_web_client" value="${client_url}" />
 				<button type="submit">Logout</button>
 			</form>
 			<form method="GET" action="${url}/api/auth/user/logout/all">
+				<input type="hidden" name="writejs_non_web_client" value="${client_url}" />
 				<button type="submit">Logout from All devices</button>
 			</form>
 			</div>
@@ -105,7 +107,7 @@ async function createAccountModal(){
 			const resp = await fetch(url + "/api/auth/user/password/update", {
 				method: "POST",
 				body: JSON.stringify(payload),
-				headers: {"Content-Type": "application/json"},
+				headers: {"Content-Type": "application/json", "WriteJSNonWebClient": client_url},
 				credentials: "include"
 			})
 			const respText = await resp.json();
@@ -138,7 +140,7 @@ async function createAccountModal(){
 			const resp = await fetch(url + "/api/auth/delete", {
 				method: "POST",
 				body: JSON.stringify(payload),
-				headers: {"Content-Type": "application/json"},
+				headers: {"Content-Type": "application/json", "WriteJSNonWebClient": client_url},
 				credentials: "include"
 			})
 			if ( resp.status === 204 ){

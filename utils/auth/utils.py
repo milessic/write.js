@@ -3,15 +3,13 @@ import uuid
 from typing import Annotated
 import json
 import jwt
-from typing import Optional
 from datetime import timedelta, datetime, UTC
-from fastapi.responses import RedirectResponse
 from fastapi import HTTPException, Cookie, Depends, Header, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from utils.controller import controller as c
 from utils.controller import Controller
 from string import ascii_lowercase, ascii_uppercase, ascii_letters
-from random import SystemRandom, choice
+from random import SystemRandom
 from pydantic import BaseModel
 
 from utils.auth.exceptions import *
@@ -233,3 +231,11 @@ def check_if_user_can_login(user_id: int, controller: Controller = c) -> None:
         > controller.MAX_LOGIN_ATTEMPTS
     ):
         raise UserIsBlocked()
+
+
+def handle_client_url_for_redirect(writejs_non_web_client_header: str | None) -> str:
+    if writejs_non_web_client_header is None:
+        print("writejs_non_web_client_header is NONE")
+    if writejs_non_web_client_header == "0" or writejs_non_web_client_header is None:
+        return ""
+    return writejs_non_web_client_header
