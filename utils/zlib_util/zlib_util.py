@@ -20,4 +20,3 @@ def decompress(compressed: str) -> str:
         return decompressed
     except Exception as e:
         raise HTTPException(500, f"zlib error: {e}")
-

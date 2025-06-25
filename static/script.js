@@ -751,7 +751,7 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 
 
 function purgeLocalStorage(doConfirm=true){
-	if ( !doConfirm ){ 
+	if ( web_env && !doConfirm ){ 
 		localStorage.clear();
 	} else if ( confirm("Do you really want to delete everything from Browser?") ){
 		localStorage.clear();
@@ -1280,7 +1280,7 @@ async function sendLoginRequest(){
 			"username": loginEl.value,
 			"password": passwEl.value
 		}
-		const resp = fetch("/api/auth/login/submit", {
+		const resp = fetch(url + "/api/auth/login/submit", {
 			"method": "POST",
 			"headers": {"Content-Type": "application/x-www-form-urlencoded"},
 			"body": new URLSearchParams(payload)

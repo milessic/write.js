@@ -9,7 +9,7 @@
 	<meta name="description" content="Write.js: A satile app for creating, editing, and managing documents. Save locally with localStorage, sync to a remote database after login, and easily import/export in HTML or Markdown formats. Streamline your writing workflow!">
 	<meta name="keywords" content="document editor, online writing app, save documents, localStorage, remote database, document management, export HTML, import HTML, export Markdown, import Markdown, writing tool, document synchronization, write and save, markdown editor, HTML editor">
 		<title>Write.JS</title>
-    <link rel="stylesheet" href="static/styles.css?60">
+    <link rel="stylesheet" href="static/styles.css?61">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
@@ -22,7 +22,7 @@
         	<div class="top-bar-root">
 				<div class="top-bar top-bar-left" deadclass="top-bar-padding">
         	    		<input type="text" id="doc-name" placeholder="Document Name">
-        	    		<button id="save-btn">Save</button>
+						<button id="save-btn">Save {{ is_authenticated }}</button>
         	    		<button id="export-btn">Export</button>
 					<!--
         	    	<button id="share-btn">Share</button>
@@ -100,12 +100,33 @@
 	<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 	-->
 	<script src="https://cdn.jsdelivr.net/npm/showdown/dist/showdown.min.js"></script>
-	<script src="static/pako.js?60"></script>
-    <script src="static/script.js?60"></script>
+	<script src="static/pako.js?61"></script>
+	<script>
+		{% if web_env %}
+			const web_env = true
+			const url = "" // empty for web, setup for desktop client
+		{% else %}
+			const url = "{{ server_url or 'http://localhost:8000'}}" // empty for web, setup for desktop client
+			const web_env = false
+			const not_web_env_el = document.createElement("div");
+			not_web_env_el.style = `position: fixed;
+			z-index: 100;
+			background: #f991ec;
+			padding: 3px 8px;
+			border-radius: 4px;
+        	right: 10px;
+        	top: 180px;
+        	left: auto;
+        	bottom: auto;`
+			not_web_env_el.innerText = "Non web environment"
+			document.body.prepend(not_web_env_el);
+		{% endif %}
+	</script>
+    <script src="static/script.js?61"></script>
 	{% if is_authenticated %}
-    	<script src="static/script3.js?60"></script>
+    	<script src="static/script3.js?61"></script>
 	{% else %}
-    	<script src="static/script2.js?60"></script>
+    	<script src="static/script2.js?61"></script>
 	{% endif %}
 </body>
 </html>

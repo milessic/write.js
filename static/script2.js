@@ -2,22 +2,23 @@
  * This script file is for not-logged user
  */
 
-if ( userLoggedIn === true ) {
+if ( userLoggedIn === true && web_env ) {
 	purgeLocalStorage(false);
 	createLoginExpiredNotification();
+} else {
+	document.getElementById("login-btn").addEventListener('click', () => {createAccountLoginModal()});
+	window.addEventListener("load", () => {
+		if ( !userLoggedIn ){
+			const html = `<p><strong>Write.JS</strong> is much better with account!</p><br><button onclick="createRegisterModal();closeAllNotifications();">Create your own right now!</button>  or  <button onclick="createAccountLoginModalWithNotificationClose()">Login to your existing account</button>`
+			createNotification(html, "info", null, true);
+		}
+	});
 }
-document.getElementById("login-btn").addEventListener('click', () => {createAccountLoginModal()});
-window.addEventListener("load", () => {
-	if ( !userLoggedIn ){
-		const html = `<p><strong>Write.JS</strong> is much better with account!</p><br><button onclick="createRegisterModal();closeAllNotifications();">Create your own right now!</button>  or  <button onclick="createAccountLoginModalWithNotificationClose()">Login to your existing account</button>`
-		createNotification(html, "info", null, true);
-	}
-})
 function createAccountLoginModal(username=null){
 	closeAllModals();
 	const html = `
 	<div class="form-div">
-		<form method="POST" action="/api/auth/login/submit">
+		<form method="POST" action="${url}/api/auth/login/submit">
 			<div class="form-field-label">
 				<label for="login">Login</label>
 				<input type="text" name="username" id="login" placeholder="Username or E-mail address" required>
@@ -96,7 +97,7 @@ async function sendRegisterRequest(){
 		userEl.value = "";
 		emaiEl.value = "";
 		passEl.value = "";
-		const resp = await fetch("/api/auth/register",
+		const resp = await fetch(url + "/api/auth/register",
 			{
 				method: "POST",
 				body: JSON.stringify(payload),
@@ -125,7 +126,7 @@ async function sendForgottenPasswordRequest(){
 		const payload = {
 			login: val
 		}
-		const resp = await fetch("/api/auth/forgot-password",
+		const resp = await fetch(url + "/api/auth/forgot-password",
 			{
 				method: "POST",
 				body: JSON.stringify(payload),

@@ -17,18 +17,23 @@ EXAMPLES:
 
 -this will ommit DROP protection
 --- python3 sqlite3_connector.py my_database.db 'DROP TABLE my_table' --godmode"""
-class Help(Exception):
-    def __init__(self, *args,**kwargs):
-        super().__init__(self, *args,**kwargs)
 
-class SqLite3Connector():
-    def __init__(self,database:str|Path, safe_mode:bool=True, as_program:bool=False):
+
+class Help(Exception):
+    def __init__(self, *args, **kwargs):
+        super().__init__(self, *args, **kwargs)
+
+
+class SqLite3Connector:
+    def __init__(
+        self, database: str | Path, safe_mode: bool = True, as_program: bool = False
+    ):
         self.as_program = as_program
         self.safe_mode = safe_mode
         self.database = database
         self.verify_db_is_not_empty()
 
-    def execute(self, query:str, *args):
+    def execute(self, query: str, *args):
         # split queries
         results = []
         query = query.removesuffix(";")
@@ -36,7 +41,7 @@ class SqLite3Connector():
         arguments = args
         if self.as_program and len(queries) != 1 and len(args):
             print("Parameterized queries are supported only for first query!")
-        for i,q in enumerate(queries):
+        for i, q in enumerate(queries):
             if i > 0:
                 arguments = []
             if self.safe_mode and "DROP" in q.upper():
@@ -61,7 +66,9 @@ class SqLite3Connector():
             db = sqlite3.connect(self.database)
             return db
         except Exception as e:
-            raise AssertionError(f"Could not connect to db due to: {type(e).__name__}: {e}")
+            raise AssertionError(
+                f"Could not connect to db due to: {type(e).__name__}: {e}"
+            )
 
     def verify_db_is_not_empty(self):
         query = f'SELECT name FROM sqlite_master WHERE type="table"'
@@ -69,19 +76,25 @@ class SqLite3Connector():
         if not len(result):
             raise AssertionError("Db was empty! {result}")
 
+
 if __name__ == "__main__":
     import sys
+
     try:
         if "-h" in sys.argv or "--h" in sys.argv:
             raise Help
         t1 = time()
-        r = SqLite3Connector(sys.argv[1], safe_mode=False if "--godmode" in sys.argv else True, as_program=True).execute(sys.argv[2])
+        r = SqLite3Connector(
+            sys.argv[1],
+            safe_mode=False if "--godmode" in sys.argv else True,
+            as_program=True,
+        ).execute(sys.argv[2])
         t2 = round((time() - t1) * 1000, 2)
     except (IndexError, Help) as e:
         print(help_text)
         exit()
     print(f"=== {len(r)} quries exectued in {t2} miliseconds")
-    for i,q in enumerate(r):
+    for i, q in enumerate(r):
         if i > 0:
             print()
         print(q)

@@ -1,4 +1,8 @@
-from localizations import get_all_translation_keys, get_all_translation_files, get_localization_dir
+from localizations import (
+    get_all_translation_keys,
+    get_all_translation_files,
+    get_localization_dir,
+)
 import os
 import json
 import sys
@@ -8,7 +12,7 @@ help_text = """usage:
 - python3 generate_new_translation_file     <- program will ask you for keycode"""
 if __name__ == "__main__":
     # set lang code
-    if "-k" in sys.argv and (potential_key_code := sys.argv[sys.argv.index("-k")+1]):
+    if "-k" in sys.argv and (potential_key_code := sys.argv[sys.argv.index("-k") + 1]):
         key_code = potential_key_code
     else:
         key_code = input("provide key code: >> ")
@@ -26,18 +30,6 @@ if __name__ == "__main__":
     # create
     fdir = os.path.join(get_localization_dir(), fname)
     keys = get_all_translation_keys()
-    empty_locs = dict(
-            zip(
-                keys,
-                ["" for _ in range(len(keys))]
-                )
-            )
+    empty_locs = dict(zip(keys, ["" for _ in range(len(keys))]))
     print(empty_locs)
     json.dump(empty_locs, open(fdir, "w"), indent=4)
-
-
-    
-
-
-
-

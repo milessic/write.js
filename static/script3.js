@@ -28,10 +28,10 @@ async function createAccountModal(){
 	<div class="form-div">
 		<h3>Logout</h3>
 		<div class="double-button-div">
-			<form method="GET" action="/api/auth/user/logout/">
+			<form method="GET" action="${url}/api/auth/user/logout/">
 				<button type="submit">Logout</button>
 			</form>
-			<form method="GET" action="/api/auth/user/logout/all">
+			<form method="GET" action="${url}/api/auth/user/logout/all">
 				<button type="submit">Logout from All devices</button>
 			</form>
 			</div>
@@ -75,7 +75,7 @@ async function createAccountModal(){
 	// set events
 	// Who am i
 	 try{
-		const resp = await fetch("/api/auth/me", 
+		const resp = await fetch(url + "/api/auth/me", 
 			{
 				method: "GET",
 				credentials: "include"
@@ -102,7 +102,7 @@ async function createAccountModal(){
 				new_password: newEl.value
 			}
 			// send request
-			const resp = await fetch("/api/auth/user/password/update", {
+			const resp = await fetch(url + "/api/auth/user/password/update", {
 				method: "POST",
 				body: JSON.stringify(payload),
 				headers: {"Content-Type": "application/json"},
@@ -129,22 +129,19 @@ async function createAccountModal(){
 		if ( !showConfirm("Do you really want to delete your account and ALL your documents?")){ return }
 		const oldEl = document.getElementById("password");
 		const newEl = document.getElementById("are_you_sure");
-		console.log(newEl)
 		try {
-			console.log(newEl)
 			const payload = {
 				old_password: oldEl.value,
 				are_you_sure: newEl.value
 			}
 			// send request
-			const resp = await fetch("/api/auth/delete", {
+			const resp = await fetch(url + "/api/auth/delete", {
 				method: "POST",
 				body: JSON.stringify(payload),
 				headers: {"Content-Type": "application/json"},
 				credentials: "include"
 			})
 			if ( resp.status === 204 ){
-				console.log(1)
 				window.location = "?logout=4"
 				return
 			}
@@ -167,7 +164,7 @@ async function sendNotebook(){
 async function sendNotebookForce(){
 	try {
 		const payload = compressObject(JSON.stringify(getAllLocalStorageItems()));
-		const resp = await fetch("/api/notebooks/notebook", {
+		const resp = await fetch(url + "/api/notebooks/notebook", {
 			method: "POST",
 			headers: {"Content-Type": "application/json"},
 			body: JSON.stringify({"json_content": payload}),
@@ -186,7 +183,7 @@ async function sendNotebookForce(){
 async function fetchNotebook(){
 	try {
 		let resp;
-			resp = await fetch("/api/notebooks/notebook", {
+			resp = await fetch(url + "/api/notebooks/notebook", {
 				method: "GET",
 				credentials: "include"
 			})
@@ -195,8 +192,12 @@ async function fetchNotebook(){
 		return 
 		}
 		if ( resp.status === 401 ) {
-			window.location = "?logout=3";
-			return null;
+			if ( web_env ) {
+				window.location = "?logout=3";
+				return null;
+			} else {
+				informError("Cannot fetch the notebook due to lack of authorization!")
+			}
 		} else if ( resp.status != 200 ){
 			throw new Error(resp);
 		}
@@ -235,7 +236,7 @@ function createChangePasswordModal(){
 
 async function fetchUserData(){
 	try{
-		const resp = await fetch("/api/auth/me", {
+		const resp = await fetch(url + "/api/auth/me", {
 			"method": "GET",
 			"credentials": "include"
 		});
@@ -245,45 +246,47 @@ async function fetchUserData(){
 		}
 		return respData
 	} catch (err) {
-		window.alert(err)
+		window.alert("UserData" + err)
 	}
 
 }
 
 async function startRefreshTokenProcess(){
 	try {
-		const resp = await fetch("/api/auth/token", {
+		const resp = await fetch(url + "/api/auth/token", {
 			"method": "GET",
 			"credentials": "include"
 		});
 		const respData = await resp.json();
 		startRefreshTokenTimer(respData);
 	} catch (err) {
-		window.alert(err)
+		window.alert("StartRefreshToken" + err)
 	}
 }
 
 async function refreshTokens(){
+	console.log('QWE refresh tokens start');
 	try {
-		const resp = await fetch("/api/auth/token/refresh", {
+		const resp = await fetch(url + "/api/auth/token/refresh", {
 			"method": "POST",
 			"credentials": "include"
 		});
-		if ( resp.redirected) {
+		if ( web_env && resp.redirected) {
 			window.location.href = resp.url;  // Manually follow the redirect
 			return;
 		}
 		const respData = await resp.json();
 		if ( resp.status === 400 ){ // scenario for to fast refresh TODO - make it better
-
 			return
 		} else if ( resp.status != 200 ){
 			createNotification(`Cannot read refresh tokens!`, "error", notificationTimeoutLong)
-			throw new Error("Refresh Token response is not 200!");
+			if ( web_env) {
+				throw new Error("Refresh Token response is not 200!");
+			}
 		}
 		startRefreshTokenTimer(respData);
 	} catch (err) {
-		window.alert(err)
+		window.alert("RefreshToken" + err)
 		setTimeout( 
 			() => { refreshTokens() },
 			refreshTokensTimeout
@@ -296,6 +299,7 @@ async function refreshTokens(){
 function startRefreshTokenTimer(respObj){
 		const accessTokenExpiresMs = respObj["access_token_expires"]* 1000
 		const sleepTime = ( accessTokenExpiresMs - Date.now() ) - 60000
+		console.log(sleepTime)
 		setTimeout( 
 			() => { refreshTokens() },
 			sleepTime
@@ -319,7 +323,7 @@ async function changePassword(){
 		}
 		oldPasswordElement.classList.remove("error");
 		newPasswordElement.classList.remove("error");
-		const resp = await fetch("/api/auth/user/password/update", {
+		const resp = await fetch(url + "/api/auth/user/password/update", {
 			"method": "POST",
 			"credentials": "include",
 			"headers": {"Content-Type": "application/json"},

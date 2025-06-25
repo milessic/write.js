@@ -1,7 +1,6 @@
 # CREATE TABLE#!S
 create_table_documents = {
-"sqlite3": 
-    """
+    "sqlite3": """
     CREATE TABLE IF NOT EXISTS documents (
         doc_id INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE,
         doc_name TEXT NOT NULL,
@@ -13,8 +12,7 @@ create_table_documents = {
 }
 
 create_table_revisions = {
-"sqlite3": 
-    """
+    "sqlite3": """
     CREATE TABLE IF NOT EXISTS revisions (
         revision_id INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE,
         doc_version INTEGER NOT NULL,
@@ -27,8 +25,7 @@ create_table_revisions = {
 }
 
 create_table_share_types = {
-"sqlite3": 
-    """
+    "sqlite3": """
 
     CREATE TABLE IF NOT EXISTS share_types (
         share_type_id INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE,
@@ -38,8 +35,7 @@ create_table_share_types = {
 }
 
 create_table_accesses = {
-"sqlite3": 
-    """
+    "sqlite3": """
 
     CREATE TABLE IF NOT EXISTS accesses (
         user_id INTEGER NOT NULL,
@@ -53,8 +49,7 @@ create_table_accesses = {
 }
 
 create_table_access_types = {
-"sqlite3": 
-    """
+    "sqlite3": """
     CREATE TABLE IF NOT EXISTS access_types (
         access_type_id INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE,
         access_type_name TEXT NOT NULL
@@ -65,8 +60,7 @@ create_table_access_types = {
 }
 
 create_table_chunks = {
-"sqlite3": 
-    """
+    "sqlite3": """
     CREATE TABLE IF NOT EXISTS chunks (
         revision_id INTEGER NOT NULL,
         chunk_num INTEGER NOT NULL,
@@ -78,8 +72,7 @@ create_table_chunks = {
 }
 
 create_table_user_settings = {
-"sqlite3": 
-    """
+    "sqlite3": """
     CREATE TABLE IF NOT EXISTS user_settings (
         user_id INTEGER NOT NULL,
         settings_object TEXT NOT NULL,
@@ -90,8 +83,7 @@ create_table_user_settings = {
 }
 
 create_table_portfolios = {
-"sqlite3": 
-    """
+    "sqlite3": """
     CREATE TABLE IF NOT EXISTS portfolios(
         user_id INTEGER NOT NULL,
         portfolio_object TEXT NOT NULL,
@@ -101,45 +93,51 @@ create_table_portfolios = {
 }
 
 documents = {
-        "insert": "INSERT INTO documents (doc_name, share_type_id) VALUES (?, ?);",
-        "update": "UPDATE documents SET doc_name = ?, share_type_id = ? WHERE doc_id = ?;",
-        "delete": "DELETE FROM documents WHERE doc_id = ?;"
+    "insert": "INSERT INTO documents (doc_name, share_type_id) VALUES (?, ?);",
+    "update": "UPDATE documents SET doc_name = ?, share_type_id = ? WHERE doc_id = ?;",
+    "delete": "DELETE FROM documents WHERE doc_id = ?;",
 }
-share_types = {
+share_types = (
+    {
         "insert": "INSERT INTO share_types (share_type_description) VALUES (?);",
         "update": "UPDATE share_types SET share_type_description = ? WHERE share_type_id = ?;",
-        "delete": "DELETE FROM share_types WHERE share_type_id = ?;"
-},
+        "delete": "DELETE FROM share_types WHERE share_type_id = ?;",
+    },
+)
 accesses = {
-        "insert": "INSERT INTO acesses (user_id, document_id, access_type_id) VALUES (?, ?, ?);",
-        "update": "UPDATE acesses SET access_type_id = ? WHERE user_id = ? AND document_id = ?;",
-        "delete": "DELETE FROM acesses WHERE user_id = ? AND document_id = ?;"
+    "insert": "INSERT INTO acesses (user_id, document_id, access_type_id) VALUES (?, ?, ?);",
+    "update": "UPDATE acesses SET access_type_id = ? WHERE user_id = ? AND document_id = ?;",
+    "delete": "DELETE FROM acesses WHERE user_id = ? AND document_id = ?;",
 }
 
-access_types= {
+access_types = (
+    {
         "insert": "INSERT INTO acess_types (access_type_name) VALUES (?);",
         "update": "UPDATE acess_types SET access_type_name = ? WHERE access_type_id = ?;",
-        "delete": "DELETE FROM acess_types WHERE access_type_id = ?;"
-},
-revisions = {
+        "delete": "DELETE FROM acess_types WHERE access_type_id = ?;",
+    },
+)
+revisions = (
+    {
         "insert": "INSERT INTO revisions (doc_version, content, doc_id) VALUES (?, ?, ?);",
         "update": "UPDATE revisions SET doc_version = ?, content = ? WHERE revision_id = ?;",
-        "delete": "DELETE FROM revisions WHERE revision_id = ?;"
-},
+        "delete": "DELETE FROM revisions WHERE revision_id = ?;",
+    },
+)
 
-chunks= {
-        "insert": "INSERT INTO chunks (revision_id, chunk_num, chunk_content) VALUES (?, ?, ?);",
-        "update": "UPDATE chunks SET chunk_content = ? WHERE revision_id = ? AND chunk_num = ?;",
-        "delete": "DELETE FROM chunks WHERE revision_id = ? AND chunk_num = ?;"
+chunks = {
+    "insert": "INSERT INTO chunks (revision_id, chunk_num, chunk_content) VALUES (?, ?, ?);",
+    "update": "UPDATE chunks SET chunk_content = ? WHERE revision_id = ? AND chunk_num = ?;",
+    "delete": "DELETE FROM chunks WHERE revision_id = ? AND chunk_num = ?;",
 }
 
 user_settings = {
-        "insert": "INSERT INTO user_settings (user_id, settings_object) VALUES (?, ?);",
-        "update": "UPDATE user_settings SET settings_object = ? WHERE user_id = ?;",
-        "delete": "DELETE FROM user_settings WHERE user_id = ?;"
+    "insert": "INSERT INTO user_settings (user_id, settings_object) VALUES (?, ?);",
+    "update": "UPDATE user_settings SET settings_object = ? WHERE user_id = ?;",
+    "delete": "DELETE FROM user_settings WHERE user_id = ?;",
 }
 
 portfolios = {
-        "insert": "INSERT INTO portfolios (user_id, portfolio_object) VALUES (?, ?);",
-        "update": "UPDATE portfolios SET portfolio_object= ? WHERE user_id = ?;"
+    "insert": "INSERT INTO portfolios (user_id, portfolio_object) VALUES (?, ?);",
+    "update": "UPDATE portfolios SET portfolio_object= ? WHERE user_id = ?;",
 }

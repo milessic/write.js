@@ -23,7 +23,3 @@ def test_all_localizations_have_the_same_keys():
                     missing[lang] = []
                 missing[lang].append(k)
         assert missing == {}
-
-
-
-

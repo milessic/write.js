@@ -5,13 +5,19 @@ except ImportError:
     exit(1)
 try:
     from getpass import getpass
+
     def password_input(msg):
         return getpass(msg)
+
 except ImportError:
-    getpass_not_working = input("Do you agree to use visible password input? [Y]es / [N]o\n> ")
-    if getpass_not_working.lower().startswith('y'):
+    getpass_not_working = input(
+        "Do you agree to use visible password input? [Y]es / [N]o\n> "
+    )
+    if getpass_not_working.lower().startswith("y"):
+
         def password_input(msg):
             return input(msg)
+
     else:
         print("Then first import getpass! pip -m install getpass")
 try:
@@ -30,10 +36,11 @@ username = input("username:\n> ")
 password = password_input("password:\n> ")
 
 
-
 if True:
     # login, get token
-    resp_login = post(url + token_endpoint, data={"username": username, "password":password})
+    resp_login = post(
+        url + token_endpoint, data={"username": username, "password": password}
+    )
     print("=== TOKEN RESPONSE")
     print(f"status: {resp_login.status_code}")
     print("response:")
@@ -47,11 +54,11 @@ if True:
     print(resp_info.json())
 
     print("\n")
-    resp_info2 = get(url + user_info_endpoint, headers={"Bearer": resp_login.json().get("access_token")} )
+    resp_info2 = get(
+        url + user_info_endpoint,
+        headers={"Bearer": resp_login.json().get("access_token")},
+    )
     print("=== USER INFO RESPONSE with auth- should be 200")
     print(f"status: {resp_info2.status_code}")
     print(f"response:")
     print(resp_info2.json())
-
-
-

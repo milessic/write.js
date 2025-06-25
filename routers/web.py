@@ -13,7 +13,7 @@ STATIC_DIR = Path(__file__).parent.parent / "static"
 
 
 @router.get("/", response_class=FileResponse)
-async def read_index(request:Request):
+async def read_index(request: Request):
     """Serve the index.html file."""
     try:
         verify_access_token(request.cookies.get("access_token"), request)
@@ -23,12 +23,13 @@ async def read_index(request:Request):
             raise
         is_authenticated = False
 
-    return templates.TemplateResponse("index.html", {"request": request, "is_authenticated": is_authenticated})
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "is_authenticated": is_authenticated, "web_env": True},
+    )
+
 
 @router.get("/favicon.svg", response_class=FileResponse)
 async def read_favicon():
     """Serve the favicon.svg file."""
     return STATIC_DIR / "favicon.svg"
-
-
-
