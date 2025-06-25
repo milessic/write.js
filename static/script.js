@@ -84,8 +84,9 @@ document.getElementById("new-doc-btn").addEventListener('click', createNewDocume
 document.getElementById('editor-container').addEventListener('click', focusEditor);
 document.getElementById("dark-mode-btn").addEventListener("click", toggleDarkMode);
 document.getElementById("hamburger-menu").addEventListener("click", toggleMenu);
-document.getElementById("export-btn").addEventListener("click", exportDocument);
+// document.getElementById("export-btn").addEventListener("click", exportDocument);
 document.getElementById("save-btn").addEventListener("click", saveDocumentToLocalStorage);
+document.getElementById("open-btn").addEventListener("click", openDocumentFromLocalStorage);
 document.getElementById("open-doc-btn").addEventListener("click", openDocumentFromLocalStorage);
 document.getElementById("import-doc-btn").addEventListener("click", importDocument);
 document.getElementById("toggle-format-btn").addEventListener("click", toggleFormattingBar);

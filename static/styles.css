@@ -30,6 +30,9 @@
     	overflow-x: unset;
 	}
 	#export-btn-menu {
+		/*display: none;*/
+	}
+	#export-btn {
 		display: none;
 	}
 	#doc-name {
@@ -70,6 +73,9 @@
 		max-width: 300px;
 	}
 	#export-btn {
+		display: none;
+	}
+	#open-btn {
 		display: none;
 	}
 	#menu-modal {
