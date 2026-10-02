@@ -44,7 +44,7 @@ let isLowWidthViewport = false;
 handleWidth();
 
 // Setup elements
-const editorObject = document.getElementById("editor");
+let editorObject = document.getElementById("editor"); // the focused editor; workspace.js moves it between split editors
 const documentNameObject = document.getElementById("doc-name");
 
 
@@ -72,11 +72,11 @@ window.addEventListener("load", function() {
 // Setup Events
 window.addEventListener("resize", handleWidth);
 window.addEventListener("keydown", handleMobileScrollEvent);
-document.getElementById("editor-container").addEventListener('keydown', (e) => {performAutoSave();changeTabBehavior(e);handleCheckboxEnter(e)});
-document.getElementById("editor-container").addEventListener('click', updateCaretPosition);
-document.getElementById("editor-container").addEventListener('keyup', (e) => {updateCaretPosition();handleWordCounter()});
+document.getElementById("editor-grid").addEventListener('keydown', (e) => {performAutoSave();changeTabBehavior(e);handleCheckboxEnter(e)});
+document.getElementById("editor-grid").addEventListener('click', updateCaretPosition);
+document.getElementById("editor-grid").addEventListener('keyup', (e) => {updateCaretPosition();handleWordCounter()});
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
-document.getElementById('editor-container').addEventListener('click', focusEditor);
+document.getElementById('editor-grid').addEventListener('click', focusEditor);
 document.getElementById("theme-btn").addEventListener("click", createThemeModal);
 document.addEventListener("selectionchange", () => {
 	const selection = window.getSelection();
@@ -87,8 +87,9 @@ document.addEventListener("selectionchange", () => {
 document.getElementById("hamburger-menu").addEventListener("click", toggleMenu);
 // document.getElementById("export-btn").addEventListener("click", exportDocument);
 document.getElementById("save-btn").addEventListener("click", saveDocumentToLocalStorage);
-document.getElementById("open-btn").addEventListener("click", openDocumentFromLocalStorage);
-document.getElementById("open-doc-btn").addEventListener("click", openDocumentFromLocalStorage);
+// workspace.js loads after this file, so its functions are looked up on click
+document.getElementById("open-btn").addEventListener("click", () => toggleFileTree());
+document.getElementById("open-doc-btn").addEventListener("click", () => openDocumentFromLocalStorage());
 document.getElementById("import-doc-btn").addEventListener("click", importDocument);
 document.getElementById("toggle-format-btn").addEventListener("click", toggleFormattingBar);
 document.getElementById("spellcheck-btn").addEventListener("click", toggleSpellCheck);
@@ -235,7 +236,6 @@ function importDocument(){
         	const fileType = file.type;
             const reader = new FileReader();
             reader.onload = (event) => {
-				fillDocName(file.name);
 				let documentContent = stripImportToOnlyContent(event.target.result)
 				// Markdown
 				if ( fileType === "text/markdown"){
@@ -244,7 +244,7 @@ function importDocument(){
 
 					}
 				}
-                fillEditorWithHTML(documentContent);
+                openNewTab(file.name, documentContent, true);
             };
             reader.readAsText(file);
         }
@@ -262,7 +262,7 @@ function fillEditorWithHTML(html, append=false){
 		return
 	}
     document.getElementById("editor").innerHTML = html;
-	document.getElementById("workspace").scrollTo(0, 1000);
+	document.getElementById("editor").closest(".pane-scroll").scrollTo(0, 1000);
 }
 function insertHTMLAtLastCaret(html){
 	// execCommand keeps the insertion on the browser's undo stack, so Ctrl/Cmd+Z reverts it
@@ -297,10 +297,10 @@ function toggleFormattingBar(){
 }
 
 function toggleSpellCheck(){
-    const editor = document.getElementById("editor");
 	const spellCheckBtn = document.getElementById("spellcheck-btn");
-    editor.spellcheck = !editor.spellcheck;
-	spellCheckBtn.innerText = editor.spellcheck ? "Toggle Spell Check (It's on)" : "Toggle Spell Check (It's off)";
+	const spellcheck = !document.getElementById("editor").spellcheck;
+	document.querySelectorAll("#editor-grid .editor").forEach((editor) => { editor.spellcheck = spellcheck });
+	spellCheckBtn.innerText = spellcheck ? "Toggle Spell Check (It's on)" : "Toggle Spell Check (It's off)";
 
 }
 
@@ -313,10 +313,10 @@ function getDocumentName(){
 	return documentNameObject.value;
 }
 
-function openDocumentFromLocalStorage(){
+function openDocumentFromLocalStorage(search=""){
 	if ( !validateUserConsent() ) { return } 
-	let names = getDocumentNamesFromLocalStorage();
-	createOpenDocumentModal(names);
+	let names = getDocumentNamesFromLocalStorage().sort((a, b) => a.localeCompare(b));
+	createOpenDocumentModal(names, search);
 }
 
 function createModal(title, html){
@@ -338,25 +338,53 @@ function createModal(title, html){
 	document.body.appendChild(modalContainer)
 	modalContainer.show();
 }
-function createOpenDocumentModal(documentNames){
-	let namesElements = "";
-	if (! documentNames.length ){
-		namesElements += `<p class="muted">You don't have any saved documents yet. Just create one :)</p>`
-	}
-	for ( let name of documentNames ){
-		namesElements += `<div class="row"><button class="btn grow" onclick="loadDocumentFromLocalStorage('${name}');closeAllModals()">${name}</button><button class="btn danger small" onclick="deleteDocumentInLocalStorage('${name}');">Delete</button></div>\n`
-	}
+function createOpenDocumentModal(documentNames, search=""){
 	createModal("Open document", `
 	<div class="toolbar" id="search-container">
-		<label class="grow">Search<input id="modal-search" placeholder="Type to begin search" type="text"></label>
+		<label class="grow">Search<input id="modal-search" placeholder="Type to begin search" type="search" autocomplete="off"></label>
 		<button class="btn" id="clear-modal-search">Clear</button>
 	</div>
-	<div id="menu-modal" class="doc-list stack">
-		${namesElements}
-	</div>`);
-	setEventForFilteringChildrenNodes("#modal-search", "#menu-modal .row", "#clear-modal-search")
-
-
+	<div id="menu-modal" class="doc-list stack"></div>`);
+	const list = document.getElementById("menu-modal");
+	const searchInput = document.getElementById("modal-search");
+	if ( !documentNames.length ){
+		list.innerHTML = `<p class="muted">You don't have any saved documents yet. Just create one :)</p>`
+	}
+	// built with DOM nodes: document names may contain quotes or HTML
+	for ( const name of documentNames ){
+		const row = document.createElement("div");
+		row.className = "row";
+		const openBtn = document.createElement("button");
+		openBtn.className = "btn grow";
+		openBtn.textContent = name;
+		openBtn.addEventListener("click", () => { closeAllModals(); loadDocumentFromLocalStorage(name) });
+		const deleteBtn = document.createElement("button");
+		deleteBtn.className = "btn danger small";
+		deleteBtn.textContent = "Delete";
+		deleteBtn.addEventListener("click", () => {
+			const searchValue = searchInput.value;
+			deleteDocumentInLocalStorage(name);
+			// the delete closes the modal; reopen it with the same search
+			if ( !checkIfDocumentNameExists(name) ) { openDocumentFromLocalStorage(searchValue) }
+		});
+		row.append(openBtn, deleteBtn);
+		list.append(row);
+	}
+	const filter = () => {
+		const term = searchInput.value.trim().toLowerCase();
+		list.querySelectorAll(".row").forEach((row) => {
+			row.classList.toggle("burried", !row.firstChild.textContent.toLowerCase().includes(term));
+		});
+	};
+	searchInput.value = search;
+	filter();
+	searchInput.addEventListener("input", filter);
+	searchInput.addEventListener("keydown", (e) => {
+		// Enter opens the first match
+		if ( e.key === "Enter" ){ list.querySelector(".row:not(.burried) .btn.grow")?.click() }
+	});
+	document.getElementById("clear-modal-search").addEventListener("click", () => { searchInput.value = ""; filter(); searchInput.focus() });
+	searchInput.focus();
 }
 
 function saveDocumentToLocalStorage(){
@@ -370,6 +398,7 @@ function saveDocumentToLocalStorage(){
 		setUserLoggedIn(null);
 		setUserConsent(userConsent);
 		saveAsLastOpenedDocument(documentNameValue);
+		markActiveTabSaved();
 	} catch ( err ) {
 		informError("Could not save document!", err)
 	}
@@ -408,6 +437,7 @@ function performAutoSave(){
 		if (!content){return}
 		localStorage.setItem(docPrefix + name, content);
 		saveAsLastOpenedDocument(name)
+		markActiveTabSaved();
 		if ( typeof handleRemoteAutosave !== "undefined" ){
 			handleRemoteAutosave();
 		}
@@ -460,27 +490,23 @@ function getDocumentTextFromLocalStorage(name){
 }
 
 function loadDocumentFromLocalStorage(name){
+	// opens the document in its tab (workspace.js)
 	if ( !validateUserConsent() ) { return }
-	let text = getDocumentTextFromLocalStorage(name);
-	if ( !text ){return false}
-	fillEditorWithHTML(text);
-	fillDocName(name);
-	saveAsLastOpenedDocument();
-	handleWordCounter();
-	return true
+	return openDocumentInTab(name);
 }
 
 function deleteDocumentInLocalStorage(name){
 	if ( !validateUserConsent() ) { return }
 	if ( showConfirm(`Delete document '${name}' ?`) ){
 		localStorage.removeItem(docPrefix + name);
-		if ( sendNotebook !== 'undefined' ) {
+		closeTabsOfDocument(name);
+		refreshFileTree();
+		if ( typeof sendNotebook !== 'undefined' ) {
 			if ( remoteAutoSaveEnabled || showConfirm("Do you want to send updated Notebook to the cloud?") ){
 				sendNotebookForce();
 			}
 		}
 		closeAllModals();
-		openDocumentFromLocalStorage();
 	}
 }
 
@@ -623,12 +649,11 @@ function createNewDocument(){
 	let previousAutosave = autosaveEnabled;
 	try {
 		autosaveEnabled = false;
-		fillDocName("");
-		fillEditorWithHTML("")
-		handleWordCounter();
+		openNewTab();
 	} catch(error){
 		createNotification("There were some problems with new document creation!", "error")
-	autosaveEnabled = previousAutosave;
+	} finally {
+		autosaveEnabled = previousAutosave;
 	}
 }
 
@@ -775,6 +800,7 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 		// set remote value
 		localStorage.setItem(key, value);
 	}
+	refreshFileTree();
 	if (loadLastOpened){
 		loadLastOpenedDocument();
 	}
@@ -788,6 +814,7 @@ function purgeLocalStorage(doConfirm=true){
 		localStorage.clear();
 	}
 	setUserLoggedIn(userLoggedIn);
+	refreshFileTree();
 }
 
 function handleWidth(){
@@ -1185,20 +1212,26 @@ function saveBackup(){
 }
 
 function assignUniqueId(elementType, prefix=null){
+	// unique in the whole page, as split view shows several documents at once
+	let base, n;
 	if ( elementType === "checkbox" ){
-		return `editor-checkbox-${document.querySelectorAll('#editor input[type="checkbox"]').length + 1}`
+		base = "editor-checkbox";
+		n = document.querySelectorAll('#editor input[type="checkbox"]').length + 1;
+	} else if ( prefix ) {
+		base = `editor-${prefix}${elementType}`;
+		n = document.querySelectorAll(`#editor ${elementType}`).length + 1;
 	} else {
-		let prefixText = ""
-		if ( prefix ) { 
-			prefixText = `${prefix}-`; 
-			return `editor-${prefix}${elementType}-${document.querySelectorAll(`#editor ${elementType}`).length + 1}`
-		}
+		return
 	}
+	while ( document.getElementById(`${base}-${n}`) ) { n++ }
+	return `${base}-${n}`
 }
 
 
 function assignCheckboxValue(checkboxId){
-	const element = document.getElementById(checkboxId)
+	// documents shown side by side can share checkbox ids: prefer the clicked one
+	const clicked = window.event?.target;
+	const element = clicked?.id === checkboxId ? clicked : document.getElementById(checkboxId)
 	element.checked ? element.setAttribute("checked", "") : element.removeAttribute("checked");
 	performAutoSave();
 }

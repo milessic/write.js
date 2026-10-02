@@ -15,7 +15,7 @@
 	{% if themes_available %}
 	<script src="{{ themes_url }}/js/themes.js?v={{ themes_version }}" data-persist="false" data-restore="false"></script>
 	{% endif %}
-    <link rel="stylesheet" href="static/styles.css?70">
+    <link rel="stylesheet" href="static/styles.css?73">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
@@ -25,7 +25,7 @@
 	<header class="topbar">
 		<input type="text" id="doc-name" placeholder="Document Name" aria-label="Document name">
 		<button class="btn primary" id="save-btn">Save</button>
-		<button class="btn" id="open-btn">Open</button>
+		<button class="btn" id="open-btn" title="Show or hide the documents">Documents</button>
 		<div class="topbar-end">
 			<span id="word-counter-container" class="muted small"></span>
 			<div class="hamburger-menu" id="hamburger-menu">
@@ -68,48 +68,86 @@
 		</div>
 	</header>
 
-	<!-- the workspace scrolls, so the formatting toolbar can stick to its top in every theme -->
+	<!-- documents tree + editor area; both panels dock by drag-and-drop or right click (workspace.js) -->
+	<div class="app-body" id="app-body">
+	<aside class="file-tree" id="file-tree" aria-label="Documents">
+		<div class="file-tree-head" id="file-tree-head" draggable="true" title="Drag to the other side, or right-click for options">
+			<span class="file-tree-title">Documents</span>
+			<button class="small-btn" id="file-tree-new" title="New document" aria-label="New document">+</button>
+			<button class="small-btn" id="file-tree-hide" title="Hide documents" aria-label="Hide documents">✕</button>
+		</div>
+		<input type="search" id="file-tree-search" placeholder="Filter documents" aria-label="Filter documents">
+		<ul class="tree" id="file-tree-list" role="tree" aria-label="Saved documents"></ul>
+	</aside>
+	<div class="file-tree-scrim" id="file-tree-scrim"></div>
+	<div class="editor-area">
+	<div class="tab-bar" id="tab-bar">
+		<span class="tab-grip" id="tab-grip" draggable="true" title="Drag to the top or bottom, or right-click for options" aria-hidden="true">⋮⋮</span>
+		<div class="tabs" id="tabs" role="tablist" aria-label="Opened documents"></div>
+		<button class="small-btn split-btn" id="split-btn" title="Split editor (Ctrl+\)" aria-label="Split editor">◫</button>
+	</div>
+	<!-- the formatting toolbar acts on the focused editor -->
 	<div class="workspace" id="workspace">
-		<main class="container">
-			<div class="editor-column">
-				<!-- .format-bar only makes the strip sticky; .toolbar-bar is the themed frame -->
-				<div class="format-bar" id="sub-bar">
-					<div class="toolbar-bar" role="toolbar" aria-label="Formatting">
-						<button id="tb-btn-h1" class="small-btn" title="Heading 1" aria-label="Heading 1">h1</button>
-						<button id="tb-btn-h2" class="small-btn" title="Heading 2" aria-label="Heading 2">h2</button>
-						<button id="tb-btn-text" class="small-btn" title="Normal text" aria-label="Normal text">Text</button>
-						<span class="toolbar-sep" aria-hidden="true"></span>
-						<button id="tb-btn-bl" class="small-btn" title="Bulleted list" aria-label="Bulleted list">*</button>
-						<button id="tb-btn-nl" class="small-btn" title="Numbered list" aria-label="Numbered list">1,2,3</button>
-						<button id="tb-btn-cl" class="small-btn" title="Checklist" aria-label="Checklist"><span id="checkbox-icon-container"></span></button>
-						<span class="toolbar-sep" aria-hidden="true"></span>
-						<button id="tb-btn-hr" class="small-btn" title="Horizontal rule" aria-label="Horizontal rule">---</button>
-						<button id="tb-btn-code" class="small-btn" title="Code block" aria-label="Code block">code</button>
-						<span class="toolbar-sep" aria-hidden="true"></span>
-						<button id="tb-btn-bold" class="small-btn" title="Bold" aria-label="Bold"><b>B</b></button>
-						<button id="tb-btn-italic" class="small-btn" title="Italic" aria-label="Italic"><i>I</i></button>
-						<button id="tb-btn-underline" class="small-btn" title="Underline" aria-label="Underline"><u>U</u></button>
-						<span class="toolbar-sep" aria-hidden="true"></span>
-						<button id="tb-btn-link" class="small-btn" title="Insert link" aria-label="Insert link">Insert Link</button>
-						<span class="toolbar-sep mobile-btn" aria-hidden="true"></span>
-						<button id="tb-btn-softreturn" class="small-btn mobile-btn" title="Soft return" aria-label="Soft return">Soft Return</button>
-						<button id="tb-btn-inserttab" class="small-btn mobile-btn" title="Insert tab" aria-label="Insert tab">Insert Tab</button>
+		<div class="format-bar" id="sub-bar">
+			<div class="toolbar-bar" role="toolbar" aria-label="Formatting">
+				<button id="tb-btn-h1" class="small-btn" title="Heading 1" aria-label="Heading 1">h1</button>
+				<button id="tb-btn-h2" class="small-btn" title="Heading 2" aria-label="Heading 2">h2</button>
+				<button id="tb-btn-text" class="small-btn" title="Normal text" aria-label="Normal text">Text</button>
+				<span class="toolbar-sep" aria-hidden="true"></span>
+				<button id="tb-btn-bl" class="small-btn" title="Bulleted list" aria-label="Bulleted list">*</button>
+				<button id="tb-btn-nl" class="small-btn" title="Numbered list" aria-label="Numbered list">1,2,3</button>
+				<button id="tb-btn-cl" class="small-btn" title="Checklist" aria-label="Checklist"><span id="checkbox-icon-container"></span></button>
+				<span class="toolbar-sep" aria-hidden="true"></span>
+				<button id="tb-btn-hr" class="small-btn" title="Horizontal rule" aria-label="Horizontal rule">---</button>
+				<button id="tb-btn-code" class="small-btn" title="Code block" aria-label="Code block">code</button>
+				<span class="toolbar-sep" aria-hidden="true"></span>
+				<button id="tb-btn-bold" class="small-btn" title="Bold" aria-label="Bold"><b>B</b></button>
+				<button id="tb-btn-italic" class="small-btn" title="Italic" aria-label="Italic"><i>I</i></button>
+				<button id="tb-btn-underline" class="small-btn" title="Underline" aria-label="Underline"><u>U</u></button>
+				<span class="toolbar-sep" aria-hidden="true"></span>
+				<button id="tb-btn-link" class="small-btn" title="Insert link" aria-label="Insert link">Insert Link</button>
+				<span class="toolbar-sep mobile-btn" aria-hidden="true"></span>
+				<button id="tb-btn-softreturn" class="small-btn mobile-btn" title="Soft return" aria-label="Soft return">Soft Return</button>
+				<button id="tb-btn-inserttab" class="small-btn mobile-btn" title="Insert tab" aria-label="Insert tab">Insert Tab</button>
+			</div>
+		</div>
+		<!-- split view: up to 4 editors (workspace.js); the focused one's editor has id="editor" -->
+		<main class="editor-grid" id="editor-grid" data-count="1">
+			<div class="editor-pane focused" role="region" aria-label="Editor 1">
+				<div class="pane-head" draggable="true" title="Drag onto another editor to swap them">
+					<span class="pane-number"></span>
+					<span class="pane-name"></span>
+					<button class="pane-close" title="Close editor" aria-label="Close editor"></button>
+				</div>
+				<div class="pane-scroll">
+					<div class="container">
+						<div class="editor-column">
+							<section class="card editor-card">
+								<div contenteditable="true" id="editor" class="editor"></div>
+							</section>
+						</div>
 					</div>
 				</div>
-				<!-- Editor Area -->
-				<section id="editor-container" class="card editor-card">
-					<div contenteditable="true" id="editor" class="editor"></div>
-				</section>
 			</div>
 		</main>
 	</div>
+	</div>
+	</div>
+	<div class="dock-zones" id="dock-zones" aria-hidden="true">
+		<div class="dock-zone" data-side="left" data-for="tree"><span>Dock documents left</span></div>
+		<div class="dock-zone" data-side="right" data-for="tree"><span>Dock documents right</span></div>
+		<div class="dock-zone" data-side="top" data-for="tabs"><span>Dock opened documents at the top</span></div>
+		<div class="dock-zone" data-side="bottom" data-for="tabs"><span>Dock opened documents at the bottom</span></div>
+	</div>
+	<div class="menu context-menu" id="context-menu" role="menu"></div>
 	<div id="notifications-container"></div>
 	<!--
 	<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 	-->
 	<script src="https://cdn.jsdelivr.net/npm/showdown/dist/showdown.min.js"></script>
 	<script src="static/pako.js?64"></script>
-    <script src="static/script.js?70"></script>
+    <script src="static/script.js?73"></script>
+    <script src="static/workspace.js?73"></script>
 	{% if is_authenticated %}
     	<script src="static/script3.js?66"></script>
 	{% else %}
