@@ -25,7 +25,11 @@ def registry() -> dict | None:
     if _registry_failed_at and time.monotonic() - _registry_failed_at < _RETRY_AFTER_SECONDS:
         return None
     try:
-        with urllib.request.urlopen(f"{THEMES_URL}/api/themes", timeout=3) as response:
+        # some hosts reject urllib's default "Python-urllib/x.y" User-Agent with a 403
+        request = urllib.request.Request(
+            f"{THEMES_URL}/api/themes", headers={"User-Agent": "write.js"}
+        )
+        with urllib.request.urlopen(request, timeout=3) as response:
             _registry = json.load(response)
     except (OSError, ValueError):
         _registry_failed_at = time.monotonic()

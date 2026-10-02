@@ -54,7 +54,7 @@ class Controller:
             self.OPENAPI_URL = self.config.get("OPENAPI_URL")
             self.PASSWORD_MIN_LEN = int(float(str(self.config.get("PASSWORD_MIN_LEN"))))
             self.PASSWORD_MAX_LEN = int(float(str(self.config.get("PASSWORD_MAX_LEN"))))
-            self.MILESSIC_THEMES = (self.config.get("MILESSIC-THEMES") or "").rstrip("/")
+            self.MILESSIC_THEMES = (self.config.get("MILESSIC-THEMES") or self.config.get("MILESSIC_THEMES") or "").rstrip("/")
         except Exception as e:
             raise AttributeError(
                 f".env file not found or doens't have proper key=values - {e}"
