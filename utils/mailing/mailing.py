@@ -14,7 +14,7 @@ config = {
     "smtp": {
         "server": env_config.get("MAILING_SMTP_SERVER"),
         "port": env_config.get("MAILING_SMTP_PORT"),
-        "timeout": int(float(str(env_config.get("MAILING_SMTP_TIMEOUT")))),
+        "timeout": int(float(str(env_config.get("MAILING_SMTP_TIMEOUT",0)))),
     }
 }
 

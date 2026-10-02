@@ -25,59 +25,39 @@ window.addEventListener("load", (e) => {
 document.getElementById("account-btn").addEventListener('click', createAccountModal);
 async function createAccountModal(){
 	const html = `
-	<div class="form-div">
-		<h3>Logout</h3>
-		<div class="double-button-div">
-			<form method="GET" action="${url}/api/auth/user/logout/">
-				<input type="hidden" name="writejs_non_web_client" value="${client_url}" />
-				<button type="submit">Logout</button>
-			</form>
-			<form method="GET" action="${url}/api/auth/user/logout/all">
-				<input type="hidden" name="writejs_non_web_client" value="${client_url}" />
-				<button type="submit">Logout from All devices</button>
-			</form>
-			</div>
-		<h3>Update Password</h3>
-		<hr>
-		<form id="form-update-password">
-			<div class="form-field-label">
-				<label for="old_password">Old Password</label>
-				<input name="old_password" id="old_password" placeholder="your current password" required type="password">
-			</div>
-			<div class="form-field-label">
-				<label for="new_password">New Password</label>
-				<input name="new_password" id="new_password" placeholder="your new password" required type="password">
-			</div>
-			<br>
-			<button type="submit">Update password</button>
-			</form>
-		<h3>Delete account</h3>
-		<hr>
-		<form id="form-delete-account">
-			<div class="form-field-label">
-				<label for="old_password">Password</label>
-				<input name="old_password" id="password" placeholder="your current password" required type="password">
-			</div>
-			<div class="form-field-label">
-				<label for="are_you_sure">Are you sure?</label>
-				<div>
-				<input name="are_you_sure" id="are_you_sure" placeholder="Are you sure?" required type="checkbox"><span>    I'm sure</span>
-				</div>
-			</div>
-			<br>
-			<button type="submit">Delete</button>
+	<h3>Logout</h3>
+	<div class="row">
+		<form method="GET" action="/api/auth/user/logout/">
+			<button class="btn" type="submit">Logout</button>
 		</form>
-		<h3>Who am I?</h3>
-		<div id="user-info">
+		<form method="GET" action="/api/auth/user/logout/all">
+			<button class="btn" type="submit">Logout from All devices</button>
+		</form>
+	</div>
+	<h3>Update Password</h3>
+	<form class="stack" id="form-update-password">
+		<label>Old Password<input name="old_password" id="old_password" placeholder="your current password" required type="password"></label>
+		<label>New Password<input name="new_password" id="new_password" placeholder="your new password" required type="password"></label>
+		<div class="row"><button class="btn primary" type="submit">Update password</button></div>
+	</form>
+	<div class="danger-zone">
+		<h3>Delete account</h3>
+		<form class="stack" id="form-delete-account">
+			<label>Password<input name="old_password" id="password" placeholder="your current password" required type="password"></label>
+			<label class="check"><input name="are_you_sure" id="are_you_sure" required type="checkbox">I'm sure</label>
+			<div class="row"><button class="btn danger" type="submit">Delete</button></div>
+		</form>
+	</div>
+	<h3>Who am I?</h3>
+	<div id="user-info">
 		<pre></pre>
-		</div>
 	</div>
 	`
 	createModal("Account", html)
 	// set events
 	// Who am i
 	 try{
-		const resp = await fetch(url + "/api/auth/me", 
+		const resp = await fetch("/api/auth/me", 
 			{
 				method: "GET",
 				credentials: "include"
@@ -104,10 +84,10 @@ async function createAccountModal(){
 				new_password: newEl.value
 			}
 			// send request
-			const resp = await fetch(url + "/api/auth/user/password/update", {
+			const resp = await fetch("/api/auth/user/password/update", {
 				method: "POST",
 				body: JSON.stringify(payload),
-				headers: {"Content-Type": "application/json", "WriteJSNonWebClient": client_url},
+				headers: {"Content-Type": "application/json"},
 				credentials: "include"
 			})
 			const respText = await resp.json();
@@ -137,10 +117,10 @@ async function createAccountModal(){
 				are_you_sure: newEl.value
 			}
 			// send request
-			const resp = await fetch(url + "/api/auth/delete", {
+			const resp = await fetch("/api/auth/delete", {
 				method: "POST",
 				body: JSON.stringify(payload),
-				headers: {"Content-Type": "application/json", "WriteJSNonWebClient": client_url},
+				headers: {"Content-Type": "application/json"},
 				credentials: "include"
 			})
 			if ( resp.status === 204 ){
@@ -166,7 +146,7 @@ async function sendNotebook(){
 async function sendNotebookForce(){
 	try {
 		const payload = compressObject(JSON.stringify(getAllLocalStorageItems()));
-		const resp = await fetch(url + "/api/notebooks/notebook", {
+		const resp = await fetch("/api/notebooks/notebook", {
 			method: "POST",
 			headers: {"Content-Type": "application/json"},
 			body: JSON.stringify({"json_content": payload}),
@@ -185,7 +165,7 @@ async function sendNotebookForce(){
 async function fetchNotebook(){
 	try {
 		let resp;
-			resp = await fetch(url + "/api/notebooks/notebook", {
+			resp = await fetch("/api/notebooks/notebook", {
 				method: "GET",
 				credentials: "include"
 			})
@@ -194,12 +174,8 @@ async function fetchNotebook(){
 		return 
 		}
 		if ( resp.status === 401 ) {
-			if ( web_env ) {
-				window.location = "?logout=3";
-				return null;
-			} else {
-				informError("Cannot fetch the notebook due to lack of authorization!")
-			}
+			window.location = "?logout=3";
+			return null;
 		} else if ( resp.status != 200 ){
 			throw new Error(resp);
 		}
@@ -238,7 +214,7 @@ function createChangePasswordModal(){
 
 async function fetchUserData(){
 	try{
-		const resp = await fetch(url + "/api/auth/me", {
+		const resp = await fetch("/api/auth/me", {
 			"method": "GET",
 			"credentials": "include"
 		});
@@ -255,7 +231,7 @@ async function fetchUserData(){
 
 async function startRefreshTokenProcess(){
 	try {
-		const resp = await fetch(url + "/api/auth/token", {
+		const resp = await fetch("/api/auth/token", {
 			"method": "GET",
 			"credentials": "include"
 		});
@@ -269,11 +245,11 @@ async function startRefreshTokenProcess(){
 async function refreshTokens(){
 	console.log('QWE refresh tokens start');
 	try {
-		const resp = await fetch(url + "/api/auth/token/refresh", {
+		const resp = await fetch("/api/auth/token/refresh", {
 			"method": "POST",
 			"credentials": "include"
 		});
-		if ( web_env && resp.redirected) {
+		if ( resp.redirected ) {
 			window.location.href = resp.url;  // Manually follow the redirect
 			return;
 		}
@@ -282,9 +258,7 @@ async function refreshTokens(){
 			return
 		} else if ( resp.status != 200 ){
 			createNotification(`Cannot read refresh tokens!`, "error", notificationTimeoutLong)
-			if ( web_env) {
-				throw new Error("Refresh Token response is not 200!");
-			}
+			throw new Error("Refresh Token response is not 200!");
 		}
 		startRefreshTokenTimer(respData);
 	} catch (err) {
@@ -325,7 +299,7 @@ async function changePassword(){
 		}
 		oldPasswordElement.classList.remove("error");
 		newPasswordElement.classList.remove("error");
-		const resp = await fetch(url + "/api/auth/user/password/update", {
+		const resp = await fetch("/api/auth/user/password/update", {
 			"method": "POST",
 			"credentials": "include",
 			"headers": {"Content-Type": "application/json"},
@@ -364,7 +338,6 @@ function firstLoginOnDevice(){
 	closeAllModals();
 	loadNotebook();
 	if ( !countDocuments ) { return }
-	if ( localStorage.getItem(darkModeKey)){ setDarkMode(1);toggleDarkMode(false)}
 	startRefreshTokenTimer({"access_token_expires": 63});
 	createNotification("Welcome back!", "info")
 	setTimeout(openDocumentFromLocalStorage, 100);
@@ -374,11 +347,9 @@ function createNewNotebookModal(){
 	closeAllModals();
 	const html = `
 	<h3>Welcome to Write.JS!</h3>
-	<hr>
-	<span>Check contents of menu to see what functions can you use!</span>
-	<hr>
-	<div class="form-div">
-	<button id="welcome-ok"><img src="${base64icon}"></img>Start your Write.JS journey right now!</button>
+	<p>Check contents of menu to see what functions can you use!</p>
+	<div class="row">
+		<button class="btn primary" id="welcome-ok"><img src="${base64icon}" alt="">Start your Write.JS journey right now!</button>
 	</div>
 	`
 	createModal("Welcome", html);

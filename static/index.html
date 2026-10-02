@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="{{ theme or 'writejs' }}">
 <head>
 	<link rel="icon" href="favicon.svg" sizes="any" type="image/svg+xml">
 
@@ -9,126 +9,103 @@
 	<meta name="description" content="Write.js: A satile app for creating, editing, and managing documents. Save locally with localStorage, sync to a remote database after login, and easily import/export in HTML or Markdown formats. Streamline your writing workflow!">
 	<meta name="keywords" content="document editor, online writing app, save documents, localStorage, remote database, document management, export HTML, import HTML, export Markdown, import Markdown, writing tool, document synchronization, write and save, markdown editor, HTML editor">
 		<title>Write.JS</title>
-    <link rel="stylesheet" href="static/styles.css?63">
+	<!-- milessic-themes: falls back to the bundled Write.js theme if the themes server fails -->
+	<link rel="stylesheet" data-milessic-theme crossorigin="anonymous" href="{{ theme_stylesheet or 'static/themes/writejs.css' }}"
+		onerror="this.onerror=null;document.documentElement.dataset.theme='{{ default_theme or 'writejs' }}';this.href='{{ theme_backup_stylesheet or 'static/themes/writejs.css' }}'">
+	{% if themes_available %}
+	<script src="{{ themes_url }}/js/themes.js?v={{ themes_version }}" data-persist="false" data-restore="false" data-exclude="glass"></script>
+	{% endif %}
+    <link rel="stylesheet" href="static/styles.css?70">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
 </head>
-<body class="color-background">
-	<div id="word-counter-container"></div>
-    <div class="app-container">
-        <!-- Top Bar -->
-		<div id="fixed-bar">
-        	<div class="top-bar-root">
-				<div class="top-bar top-bar-left" deadclass="top-bar-padding">
-        	    		<input type="text" id="doc-name" placeholder="Document Name">
-						<button id="save-btn">Save {{ is_authenticated }}</button>
-						<!--<button id="export-btn">Export {{ client_url }}</button> -->
-						<button id="open-btn">Open</button>
-					<!--
-        	    	<button id="share-btn">Share</button>
-					-->
+<body class="app">
+	<!-- milessic-themes page skeleton: .topbar + .container + .card; the theme decides how it looks -->
+	<header class="topbar">
+		<input type="text" id="doc-name" placeholder="Document Name" aria-label="Document name">
+		<button class="btn primary" id="save-btn">Save</button>
+		<button class="btn" id="open-btn">Open</button>
+		<div class="topbar-end">
+			<span id="word-counter-container" class="muted small"></span>
+			<div class="hamburger-menu" id="hamburger-menu">
+				<button class="btn ghost" id="hamburger-button" aria-label="Menu">☰</button>
+				<div class="menu" id="menu" role="menu">
+					<button role="menuitem" id="new-doc-btn">Create New Document</button>
+					<button role="menuitem" id="open-doc-btn">Open Document</button>
+					<button role="menuitem" id="import-doc-btn">Import Document</button>
+					<hr>
+					{% if is_authenticated %}
+					<button role="menuitem" id="account-btn">Account</button>
+					<button role="menuitem" id="load-notebook-btn">Load Remote notebook</button>
+					{% else %}
+					<button role="menuitem" id="login-btn">Login / Register</button>
+					{% endif %}
+					<hr>
+					<button role="menuitem" id="insert-or-append-html">Insert or Append HTML</button>
+					<button role="menuitem" id="insert-or-append-markdown">Insert or Append Markdown</button>
+					<hr>
+					<button role="menuitem" id="generate-md">Export as Markdown</button>
+					<button role="menuitem" id="copy-md">Copy as Markdown</button>
+					<button role="menuitem" id="export-btn-menu">Export</button>
+					<button role="menuitem" id="generate-pdf" disabled>Export as PDF</button>
+					<hr>
+					<button role="menuitem" id="theme-btn">Theme</button>
+					<button role="menuitem" id="spellcheck-btn">Toggle Spell Check (It's off)</button>
+					<button role="menuitem" id="toggle-format-btn">Toggle Formatting</button>
+					<button role="menuitem" id="toggle-autosave-btn">Toggle Autosave</button>
+					<hr>
+					<button role="menuitem" class="danger" id="clearall-btn" onclick="purgeLocalStorage()">Clear localStorage</button>
+					<button role="menuitem" id="backup-btn" onclick="saveBackup()">Export Notebook</button>
+					<button role="menuitem" id="restore-btn" onclick="loadBackup()">Import Notebook</button>
+					<hr>
+					<a role="menuitem" id="contact" href="mailto:writejs.help@gmail.com?subject=Write.js Bug or Feedback&body=Please describe the problem">Report a bug/feedback!</a>
+					{% if themes_url %}
+					<a role="menuitem" id="themes-attribution" href="{{ themes_url }}/" target="_blank" rel="noopener">Themes from milessic-themes</a>
+					{% endif %}
 				</div>
-				<div class="top-bar">
-        	    	<div class="hamburger-menu" id="hamburger-menu">
-        	    	    <button id="hamburger-button">☰</button>
-        	    	    <div class="menu" id="menu">
-							<button id="new-doc-btn">Create New Document</button>
-        	    	        <button id="open-doc-btn">Open Document</button>
-        	    	        <button id="import-doc-btn">Import Document</button>
-							<hr>
-							{% if is_authenticated %}
-							<button id="account-btn">Account</button>
-							<button id="load-notebook-btn">Load Remote notebook</button>
-							{% else %}
-							<button id="login-btn">Login / Register</button>
-							{% endif %}
-							<hr>
-							<button id="insert-or-append-html">Insert or Append HTML</button>
-							<button id="insert-or-append-markdown">Insert or Append Markdown</button>
-							<hr>
-							<button id="generate-md">Export as Markdown</button>
-							<button id="copy-md">Copy as Markdown</button>
-							<button id="export-btn-menu">Export</button>
-							<button id="generate-pdf" disabled><del>Export as PDF</del></button>
-							<hr>
-        	    	        <button id="dark-mode-btn">Dark Mode</button>
-        	    	        <button id="spellcheck-btn">Toggle Spell Check (It's off)</button>
-        	    	        <button id="toggle-format-btn">Toggle Formatting</button>
-        	    	        <button id="toggle-autosave-btn">Toggle Autosave</button>
-							<hr>
-        	    	        <button id="clearall-btn" onclick="purgeLocalStorage()">Clear localStorage</button>
-							<button id="backup-btn" onclick="saveBackup()">Export Notebook</button>
-							<button id="backup-btn" onclick="loadBackup()">Import Notebook</button>
-							<hr>
-							<a id="contact" href="mailto:writejs.help@gmail.com?subject=Write.js Bug or Feedback&body=Please describe the problem">Report a bug/feedback!</a>
-        	    	    </div>
-        	    	</div>
-				</div>
-        	</div>
-
-        	<!-- Sub Bar -->
-        	<div class="sub-bar" id="sub-bar">
-				<div class="sub-bar-content">
-        	    	<button id="tb-btn-h1" class="format-btn">h1</button>
-        	    	<button id="tb-btn-h2" class="format-btn">h2</button>
-        	    	<button id="tb-btn-text" class="format-btn">Text</button>
-        	    	<button id="tb-btn-bl" class="format-btn">*</button>
-        	    	<button id="tb-btn-nl" class="format-btn">1,2,3</button>
-					<button id="tb-btn-cl" class="format-btn"><div id="checkbox-icon-container"></div></button>
-        	    	<button id="tb-btn-hr" class="format-btn">---</button>
-        	    	<button id="tb-btn-code" class="format-btn">code</button>
-        	    	<button id="tb-btn-bold" class="format-btn"><b>B</b></button>
-        	    	<button id="tb-btn-italic" class="format-btn"><i>I</i></button>
-        	    	<button id="tb-btn-underline" class="format-btn"><u>U</u></button>
-        	    	<button id="tb-btn-link" class="format-btn">Insert Link</button>
-        	    	<button id="tb-btn-softreturn" class="format-btn mobile-btn">Soft Return</button>
-        	    	<button id="tb-btn-inserttab" class="format-btn mobile-btn">Insert Tab</button>
-					<!--
-        	    	<button id="tb-btn-inlinecode" class="format-btn">Inline Code</button>
-					-->
-				</div>
-        	</div>
-
+			</div>
 		</div>
-        <!-- Editor Area -->
-        <div id="editor-container" class="editor-container color-background">
-            <div contenteditable="true" id="editor" class="editor color-transition"></div>
-        </div>
-    </div>
+	</header>
+
+	<!-- the workspace scrolls, so the formatting toolbar can stick to its top in every theme -->
+	<div class="workspace" id="workspace">
+		<main class="container">
+			<div class="editor-column">
+				<div class="toolbar format-bar" id="sub-bar" role="toolbar" aria-label="Formatting">
+					<button id="tb-btn-h1" class="small-btn">h1</button>
+					<button id="tb-btn-h2" class="small-btn">h2</button>
+					<button id="tb-btn-text" class="small-btn">Text</button>
+					<button id="tb-btn-bl" class="small-btn" aria-label="Bulleted list">*</button>
+					<button id="tb-btn-nl" class="small-btn" aria-label="Numbered list">1,2,3</button>
+					<button id="tb-btn-cl" class="small-btn" aria-label="Checklist"><span id="checkbox-icon-container"></span></button>
+					<button id="tb-btn-hr" class="small-btn" aria-label="Horizontal rule">---</button>
+					<button id="tb-btn-code" class="small-btn">code</button>
+					<button id="tb-btn-bold" class="small-btn" aria-label="Bold"><b>B</b></button>
+					<button id="tb-btn-italic" class="small-btn" aria-label="Italic"><i>I</i></button>
+					<button id="tb-btn-underline" class="small-btn" aria-label="Underline"><u>U</u></button>
+					<button id="tb-btn-link" class="small-btn">Insert Link</button>
+					<button id="tb-btn-softreturn" class="small-btn mobile-btn">Soft Return</button>
+					<button id="tb-btn-inserttab" class="small-btn mobile-btn">Insert Tab</button>
+				</div>
+				<!-- Editor Area -->
+				<section id="editor-container" class="card editor-card">
+					<div contenteditable="true" id="editor" class="editor"></div>
+				</section>
+			</div>
+		</main>
+	</div>
 	<div id="notifications-container"></div>
 	<!--
 	<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 	-->
 	<script src="https://cdn.jsdelivr.net/npm/showdown/dist/showdown.min.js"></script>
-	<script src="static/pako.js?63"></script>
-	<script>
-			const client_url = "{{ client_url or '0'}}"
-		{% if web_env %}
-			const web_env = true
-			const url = "" // empty for web, setup for desktop client
-		{% else %}
-			const url = "{{ server_url or 'http://localhost:8000'}}" // empty for web, setup for desktop client
-			const web_env = false
-			const not_web_env_el = document.createElement("div");
-			not_web_env_el.style = `position: fixed;
-			z-index: 100;
-			background: #f991ec;
-			padding: 3px 8px;
-			border-radius: 4px;
-        	right: 10px;
-        	top: 180px;
-        	left: auto;
-        	bottom: auto;`
-			not_web_env_el.innerText = "Non web environment"
-			document.body.prepend(not_web_env_el);
-		{% endif %}
-	</script>
-    <script src="static/script.js?63"></script>
+	<script src="static/pako.js?64"></script>
+    <script src="static/script.js?69"></script>
 	{% if is_authenticated %}
-    	<script src="static/script3.js?63"></script>
+    	<script src="static/script3.js?66"></script>
 	{% else %}
-    	<script src="static/script2.js?63"></script>
+    	<script src="static/script2.js?66"></script>
 	{% endif %}
 </body>
 </html>

@@ -5,6 +5,7 @@ from fastapi import Request, HTTPException
 from pathlib import Path
 
 from utils.auth.utils import verify_access_token
+from utils.themes import theme_context, THEME_COOKIE
 
 templates = Jinja2Templates(directory="static")
 
@@ -25,7 +26,11 @@ async def read_index(request: Request):
 
     return templates.TemplateResponse(
         "index.html",
-        {"request": request, "is_authenticated": is_authenticated, "web_env": True},
+        {
+            "request": request,
+            "is_authenticated": is_authenticated,
+            **theme_context(request.cookies.get(THEME_COOKIE)),
+        },
     )
 
 

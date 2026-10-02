@@ -63,6 +63,8 @@ OPENAPI_URL=/openapi.json or comment to disable
 
 PASSWORD_MIN_LEN=7
 PASSWORD_MAX_LEN=32
+
+MILESSIC-THEMES= milessic-themes server url, e.g. http://mbs.local:9312/ (optional, falls back to the bundled Write.js theme)
 ```
 4. run as uvicorn ``python3 -m uvicorn main:app --reload --host 0.0.0.0 --port 8990``, you can change host or port for your needs
 

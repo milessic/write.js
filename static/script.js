@@ -4,7 +4,7 @@ const userConsentKey = "__userConsent__";
 const lastOpenedKey= "__lastOpened__";
 const docPrefix = "__doc__";
 const autosaveKey = "__autosave__";
-const darkModeKey = "__darkModeEnabled__";
+const themeCookie = "theme";
 
 let autosaveEnabled = 0;
 let documentNames = [];
@@ -23,12 +23,6 @@ const softReturnText = `
 
 
 let userConsent = localStorage.getItem(userConsentKey);
-let darkModeEnabled = 0;
-darkModeEnabled = parseInt(localStorage.getItem(darkModeKey)) ? true : false;
-if ( darkModeEnabled ) {
-	toggleDarkMode();
-	setDarkMode(1);
-}
 
 document.querySelector("body").classList.add("transitions-enabled");
 const fontStyleMark = `
@@ -63,7 +57,7 @@ window.addEventListener("load", function() {
 	};
 	handleQueries();
 	setTimeout(()=>{
-		createNotification("This is a development environemnt!<hr>In case of questions: <button id='this-is-dev-btn'>Contact Write.JS</button>","warning", notificationTimeoutLong*2, true);
+		createNotification("This is a development environemnt!<hr>In case of questions: <button class='btn small' id='this-is-dev-btn'>Contact Write.JS</button>","warning", notificationTimeoutLong*2, true);
 		document.getElementById("this-is-dev-btn").addEventListener("click", () => {
 			const a = document.createElement("a");
 			a.href = 'mailto:writejs.help@gmail.com?subject=Write.JS question';
@@ -82,7 +76,7 @@ document.getElementById("editor-container").addEventListener('click', updateCare
 document.getElementById("editor-container").addEventListener('keyup', (e) => {updateCaretPosition();handleWordCounter()});
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
 document.getElementById('editor-container').addEventListener('click', focusEditor);
-document.getElementById("dark-mode-btn").addEventListener("click", toggleDarkMode);
+document.getElementById("theme-btn").addEventListener("click", createThemeModal);
 document.getElementById("hamburger-menu").addEventListener("click", toggleMenu);
 // document.getElementById("export-btn").addEventListener("click", exportDocument);
 document.getElementById("save-btn").addEventListener("click", saveDocumentToLocalStorage);
@@ -158,25 +152,25 @@ function formatText(command) {
 	performAutoSave();
 }
 
-function toggleDarkMode(setDarkModeState=true){
-    document.body.classList.toggle("dark-mode");
-    document.querySelector("#editor-container").classList.toggle("dark-mode");
-	document.querySelector(".top-bar-root").classList.toggle("dark-mode-dark");
-	document.querySelector("#sub-bar").classList.toggle("dark-mode-medium");
-	document.querySelectorAll(".notification-container").forEach((e) => e.classList.toggle("dark-mode-medium"))
-	if (!setDarkModeState){return}
-	if ( darkModeEnabled) {
-		setDarkMode(0);
-	} else {
-		setDarkMode(1);
+function createThemeModal(){
+	if ( typeof MilessicThemes === "undefined" ) {
+		createNotification("Themes are unavailable right now, using the default Write.js theme.", "warning");
+		return
 	}
+	// milessic-themes license: the styling must credit milessic-themes with a link to its server
+	const themesOrigin = document.getElementById("themes-attribution")?.href;
+	createModal("Theme", `<div id="theme-picker"></div>`
+		+ (themesOrigin ? `<p class="muted small">Themes from <a href="${themesOrigin}" target="_blank" rel="noopener">milessic-themes</a></p>` : ""));
+	MilessicThemes.mountPicker(document.getElementById("theme-picker"), {onChange: saveTheme})
+		.catch(() => {
+			closeAllModals();
+			createNotification("Could not load themes!", "error");
+		});
 }
 
-function setDarkMode(state){
-	darkModeEnabled = state;
-	if ( validateUserConsent(false)){
-		localStorage.setItem(darkModeKey, state);
-	}
+function saveTheme(key){
+	// the server validates the key and renders it into the page on the next load
+	document.cookie = `${themeCookie}=${encodeURIComponent(key)}; path=/; max-age=31536000; SameSite=Lax`;
 }
 
 function focusEditor(){
@@ -197,7 +191,9 @@ function toggleMenu(){
 }
 
 function getDocumntContentToExport(){
-	return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${getStyles()}</style>${fontStyleMark}</head><body><div id="content-container"><div id="content">${document.getElementById("editor").innerHTML}</div></div></body></html>`;
+	// same theme + skeleton as the app (class before id: stripImportToOnlyContent matches `id="content">`)
+	const theme = document.documentElement.dataset.theme;
+	return `<!DOCTYPE html><html data-theme="${theme}"><head><meta charset="UTF-8"><style>${getStyles()}</style>${fontStyleMark}</head><body><div class="container" id="content-container"><div class="card editor" id="content">${document.getElementById("editor").innerHTML}</div></div></body></html>`;
 }
 function exportDocument(){
 	try {
@@ -256,11 +252,11 @@ function fillDocName(name){
 function fillEditorWithHTML(html, append=false){
 	if (append){
     	document.getElementById("editor").innerHTML = `${editor.innerHTML}<br>${html}`;
-		window.scrollTo(0, 1000);
+		document.getElementById("workspace").scrollTo(0, 1000);
 		return
 	}
     document.getElementById("editor").innerHTML = html;
-	window.scrollTo(0, 1000);
+	document.getElementById("workspace").scrollTo(0, 1000);
 }
 function toggleFormattingBar(){
     const subBar = document.getElementById("sub-bar");
@@ -297,43 +293,41 @@ function openDocumentFromLocalStorage(){
 }
 
 function createModal(title, html){
-	let modalContainer = document.createElement("div");
+	// milessic-themes contract: <dialog class="modal-container">, title + close in a .section-head.
+	// show() (not showModal()) keeps notifications above it; #overlay stays the backdrop.
+	let modalContainer = document.createElement("dialog");
 	modalContainer.setAttribute("id","modal");
 	modalContainer.classList.add("modal-container");
-	if ( darkModeEnabled) {
-		modalContainer.classList.add("dark-mode-medium");
-	}
 	modalContainer.innerHTML =`
-	<div class="modal-topbar" style="display:flex">
-		<h3 class="modal-header">${title}</h3>
-		<button class="close-button" onclick="closeAllModals()">X</button>
+	<div class="section-head">
+		<h2>${title}</h2>
+		<button class="small-btn" aria-label="Close" onclick="closeAllModals()">✕</button>
 	</div>
-	<div class="modal-content">
+	<div class="modal-content stack">
 		${html}
 	</div>
 `
 	createOverlay();
 	document.body.appendChild(modalContainer)
+	modalContainer.show();
 }
 function createOpenDocumentModal(documentNames){
 	let namesElements = "";
 	if (! documentNames.length ){
-		namesElements += `<button onclick="showAlert('Just create one :)!', 'info')">You don't have any saved documents</button>`
+		namesElements += `<p class="muted">You don't have any saved documents yet. Just create one :)</p>`
 	}
 	for ( let name of documentNames ){
-		namesElements += `<div class="double-button-div"><button onclick="loadDocumentFromLocalStorage('${name}');closeAllModals()">${name}</button><button class="delete-btn" onclick="deleteDocumentInLocalStorage('${name}');">Delete</button></div>\n`
+		namesElements += `<div class="row"><button class="btn grow" onclick="loadDocumentFromLocalStorage('${name}');closeAllModals()">${name}</button><button class="btn danger small" onclick="deleteDocumentInLocalStorage('${name}');">Delete</button></div>\n`
 	}
-	createModal("Open document", `<div>This modal design is temporary, I promise</div>
-	<div id="search-container">
-	<label for="modal-search">Type to begin search</label>
-	<input id="modal-search" placeholder="..." type="text">
-	<button id="clear-modal-search">Clear</button>
+	createModal("Open document", `
+	<div class="toolbar" id="search-container">
+		<label class="grow">Search<input id="modal-search" placeholder="Type to begin search" type="text"></label>
+		<button class="btn" id="clear-modal-search">Clear</button>
 	</div>
-	<div id="menu-modal" class="menu overflow">
+	<div id="menu-modal" class="doc-list stack">
 		${namesElements}
 	</div>`);
-	document.querySelector(".modal-content").classList.add("no-margin-left-on-mobile");
-	setEventForFilteringChildrenNodes("#modal-search", "#menu-modal .double-button-div", "#clear-modal-search")
+	setEventForFilteringChildrenNodes("#modal-search", "#menu-modal .row", "#clear-modal-search")
 
 
 }
@@ -467,7 +461,7 @@ function closeAllModals(...excludeTitles){
 	if ( excludeTitles.length ){
 		document.querySelectorAll(".modal-container").forEach((e) => {
 			excludeTitles.forEach( (t) => {
-				if ( !e.querySelector("h3").innerText.startsWith(t)){
+				if ( !e.querySelector(".section-head h2").innerText.startsWith(t)){
 					e.remove();
 					deleteOverlay();
 				} 
@@ -528,8 +522,17 @@ function generatePDF(){
 }
 
 function getStyles(){
-	const sheet = document.styleSheets[0];
-	const css = Array.from(sheet.cssRules).map(rule => rule.cssText).join(' ');
+	// the theme bundle + styles.css; the bundle link is crossorigin, a sheet that still can't be read is skipped
+	let css = "";
+	for ( const sheet of document.styleSheets ){
+		const href = sheet.href || "";
+		if ( !sheet.ownerNode.hasAttribute("data-milessic-theme") && !href.includes("styles.css") ){ continue }
+		try {
+			css += Array.from(sheet.cssRules).map(rule => rule.cssText).join(' ');
+		} catch ( err ) {
+			console.warn("Cannot read stylesheet for export", href, err);
+		}
+	}
 	return css;
 
 }
@@ -752,7 +755,7 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 
 
 function purgeLocalStorage(doConfirm=true){
-	if ( web_env && !doConfirm ){ 
+	if ( !doConfirm ){
 		localStorage.clear();
 	} else if ( confirm("Do you really want to delete everything from Browser?") ){
 		localStorage.clear();
@@ -803,20 +806,20 @@ function isElementInViewport (el) {
 }
 
 function createNotification( text, type, timeout=notificationTimeout, isHtml=false) {
-	// type: info, warning, error
+	// type: info, warning, error  (milessic-themes classes: notification-info/-warn/-error)
+	type = type === "warning" ? "warn" : type;
 	handleExistingNotifications(text, type, isHtml);
 	try {
 		const n_div = document.createElement("div");
+		// notification-container is only a JS hook; the look comes from the theme
 		n_div.setAttribute("class" ,`notification-container notification-${type}`);
-		if ( darkModeEnabled ){ n_div.classList.add('dark-mode-medium')}
+		n_div.setAttribute("role", type === "error" ? "alert" : "status");
 
 		const div_text = document.createElement("div");
 		div_text.setAttribute("class", "notification-text");
-		const iconImg = `<img src="${base64icon}">`
 		if ( isHtml ){
-			div_text.innerHTML = `${iconImg}${text}`;
+			div_text.innerHTML = text;
 		} else {
-			div_text.innerHTML = iconImg;
 			div_text.innerText = text;
 			// handle bold
 			div_text.innerHTML = div_text.innerHTML.replace(/__/, "<strong>").replace(/__/, "</strong>");
@@ -824,8 +827,9 @@ function createNotification( text, type, timeout=notificationTimeout, isHtml=fal
 
 
 		const close = document.createElement("button");
-		close.setAttribute("class", "notification-close");
-		close.innerText = "X";
+		close.setAttribute("class", "small-btn");
+		close.setAttribute("aria-label", "Close");
+		close.innerText = "✕";
 		close.addEventListener("click", () => {closeNotification(n_div)});
 
 
@@ -871,15 +875,13 @@ function informError(notificationText, error, type="error"){
 
 function createInsertLinkModal(){
 	if ( document.querySelector(".insert-link-modal") ) { closeInsertLinkModal();return }
-	const c_div = document.createElement("div");
-	c_div.setAttribute("class","insert-link-modal");
+	const c_div = document.createElement("dialog");
+	c_div.setAttribute("class","modal-container insert-link-modal");
 	try {
 		c_div.innerHTML = `
-		<div class="insert-link-form">
-			<label for='link-name'>Link Text</label>
-			<input id='link-name' type='text' value="${caretPosition.cloneContents().textContent}">
-			<label for='link-href'>Link url</label>
-			<input id='link-href' type='text'>
+		<div class="stack">
+			<label>Link Text<input id='link-name' type='text' value="${caretPosition.cloneContents().textContent}"></label>
+			<label>Link url<input id='link-href' type='text'></label>
 		</div>
 		`
 	} catch ( err ) {
@@ -887,13 +889,16 @@ function createInsertLinkModal(){
 		return
 	}
 	const b_div = document.createElement("div");
-	b_div.classList.add("create-link-buttons")
+	b_div.classList.add("row");
+	b_div.style.marginTop = ".8rem";
 
 	const btn = document.createElement("button");
+	btn.classList.add("btn", "primary");
 	btn.innerText = "Add";
 	btn.addEventListener("click", insertLink);
 
 	const cnl = document.createElement("button");
+	cnl.classList.add("btn");
 	cnl.innerText = "Cancel";
 	cnl.addEventListener("click", closeInsertLinkModal);
 
@@ -902,6 +907,7 @@ function createInsertLinkModal(){
 
 	c_div.appendChild(b_div)
 	document.body.appendChild(c_div)
+	c_div.show();
 }
 
 function insertLink(){
@@ -1049,7 +1055,6 @@ function copyMarkdown(){
 
 function userConsentModal(){
 	if ( userConsent == 1) { return }
-	createOverlay();
 	const html = `
 	<div>
 	Do you agree to:
@@ -1058,9 +1063,9 @@ function userConsentModal(){
 		<li>Storing documents you have created in LocalStorage</li>
 	</ul>
 	<div class="modal-bottom">
-		<div class="double-buttons">
-			<button onclick="setUserConsent(1)">Yes</button>
-			<button onclick="setUserConsent(0)">No</button>
+		<div class="row">
+			<button class="btn primary" onclick="setUserConsent(1)">Yes</button>
+			<button class="btn" onclick="setUserConsent(0)">No</button>
 		</div>
 		If you won't agree, this will be displayed at every visit and core app functionalities such as document saving won't work.
 		<br>
@@ -1070,7 +1075,7 @@ function userConsentModal(){
 	</div>
 	</div>
 	`
-	createModal("Do you agree to cookies and storing data in LocalStorage?", html)
+	createModal("Cookies and LocalStorage", html)
 }
 
 function setUserConsent(value, reloadAfter=false){
@@ -1093,7 +1098,7 @@ function validateUserConsent(showMessage=true){
 	} else if ( showMessage ) {
 		const html = `
 			<span>For this action, you need to consent to store data!</span>
-			<button onclick="userConsentModal()">Change Settings</button>
+			<button class="btn small" onclick="userConsentModal()">Change Settings</button>
 		`
 		createNotification(html, "warning", notificationTimeoutLong, true)
 	}
@@ -1281,7 +1286,7 @@ async function sendLoginRequest(){
 			"username": loginEl.value,
 			"password": passwEl.value
 		}
-		const resp = fetch(url + "/api/auth/login/submit", {
+		const resp = fetch("/api/auth/login/submit", {
 			"method": "POST",
 			"headers": {"Content-Type": "application/x-www-form-urlencoded"},
 			"body": new URLSearchParams(payload)
@@ -1449,7 +1454,7 @@ function setUserLoggedIn(state){
 
 function createLoginExpiredNotification(){
 	setTimeout( () => {
-		createNotification(`Your session has expired! <br><button onclick='createAccountLoginModal()'>Login again</button>`, 'error', null, true);
+		createNotification(`Your session has expired!  <button class='btn small' onclick='createAccountLoginModal()'>Login again</button>`, 'error', null, true);
 		setUserConsent(userConsent);
 	}, 100);
 }
@@ -1457,7 +1462,7 @@ function createLoginExpiredNotification(){
 
 function createAccountDeletedNotification(){
 	setTimeout( () => {
-		createNotification(`Your account is deleted.<br><button onclick="createRegisterModal()">You can create a new account</button>`, 'error', null, true);
+		createNotification(`Your account is deleted. <button class="btn small" onclick="createRegisterModal()">You can create a new account</button>`, 'error', null, true);
 		setUserConsent(userConsent);
 	}, 100);
 }
@@ -1490,12 +1495,10 @@ function createFlashcardByQuerySelector(selector, text1="key",text2="value"){
 
 function createInsertHtmlModal(){
 	const html = `
-	<h1>Insert HTML into textarea below:</h1>
-	<div class="form-div">
-	<textarea id="htmltobeappended" style="width:100%;height: 40vh;"></textarea>
-	<hr>
-	<button id="insertinto-html">Replace current document with provided HTML</button>
-	<button id="append-html">Append HTML into document</button>
+	<label>Insert HTML into textarea below:<textarea id="htmltobeappended" rows="12"></textarea></label>
+	<div class="row">
+		<button class="btn primary" id="append-html">Append HTML into document</button>
+		<button class="btn danger" id="insertinto-html">Replace current document with provided HTML</button>
 	</div>
 	`
 	createModal("Insert HTML", html);
@@ -1507,12 +1510,10 @@ function createInsertHtmlModal(){
 
 function createInsertMarkdownModal(){
 	const html = `
-	<h1>Insert Markdown into textarea below:</h1>
-	<div class="form-div">
-	<textarea id="markdowntobeappended" style="width:100%;height: 40vh;"></textarea>
-	<hr>
-	<button id="insertinto-markdown">Replace current document with provided Markdown</button>
-	<button id="append-markdown">Append Markdown into document</button>
+	<label>Insert Markdown into textarea below:<textarea id="markdowntobeappended" rows="12"></textarea></label>
+	<div class="row">
+		<button class="btn primary" id="append-markdown">Append Markdown into document</button>
+		<button class="btn danger" id="insertinto-markdown">Replace current document with provided Markdown</button>
 	</div>
 	`
 	createModal("Insert Markdown", html);
