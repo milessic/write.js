@@ -774,6 +774,7 @@ function getAllLocalStorageItems() {
 	const data = {}
 	for ( var i = 0, len = localStorage.length; i < len; ++i ) {
 	  const key = localStorage.key( i );
+	  if ( tokenKeys.includes(key) ) { continue }  // never sync or export the app session
 	  data[key] = localStorage.getItem( localStorage.key( i ) );
 	}
 	return data
@@ -792,7 +793,7 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 		// check for documents that are different
 		// TODO add support for current document
 		if ( key === docPrefix + getDocumentName() && excludeCurrentDocument ) { console.log('skipping current doc');continue }
-		if ( key === userLoggedInKey ) { continue }
+		if ( key === userLoggedInKey || tokenKeys.includes(key) ) { continue }
 		const existingDocument = localStorage.getItem(key)  
 		if ( existingDocument === value ) { continue }    // if document is the same, don't overwrite
 		else if ( existingDocument != null && !showConfirm(`!Do you want to overwrite '${key.replace(docPrefix, "")}'?`)){ continue } // for edited documents in both sources 
@@ -808,10 +809,11 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 
 
 function purgeLocalStorage(doConfirm=true){
-	if ( !doConfirm ){
+	if ( !doConfirm || confirm("Do you really want to delete everything from Browser?") ){
+		// the app keeps its session in localStorage, the web one lives in cookies and survives this too
+		const tokens = tokenKeys.map((key) => [key, localStorage.getItem(key)]);
 		localStorage.clear();
-	} else if ( confirm("Do you really want to delete everything from Browser?") ){
-		localStorage.clear();
+		for ( const [key, value] of tokens ) { if ( value !== null ) { localStorage.setItem(key, value) } }
 	}
 	setUserLoggedIn(userLoggedIn);
 	refreshFileTree();
@@ -1346,7 +1348,7 @@ async function sendLoginRequest(){
 			"username": loginEl.value,
 			"password": passwEl.value
 		}
-		const resp = fetch("/api/auth/login/submit", {
+		const resp = apiFetch("/api/auth/login/submit", {
 			"method": "POST",
 			"headers": {"Content-Type": "application/x-www-form-urlencoded"},
 			"body": new URLSearchParams(payload)

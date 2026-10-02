@@ -1,0 +1,16 @@
+[package]
+name = "writejs"
+version = "0.1.0"
+description = "Write.JS desktop and mobile app"
+edition = "2021"
+
+[lib]
+# the extra crate types are needed for the iOS and Android builds
+name = "writejs_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }

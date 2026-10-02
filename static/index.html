@@ -35,10 +35,12 @@
 					<button role="menuitem" id="open-doc-btn">Open Document</button>
 					<button role="menuitem" id="import-doc-btn">Import Document</button>
 					<hr>
-					{% if is_authenticated %}
+					{# the app renders both and lets static/app-boot.js drop the unused ones #}
+					{% if is_authenticated or native_app %}
 					<button role="menuitem" id="account-btn">Account</button>
 					<button role="menuitem" id="load-notebook-btn">Load Remote notebook</button>
-					{% else %}
+					{% endif %}
+					{% if not is_authenticated or native_app %}
 					<button role="menuitem" id="login-btn">Login / Register</button>
 					{% endif %}
 					<hr>
@@ -144,11 +146,17 @@
 	<!--
 	<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 	-->
-	<script src="https://cdn.jsdelivr.net/npm/showdown/dist/showdown.min.js"></script>
+	<script src="{{ showdown_src or 'https://cdn.jsdelivr.net/npm/showdown/dist/showdown.min.js' }}"></script>
 	<script src="static/pako.js?64"></script>
+	{% if native_app %}
+	<script src="static/app-config.js"></script>
+	{% endif %}
+	<script src="static/api.js?73"></script>
     <script src="static/script.js?73"></script>
     <script src="static/workspace.js?73"></script>
-	{% if is_authenticated %}
+	{% if native_app %}
+	<script src="static/app-boot.js"></script>
+	{% elif is_authenticated %}
     	<script src="static/script3.js?66"></script>
 	{% else %}
     	<script src="static/script2.js?66"></script>

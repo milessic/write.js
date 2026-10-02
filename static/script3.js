@@ -27,10 +27,10 @@ async function createAccountModal(){
 	const html = `
 	<h3>Logout</h3>
 	<div class="row">
-		<form method="GET" action="/api/auth/user/logout/">
+		<form method="GET" action="/api/auth/user/logout/" id="form-logout">
 			<button class="btn" type="submit">Logout</button>
 		</form>
-		<form method="GET" action="/api/auth/user/logout/all">
+		<form method="GET" action="/api/auth/user/logout/all" id="form-logout-all">
 			<button class="btn" type="submit">Logout from All devices</button>
 		</form>
 	</div>
@@ -55,9 +55,13 @@ async function createAccountModal(){
 	`
 	createModal("Account", html)
 	// set events
+	if ( isNativeApp ){
+		document.getElementById("form-logout").addEventListener("submit", (e) => { e.preventDefault(); appLogout() });
+		document.getElementById("form-logout-all").addEventListener("submit", (e) => { e.preventDefault(); appLogout(true) });
+	}
 	// Who am i
 	 try{
-		const resp = await fetch("/api/auth/me", 
+		const resp = await apiFetch("/api/auth/me", 
 			{
 				method: "GET",
 				credentials: "include"
@@ -84,7 +88,7 @@ async function createAccountModal(){
 				new_password: newEl.value
 			}
 			// send request
-			const resp = await fetch("/api/auth/user/password/update", {
+			const resp = await apiFetch("/api/auth/user/password/update", {
 				method: "POST",
 				body: JSON.stringify(payload),
 				headers: {"Content-Type": "application/json"},
@@ -117,7 +121,7 @@ async function createAccountModal(){
 				are_you_sure: newEl.value
 			}
 			// send request
-			const resp = await fetch("/api/auth/delete", {
+			const resp = await apiFetch("/api/auth/delete", {
 				method: "POST",
 				body: JSON.stringify(payload),
 				headers: {"Content-Type": "application/json"},
@@ -146,7 +150,7 @@ async function sendNotebook(){
 async function sendNotebookForce(){
 	try {
 		const payload = compressObject(JSON.stringify(getAllLocalStorageItems()));
-		const resp = await fetch("/api/notebooks/notebook", {
+		const resp = await apiFetch("/api/notebooks/notebook", {
 			method: "POST",
 			headers: {"Content-Type": "application/json"},
 			body: JSON.stringify({"json_content": payload}),
@@ -165,7 +169,7 @@ async function sendNotebookForce(){
 async function fetchNotebook(){
 	try {
 		let resp;
-			resp = await fetch("/api/notebooks/notebook", {
+			resp = await apiFetch("/api/notebooks/notebook", {
 				method: "GET",
 				credentials: "include"
 			})
@@ -214,7 +218,7 @@ function createChangePasswordModal(){
 
 async function fetchUserData(){
 	try{
-		const resp = await fetch("/api/auth/me", {
+		const resp = await apiFetch("/api/auth/me", {
 			"method": "GET",
 			"credentials": "include"
 		});
@@ -231,7 +235,7 @@ async function fetchUserData(){
 
 async function startRefreshTokenProcess(){
 	try {
-		const resp = await fetch("/api/auth/token", {
+		const resp = await apiFetch("/api/auth/token", {
 			"method": "GET",
 			"credentials": "include"
 		});
@@ -245,12 +249,13 @@ async function startRefreshTokenProcess(){
 async function refreshTokens(){
 	console.log('QWE refresh tokens start');
 	try {
-		const resp = await fetch("/api/auth/token/refresh", {
+		const resp = await apiFetch("/api/auth/token/refresh", {
 			"method": "POST",
 			"credentials": "include"
 		});
 		if ( resp.redirected ) {
-			window.location.href = resp.url;  // Manually follow the redirect
+			// the app would land on the server's page, treat it as an expired session instead
+			window.location.href = isNativeApp ? "?logout=3" : resp.url;  // Manually follow the redirect
 			return;
 		}
 		const respData = await resp.json();
@@ -260,6 +265,7 @@ async function refreshTokens(){
 			createNotification(`Cannot read refresh tokens!`, "error", notificationTimeoutLong)
 			throw new Error("Refresh Token response is not 200!");
 		}
+		rememberTokens(respData);
 		startRefreshTokenTimer(respData);
 	} catch (err) {
 		window.alert("RefreshToken" + err)
@@ -299,7 +305,7 @@ async function changePassword(){
 		}
 		oldPasswordElement.classList.remove("error");
 		newPasswordElement.classList.remove("error");
-		const resp = await fetch("/api/auth/user/password/update", {
+		const resp = await apiFetch("/api/auth/user/password/update", {
 			"method": "POST",
 			"credentials": "include",
 			"headers": {"Content-Type": "application/json"},

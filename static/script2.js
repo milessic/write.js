@@ -29,6 +29,12 @@ function createAccountLoginModal(username=null){
 	</div>
 	`
 	createModal("Login - Write.JS", html)
+	if ( isNativeApp ){
+		document.querySelector("form[action='/api/auth/login/submit']").addEventListener("submit", (e) => {
+			e.preventDefault();
+			appLogin(e.target);
+		});
+	}
 	if ( username ){
 		document.getElementById("login").value = username;
 	}
@@ -79,7 +85,7 @@ async function sendRegisterRequest(){
 		userEl.value = "";
 		emaiEl.value = "";
 		passEl.value = "";
-		const resp = await fetch("/api/auth/register",
+		const resp = await apiFetch("/api/auth/register",
 			{
 				method: "POST",
 				body: JSON.stringify(payload),
@@ -108,7 +114,7 @@ async function sendForgottenPasswordRequest(){
 		const payload = {
 			login: val
 		}
-		const resp = await fetch("/api/auth/forgot-password",
+		const resp = await apiFetch("/api/auth/forgot-password",
 			{
 				method: "POST",
 				body: JSON.stringify(payload),

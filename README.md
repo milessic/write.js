@@ -82,3 +82,14 @@ There is also the ``Swagger`` interface located under ``/docs`` endpoint
 ### CLI register/login
 To test the login/register/token functionalities you can do it via web application, accessible from ``localhost:port`` leveraging browser authentication functionality (via auth cookie) or via REST calls, you can use scripts placed under ``./scripts/`` directory, e.g. ``./scripts/register_user_via_rest.py/`` that use ``requests`` library (which is not included in ``requirements.txt`` file.
 
+
+# Desktop and iOS app (Tauri)
+The app bundles the same frontend (`static/`) into a native window, so it looks the same as the web page.
+`scripts/build_app.py` renders `static/index.html` into `build/app/` and points the API calls at `WRITEJS_API_BASE`
+(default `http://localhost:8090`); in the app the tokens are kept in localStorage and sent as `Authorization: Bearer`.
+
+1. install [Rust](https://rustup.rs) and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS
+2. ``npm install``
+3. run the API server (``run_dev.sh``), then ``npx tauri dev``
+4. build installers with ``WRITEJS_API_BASE=https://your.server npx tauri build``
+5. iOS (macOS + Xcode only): ``npx tauri ios init`` once, then ``npx tauri ios dev`` / ``npx tauri ios build``

@@ -233,6 +233,14 @@ def check_if_user_can_login(user_id: int, controller: Controller = c) -> None:
         raise UserIsBlocked()
 
 
+def get_request_token(request: Request, cookie_name: str) -> str | None:
+    """Token from the cookie (web) or the Authorization: Bearer header (app)."""
+    if token := request.cookies.get(cookie_name):
+        return token
+    scheme, _, credentials = request.headers.get("Authorization", "").partition(" ")
+    return credentials if scheme.lower() == "bearer" and credentials else None
+
+
 def handle_client_url_for_redirect(writejs_non_web_client_header: str | None) -> str:
     if writejs_non_web_client_header is None:
         print("writejs_non_web_client_header is NONE")

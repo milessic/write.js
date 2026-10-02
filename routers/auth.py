@@ -97,7 +97,7 @@ async def logout(
         redirect_url_base + "/?logout=1", status_code=status.HTTP_303_SEE_OTHER
     )
     response.delete_cookie(key="access_token")
-    token = request.cookies.get("access_token")
+    token = get_request_token(request, "access_token")
     response.delete_cookie(key="access_token")
     if token is not None:
         if user_id := c.db.get_user_id_from_username(
@@ -120,7 +120,7 @@ async def logout_from_all(
         redirect_url_base + "/?logout=all", status_code=status.HTTP_303_SEE_OTHER
     )
     response.delete_cookie(key="access_token")
-    token = request.cookies.get("access_token")
+    token = get_request_token(request, "access_token")
     response.delete_cookie(key="access_token")
     if token is not None:
         if user_id := c.db.get_user_id_from_username(
@@ -192,7 +192,7 @@ async def get_refresh_token_api(
 
         # invalidate old tokens
         old_access_token = request.cookies.get("access_token")
-        old_refresh_token = request.cookies.get("refresh_token")
+        old_refresh_token = get_request_token(request, "refresh_token")
 
         if old_access_token:
             c.db.set_access_token_as_inactive_for_user(user_id, old_access_token)
