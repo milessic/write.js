@@ -13,7 +13,7 @@
 	<link rel="stylesheet" data-milessic-theme crossorigin="anonymous" href="{{ theme_stylesheet or 'static/themes/writejs.css' }}"
 		onerror="this.onerror=null;document.documentElement.dataset.theme='{{ default_theme or 'writejs' }}';this.href='{{ theme_backup_stylesheet or 'static/themes/writejs.css' }}'">
 	{% if themes_available %}
-	<script src="{{ themes_url }}/js/themes.js?v={{ themes_version }}" data-persist="false" data-restore="false" data-exclude="glass"></script>
+	<script src="{{ themes_url }}/js/themes.js?v={{ themes_version }}" data-persist="false" data-restore="false"></script>
 	{% endif %}
     <link rel="stylesheet" href="static/styles.css?70">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
@@ -72,21 +72,29 @@
 	<div class="workspace" id="workspace">
 		<main class="container">
 			<div class="editor-column">
-				<div class="toolbar format-bar" id="sub-bar" role="toolbar" aria-label="Formatting">
-					<button id="tb-btn-h1" class="small-btn">h1</button>
-					<button id="tb-btn-h2" class="small-btn">h2</button>
-					<button id="tb-btn-text" class="small-btn">Text</button>
-					<button id="tb-btn-bl" class="small-btn" aria-label="Bulleted list">*</button>
-					<button id="tb-btn-nl" class="small-btn" aria-label="Numbered list">1,2,3</button>
-					<button id="tb-btn-cl" class="small-btn" aria-label="Checklist"><span id="checkbox-icon-container"></span></button>
-					<button id="tb-btn-hr" class="small-btn" aria-label="Horizontal rule">---</button>
-					<button id="tb-btn-code" class="small-btn">code</button>
-					<button id="tb-btn-bold" class="small-btn" aria-label="Bold"><b>B</b></button>
-					<button id="tb-btn-italic" class="small-btn" aria-label="Italic"><i>I</i></button>
-					<button id="tb-btn-underline" class="small-btn" aria-label="Underline"><u>U</u></button>
-					<button id="tb-btn-link" class="small-btn">Insert Link</button>
-					<button id="tb-btn-softreturn" class="small-btn mobile-btn">Soft Return</button>
-					<button id="tb-btn-inserttab" class="small-btn mobile-btn">Insert Tab</button>
+				<!-- .format-bar only makes the strip sticky; .toolbar-bar is the themed frame -->
+				<div class="format-bar" id="sub-bar">
+					<div class="toolbar-bar" role="toolbar" aria-label="Formatting">
+						<button id="tb-btn-h1" class="small-btn">h1</button>
+						<button id="tb-btn-h2" class="small-btn">h2</button>
+						<button id="tb-btn-text" class="small-btn">Text</button>
+						<span class="toolbar-sep" aria-hidden="true"></span>
+						<button id="tb-btn-bl" class="small-btn" aria-label="Bulleted list">*</button>
+						<button id="tb-btn-nl" class="small-btn" aria-label="Numbered list">1,2,3</button>
+						<button id="tb-btn-cl" class="small-btn" aria-label="Checklist"><span id="checkbox-icon-container"></span></button>
+						<span class="toolbar-sep" aria-hidden="true"></span>
+						<button id="tb-btn-hr" class="small-btn" aria-label="Horizontal rule">---</button>
+						<button id="tb-btn-code" class="small-btn">code</button>
+						<span class="toolbar-sep" aria-hidden="true"></span>
+						<button id="tb-btn-bold" class="small-btn" aria-label="Bold"><b>B</b></button>
+						<button id="tb-btn-italic" class="small-btn" aria-label="Italic"><i>I</i></button>
+						<button id="tb-btn-underline" class="small-btn" aria-label="Underline"><u>U</u></button>
+						<span class="toolbar-sep" aria-hidden="true"></span>
+						<button id="tb-btn-link" class="small-btn">Insert Link</button>
+						<span class="toolbar-sep mobile-btn" aria-hidden="true"></span>
+						<button id="tb-btn-softreturn" class="small-btn mobile-btn">Soft Return</button>
+						<button id="tb-btn-inserttab" class="small-btn mobile-btn">Insert Tab</button>
+					</div>
 				</div>
 				<!-- Editor Area -->
 				<section id="editor-container" class="card editor-card">
@@ -101,7 +109,7 @@
 	-->
 	<script src="https://cdn.jsdelivr.net/npm/showdown/dist/showdown.min.js"></script>
 	<script src="static/pako.js?64"></script>
-    <script src="static/script.js?69"></script>
+    <script src="static/script.js?70"></script>
 	{% if is_authenticated %}
     	<script src="static/script3.js?66"></script>
 	{% else %}

@@ -9,6 +9,7 @@ const themeCookie = "theme";
 let autosaveEnabled = 0;
 let documentNames = [];
 let caretPosition = null;
+let lastEditorRange = null; // last caret/selection inside #editor, kept while focus is elsewhere (e.g. a modal)
 let selection = null;
 let wordCounterEnabled = true;
 let indentSize = 4;
@@ -77,6 +78,12 @@ document.getElementById("editor-container").addEventListener('keyup', (e) => {up
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
 document.getElementById('editor-container').addEventListener('click', focusEditor);
 document.getElementById("theme-btn").addEventListener("click", createThemeModal);
+document.addEventListener("selectionchange", () => {
+	const selection = window.getSelection();
+	if ( selection.rangeCount && document.getElementById("editor").contains(selection.anchorNode) ){
+		lastEditorRange = selection.getRangeAt(0).cloneRange();
+	}
+});
 document.getElementById("hamburger-menu").addEventListener("click", toggleMenu);
 // document.getElementById("export-btn").addEventListener("click", exportDocument);
 document.getElementById("save-btn").addEventListener("click", saveDocumentToLocalStorage);
@@ -251,17 +258,37 @@ function fillDocName(name){
 }
 function fillEditorWithHTML(html, append=false){
 	if (append){
-    	document.getElementById("editor").innerHTML = `${editor.innerHTML}<br>${html}`;
-		document.getElementById("workspace").scrollTo(0, 1000);
+		insertHTMLAtLastCaret(html);
 		return
 	}
     document.getElementById("editor").innerHTML = html;
 	document.getElementById("workspace").scrollTo(0, 1000);
 }
+function insertHTMLAtLastCaret(html){
+	// execCommand keeps the insertion on the browser's undo stack, so Ctrl/Cmd+Z reverts it
+	const editor = document.getElementById("editor");
+	const selection = window.getSelection();
+	editor.focus();
+	selection.removeAllRanges();
+	if ( lastEditorRange && editor.contains(lastEditorRange.commonAncestorContainer) ){
+		selection.addRange(lastEditorRange);
+	} else {
+		// no caret recorded yet - put it at the end of the document
+		const range = document.createRange();
+		range.selectNodeContents(editor);
+		range.collapse(false);
+		selection.addRange(range);
+	}
+	document.execCommand("insertHTML", false, html);
+	updateCaretPosition();
+	performAutoSave();
+	handleWordCounter();
+}
+
 function toggleFormattingBar(){
     const subBar = document.getElementById("sub-bar");
 	const toggleFormatBtn = document.getElementById("toggle-format-btn");
-    subBar.style.display = subBar.style.display === "none" ? "flex" : "none";
+    subBar.style.display = subBar.style.display === "none" ? "" : "none";
 	if (subBar.style.display === "none"){
 		toggleFormatBtn.innerText = "Toggle Formatting (It's off now)";
 	} else {
