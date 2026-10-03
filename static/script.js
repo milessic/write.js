@@ -771,12 +771,18 @@ function simulateEnter() {
     sel.addRange(range);
 }
 
+function isDeviceOnlyKey(key){
+	// state of this device that never goes to the cloud or a notebook backup
+	// (the workspace.js keys are looked up on call, that file loads after this one)
+	return [userLoggedInKey, syncPendingKey, openedTabsKey, openedEditorsKey].includes(key);
+}
+
 function getAllLocalStorageItems() {
 	if ( !validateUserConsent() ) { return [] }
 	const data = {}
 	for ( var i = 0, len = localStorage.length; i < len; ++i ) {
 	  const key = localStorage.key( i );
-	  if ( key === syncPendingKey ) { continue }
+	  if ( isDeviceOnlyKey(key) ) { continue }
 	  data[key] = localStorage.getItem( localStorage.key( i ) );
 	}
 	return data
@@ -795,7 +801,7 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 		// check for documents that are different
 		// TODO add support for current document
 		if ( key === docPrefix + getDocumentName() && excludeCurrentDocument ) { console.log('skipping current doc');continue }
-		if ( key === userLoggedInKey || key === syncPendingKey ) { continue }
+		if ( isDeviceOnlyKey(key) ) { continue }
 		const existingDocument = localStorage.getItem(key)  
 		if ( existingDocument === value ) { continue }    // if document is the same, don't overwrite
 		else if ( existingDocument != null && !showConfirm(`!Do you want to overwrite '${key.replace(docPrefix, "")}'?`)){ continue } // for edited documents in both sources 
