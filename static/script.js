@@ -4,6 +4,7 @@ const userConsentKey = "__userConsent__";
 const lastOpenedKey= "__lastOpened__";
 const docPrefix = "__doc__";
 const autosaveKey = "__autosave__";
+const syncPendingKey = "__syncPending__"; // set while there are changes that couldn't reach the cloud (offline)
 const themeCookie = "theme";
 
 let autosaveEnabled = 0;
@@ -78,6 +79,7 @@ document.getElementById("editor-grid").addEventListener('keyup', (e) => {updateC
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
 document.getElementById('editor-grid').addEventListener('click', focusEditor);
 document.getElementById("theme-btn").addEventListener("click", createThemeModal);
+document.getElementById("offline-btn").addEventListener("click", createOfflineModal);
 document.addEventListener("selectionchange", () => {
 	const selection = window.getSelection();
 	if ( selection.rangeCount && document.getElementById("editor").contains(selection.anchorNode) ){
@@ -774,6 +776,7 @@ function getAllLocalStorageItems() {
 	const data = {}
 	for ( var i = 0, len = localStorage.length; i < len; ++i ) {
 	  const key = localStorage.key( i );
+	  if ( key === syncPendingKey ) { continue }
 	  data[key] = localStorage.getItem( localStorage.key( i ) );
 	}
 	return data
@@ -792,7 +795,7 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 		// check for documents that are different
 		// TODO add support for current document
 		if ( key === docPrefix + getDocumentName() && excludeCurrentDocument ) { console.log('skipping current doc');continue }
-		if ( key === userLoggedInKey ) { continue }
+		if ( key === userLoggedInKey || key === syncPendingKey ) { continue }
 		const existingDocument = localStorage.getItem(key)  
 		if ( existingDocument === value ) { continue }    // if document is the same, don't overwrite
 		else if ( existingDocument != null && !showConfirm(`!Do you want to overwrite '${key.replace(docPrefix, "")}'?`)){ continue } // for edited documents in both sources 
@@ -1396,6 +1399,8 @@ function handleQueries(){
 				createLoginExpiredNotification();
 			} else if ( params.get("logout") === "i" ) {
 				createAccountDeletedNotification();
+			} else if ( params.get("logout") === "3" ) {
+				// 401 while syncing is an expired session: handleSessionExpired (script2.js) lets the user keep the documents
 			} else {
 				const tempUserConsent = userConsent
 				purgeLocalStorage(false);
@@ -1587,4 +1592,81 @@ function createInsertMarkdownModal(){
 		fillEditorWithHTML(generatedHtml, true);
 		closeAllModals()
 	})
+}
+
+// offline support: the service worker caches the app, see static/sw.js
+let installPrompt = null; // Chrome/Edge/Android hand it over, so the app can be installed from the menu
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e });
+window.addEventListener("appinstalled", () => { installPrompt = null });
+
+function createOfflineModal(){
+	const ua = navigator.userAgent;
+	const isIos = /iPad|iPhone|iPod/.test(ua) || ( ua.includes("Macintosh") && navigator.maxTouchPoints > 1 );
+	const isAndroid = /Android/.test(ua);
+	const isSafari = /Safari/.test(ua) && !/Chrome|Chromium|Edg|Firefox/.test(ua);
+	const isFirefox = /Firefox/.test(ua);
+	const platform = isIos ? "ios" : isAndroid ? "android" : isSafari ? "safari" : isFirefox ? "firefox" : "desktop";
+	const installed = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+	const ready = !!navigator.serviceWorker?.controller;
+
+	const status = !( "serviceWorker" in navigator )
+		? `<p class="danger">This browser can't keep Write.JS offline. Try a recent Chrome, Edge, Firefox or Safari.</p>`
+		: installed
+			? `<p><strong>✓ You are using the installed app.</strong> It opens without internet.</p>`
+			: ready
+				? `<p><strong>✓ This browser is ready.</strong> Write.JS opens without internet, at this same address.</p>`
+				: `<p><strong>Almost ready:</strong> reload the page once while online to finish preparing offline mode.</p>`;
+	const section = (key, title, steps) => `
+	<details ${key === platform ? "open" : ""}>
+		<summary>${title}${key === platform ? " (this device)" : ""}</summary>
+		<ol>${steps.map((s) => `<li>${s}</li>`).join("")}</ol>
+	</details>`;
+
+	createModal("Install / Use offline", `
+	${status}
+	${installPrompt && !installed ? `<div class="row"><button class="btn primary" id="install-app-btn">Install Write.JS</button></div>` : ""}
+	<p>Once Write.JS has been opened here online, it also opens without internet. Installing it adds an app icon and keeps your documents safer from automatic browser clean-ups.</p>
+	${section("desktop", "Chrome / Edge on a computer", [
+		"Click the install icon at the right end of the address bar (or open the browser menu and choose <em>Install Write.JS</em> / <em>Apps → Install</em>).",
+		"Write.JS opens in its own window and appears in your apps / Start menu.",
+	])}
+	${section("android", "Android", [
+		"Open the browser menu <strong>⋮</strong>.",
+		"Tap <em>Install app</em> or <em>Add to Home screen</em>.",
+	])}
+	${section("ios", "iPhone / iPad", [
+		"Open Write.JS in <strong>Safari</strong>.",
+		"Tap <em>Share</em> <strong>⎙</strong>, then <em>Add to Home Screen</em>.",
+		"Open Write.JS from the home screen icon. Safari may delete data of sites not visited for a few weeks, the home screen app is kept.",
+	])}
+	${section("safari", "Safari on a Mac", [
+		"Choose <em>File → Add to Dock</em> (or <em>Share → Add to Dock</em>).",
+	])}
+	${section("firefox", "Firefox", [
+		"Firefox can't install apps, but works offline in the browser: just open the same address without internet.",
+	])}
+	<h3>Good to know</h3>
+	<ul>
+		<li>Offline, documents are saved in this browser / app only.</li>
+		<li>Logged in? Changes made offline are uploaded to the cloud automatically when you are back online.</li>
+		<li>Clearing the browser data deletes the documents stored here, use <em>Export Notebook</em> for a backup.</li>
+	</ul>`);
+
+	document.getElementById("install-app-btn")?.addEventListener("click", async () => {
+		installPrompt.prompt();
+		const { outcome } = await installPrompt.userChoice;
+		installPrompt = null;
+		closeAllModals();
+		if ( outcome === "accepted" ) { createNotification("Write.JS installed!", "info") }
+	});
+}
+
+if ( "serviceWorker" in navigator ) {
+	window.addEventListener("load", () => {
+		navigator.serviceWorker.register("/sw.js").catch((err) => console.warn("Service worker not registered", err));
+	});
+	// installed app: ask the browser not to evict the documents (Safari clears storage of unused sites)
+	if ( navigator.storage?.persist && window.matchMedia("(display-mode: standalone)").matches ) {
+		navigator.storage.persist();
+	}
 }

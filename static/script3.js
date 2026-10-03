@@ -10,7 +10,7 @@ let remoteAutoSaveEnabled = true;
 const remoteAutoSaveValue = 5000;
 const remoteForceAutoSaveValue = 60000;
 const refreshTokensTimeout = 360000
-setTimeout( () => { loadNotebook() }, 1)
+setTimeout( () => { syncNotebook() }, 1)
 
 // Events
 document.getElementById("save-btn").addEventListener("click", sendNotebook);
@@ -19,7 +19,16 @@ document.getElementById("load-notebook-btn").addEventListener("click", loadNoteb
 //window.addEventListener("load", loadNotebook)
 //window.addEventListener("load", refreshTokens)
 window.addEventListener("load", (e) => {
-	refreshTokens();
+	if ( navigator.onLine ) { refreshTokens() }
+})
+// back online: renew the session, then catch up with what was skipped while offline
+window.addEventListener("online", async () => {
+	createNotification("Back online, syncing notebook", "info", notificationTimeoutShort);
+	await refreshTokens();
+	await syncNotebook(false);
+})
+window.addEventListener("offline", () => {
+	createNotification("You are offline, documents are saved in this browser and will sync when you are back online", "warning", notificationTimeoutLong);
 })
 
 document.getElementById("account-btn").addEventListener('click', createAccountModal);
@@ -143,7 +152,23 @@ async function sendNotebook(){
 	return await sendNotebookForce()
 
 }
+async function syncNotebook(onStart=true){
+	"pull the remote notebook, then push the changes made offline (if any)"
+	if ( !navigator.onLine ) { return }
+	// mid-session keep the document being edited, like the Save button does
+	await ( onStart ? loadNotebook() : loadNotebook(true, false) );
+	if ( localStorage.getItem(syncPendingKey) ) { await sendNotebookForce() }
+}
+
+function markSyncPending(){
+	if ( !localStorage.getItem(syncPendingKey) ) {
+		createNotification("Offline - saved in this browser, will sync to the cloud when you are back online", "info", notificationTimeoutLong);
+	}
+	localStorage.setItem(syncPendingKey, "1");
+}
+
 async function sendNotebookForce(){
+	if ( !navigator.onLine ) { markSyncPending(); return }
 	try {
 		const payload = compressObject(JSON.stringify(getAllLocalStorageItems()));
 		const resp = await fetch("/api/notebooks/notebook", {
@@ -155,9 +180,13 @@ async function sendNotebookForce(){
 		if ( resp.status != 201 ){
 			throw new Error(resp);
 		}
+		localStorage.removeItem(syncPendingKey);
 		createNotification("Notebook pushed to remote", "info", notificationTimeoutShort)
 
 	} catch(err) {
+		// fetch rejects with TypeError when the network is gone
+		if ( err instanceof TypeError ) { markSyncPending() }
+		if ( !navigator.onLine ) { return }
 		informError("Sync error! Cannot send notebook to the cloud!", err);
 	}
 }
@@ -262,6 +291,7 @@ async function refreshTokens(){
 		}
 		startRefreshTokenTimer(respData);
 	} catch (err) {
+		if ( !navigator.onLine ) { return } // the "online" listener refreshes them
 		window.alert("RefreshToken" + err)
 		setTimeout( 
 			() => { refreshTokens() },

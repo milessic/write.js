@@ -2,6 +2,12 @@
 <html lang="en" data-theme="{{ theme or 'writejs' }}">
 <head>
 	<link rel="icon" href="favicon.svg" sizes="any" type="image/svg+xml">
+	<link rel="manifest" href="static/manifest.webmanifest">
+	<link rel="apple-touch-icon" href="static/icons/icon-192.png">
+	<meta name="theme-color" content="#2c2c2c">
+	<meta name="mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-title" content="Write.JS">
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1, maximum-scale=1, interactive-widget=resizes-content">
@@ -59,6 +65,7 @@
 					<button role="menuitem" id="backup-btn" onclick="saveBackup()">Export Notebook</button>
 					<button role="menuitem" id="restore-btn" onclick="loadBackup()">Import Notebook</button>
 					<hr>
+					<button role="menuitem" id="offline-btn">Install / Use offline</button>
 					<a role="menuitem" id="contact" href="mailto:writejs.help@gmail.com?subject=Write.js Bug or Feedback&body=Please describe the problem">Report a bug/feedback!</a>
 					{% if themes_url %}
 					<a role="menuitem" id="themes-attribution" href="{{ themes_url }}/" target="_blank" rel="noopener">Themes from milessic-themes</a>
@@ -144,14 +151,14 @@
 	<!--
 	<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 	-->
-	<script src="https://cdn.jsdelivr.net/npm/showdown/dist/showdown.min.js"></script>
+	<script src="static/showdown.min.js?2.1.0"></script>
 	<script src="static/pako.js?64"></script>
-    <script src="static/script.js?73"></script>
+    <script src="static/script.js?75"></script>
     <script src="static/workspace.js?73"></script>
 	{% if is_authenticated %}
-    	<script src="static/script3.js?66"></script>
+    	<script src="static/script3.js?67"></script>
 	{% else %}
-    	<script src="static/script2.js?66"></script>
+    	<script src="static/script2.js?67"></script>
 	{% endif %}
 </body>
 </html>
