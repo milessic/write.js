@@ -90,6 +90,36 @@ document.addEventListener("click", (e) => { if ( !contextMenu.contains(e.target)
 document.addEventListener("keydown", (e) => { if ( e.key === "Escape" ) { closeContextMenu() } });
 window.addEventListener("resize", closeContextMenu);
 window.addEventListener("blur", closeContextMenu);
+// mobile: keep the top bar and the toolbar on screen; iOS doesn't resize the page for the keyboard
+// (interactive-widget is ignored there), it pans the visual viewport over the page instead
+if ( window.visualViewport ) {
+	let viewportFrame = 0;
+	const scheduleFit = () => {
+		if ( !viewportFrame ) { viewportFrame = requestAnimationFrame(fitToVisualViewport) }
+	};
+	visualViewport.addEventListener("resize", scheduleFit);
+	visualViewport.addEventListener("scroll", scheduleFit);
+	window.addEventListener("scroll", scheduleFit);
+	fitToVisualViewport();
+
+	function fitToVisualViewport(){
+		viewportFrame = 0;
+		// the page never scrolls (styles.css); undo a scroll the browser did to reveal the caret
+		if ( window.scrollY || window.scrollX ) { window.scrollTo(0, 0) }
+		const style = document.body.style;
+		const top = Math.max(0, Math.round(visualViewport.offsetTop));
+		const height = Math.round(visualViewport.height);
+		// pinch-zoomed (iOS ignores maximum-scale): let the user pan around the page
+		if ( visualViewport.scale > 1.01 || (!top && height >= window.innerHeight) ) {
+			style.removeProperty("--app-top");
+			style.removeProperty("--app-height");
+			return
+		}
+		// set only on change: every change re-lays out the editors
+		if ( style.getPropertyValue("--app-top") !== top + "px" ) { style.setProperty("--app-top", top + "px") }
+		if ( style.getPropertyValue("--app-height") !== height + "px" ) { style.setProperty("--app-height", height + "px") }
+	}
+}
 
 
 // preferences

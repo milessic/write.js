@@ -2,12 +2,29 @@
    Look comes from the theme (contract classes + public tokens); this file only does layout
    and the editor's own content. Don't restyle contract classes here. */
 
-/* page: top bar, then the documents tree and the editors under it */
+/* page: top bar, then the documents tree and the editors under it.
+   The page itself never scrolls, only the editors do: a scrolling page lets mobile browsers
+   toggle the address bar (the viewport resizes and the long editor re-lays out = flicker)
+   and pan the top bar and the toolbar out of view. --app-top/--app-height follow the visual
+   viewport (workspace.js), so the page also fits above the iOS keyboard */
+html:has(body.app) {
+	height: 100%;
+	overflow: hidden;
+	overscroll-behavior: none;
+}
 body.app {
+	position: fixed;
+	top: var(--app-top, 0);
+	left: 0;
+	right: 0;
+	height: var(--app-height, 100%);
+	overflow: hidden;
+	overscroll-behavior: none;
 	display: flex;
 	flex-direction: column;
-	height: 100vh;
-	height: 100dvh;
+}
+body.app > .topbar {
+	flex: none;
 }
 /* the workspace holds the formatting toolbar above the editors; each editor scrolls on its own */
 .workspace {
@@ -296,6 +313,8 @@ body.app {
 	flex: 1;
 	min-height: 0;
 	overflow-y: auto;
+	/* don't hand the scroll over to the page at the document's ends */
+	overscroll-behavior: contain;
 }
 .pane-head {
 	display: none;
