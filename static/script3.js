@@ -10,7 +10,7 @@ let remoteAutoSaveEnabled = true;
 const remoteAutoSaveValue = 5000;
 const remoteForceAutoSaveValue = 60000;
 const refreshTokensTimeout = 360000
-setTimeout( () => { loadNotebook() }, 1)
+setTimeout( () => { syncNotebook() }, 1)
 
 // Events
 document.getElementById("save-btn").addEventListener("click", sendNotebook);
@@ -19,12 +19,62 @@ document.getElementById("load-notebook-btn").addEventListener("click", loadNoteb
 //window.addEventListener("load", loadNotebook)
 //window.addEventListener("load", refreshTokens)
 window.addEventListener("load", (e) => {
-	refreshTokens();
+	if ( navigator.onLine ) { refreshTokens() }
+})
+// back online: renew the session, then catch up with what was skipped while offline
+window.addEventListener("online", async () => {
+	createNotification("Back online, syncing notebook", "info", notificationTimeoutShort);
+	await refreshTokens();
+	await syncNotebook(false);
+})
+window.addEventListener("offline", () => {
+	createNotification("You are offline, documents are saved in this browser and will sync when you are back online", "warning", notificationTimeoutLong);
 })
 
 document.getElementById("account-btn").addEventListener('click', createAccountModal);
+
+// browsers cap localStorage at ~5M characters per origin (keys + values)
+const localStorageLimit = 5 * 1024 * 1024;
+
+function getNotebookWordCount(){
+	let total = 0;
+	for ( const name of getDocumentNamesFromLocalStorage() || [] ){
+		const html = localStorage.getItem(docPrefix + name) || "";
+		// block tags and line breaks separate words, other tags (b, i, span...) don't
+		const spaced = html.replace(/<(br|\/?(p|div|li|ul|ol|h[1-6]|tr|td|th|blockquote|pre))\b[^>]*>/gi, " ");
+		const text = new DOMParser().parseFromString(spaced, "text/html").body.textContent.trim();
+		if ( text ) { total += text.split(/\s+/).length }
+	}
+	return total;
+}
+
+function getNotebookUsage(){
+	let used = 0;
+	for ( let i = 0; i < localStorage.length; i++ ){
+		const key = localStorage.key(i);
+		used += key.length + (localStorage.getItem(key) || "").length;
+	}
+	return { used, limit: localStorageLimit, percent: used / localStorageLimit * 100 };
+}
+
+function formatBytes(n){
+	if ( n < 1024 ) { return `${n} B` }
+	if ( n < 1024 * 1024 ) { return `${(n / 1024).toFixed(1)} KB` }
+	return `${(n / 1024 / 1024).toFixed(2)} MB`
+}
 async function createAccountModal(){
+	const usage = getNotebookUsage();
 	const html = `
+	<h3>Notebook</h3>
+	<div class="stack">
+		<div class="row usage-row"><span class="muted">Total words count</span><strong>${getNotebookWordCount()}</strong></div>
+		<div class="usage-meter">
+			<div class="row usage-row"><span class="muted">Notebook usage</span><span>${formatBytes(usage.used)} / ${formatBytes(usage.limit)} (${usage.percent.toFixed(1)}%)</span></div>
+			<div class="usage-bar" role="progressbar" aria-label="Notebook usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(usage.percent)}">
+				<div class="usage-bar-fill${usage.percent >= 90 ? ' danger' : ''}" style="width: ${Math.min(usage.percent, 100)}%"></div>
+			</div>
+		</div>
+	</div>
 	<h3>Logout</h3>
 	<div class="row">
 		<form method="GET" action="/api/auth/user/logout/">
@@ -143,7 +193,23 @@ async function sendNotebook(){
 	return await sendNotebookForce()
 
 }
+async function syncNotebook(onStart=true){
+	"pull the remote notebook, then push the changes made offline (if any)"
+	if ( !navigator.onLine ) { return }
+	// mid-session keep the document being edited, like the Save button does
+	await ( onStart ? loadNotebook() : loadNotebook(true, false) );
+	if ( localStorage.getItem(syncPendingKey) ) { await sendNotebookForce() }
+}
+
+function markSyncPending(){
+	if ( !localStorage.getItem(syncPendingKey) ) {
+		createNotification("Offline - saved in this browser, will sync to the cloud when you are back online", "info", notificationTimeoutLong);
+	}
+	localStorage.setItem(syncPendingKey, "1");
+}
+
 async function sendNotebookForce(){
+	if ( !navigator.onLine ) { markSyncPending(); return }
 	try {
 		const payload = compressObject(JSON.stringify(getAllLocalStorageItems()));
 		const resp = await fetch("/api/notebooks/notebook", {
@@ -155,9 +221,13 @@ async function sendNotebookForce(){
 		if ( resp.status != 201 ){
 			throw new Error(resp);
 		}
+		localStorage.removeItem(syncPendingKey);
 		createNotification("Notebook pushed to remote", "info", notificationTimeoutShort)
 
 	} catch(err) {
+		// fetch rejects with TypeError when the network is gone
+		if ( err instanceof TypeError ) { markSyncPending() }
+		if ( !navigator.onLine ) { return }
 		informError("Sync error! Cannot send notebook to the cloud!", err);
 	}
 }
@@ -262,6 +332,7 @@ async function refreshTokens(){
 		}
 		startRefreshTokenTimer(respData);
 	} catch (err) {
+		if ( !navigator.onLine ) { return } // the "online" listener refreshes them
 		window.alert("RefreshToken" + err)
 		setTimeout( 
 			() => { refreshTokens() },

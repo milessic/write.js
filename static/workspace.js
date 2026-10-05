@@ -2,7 +2,12 @@
  * Workspace: the documents tree (file explorer), the opened documents (tabs) and the editors.
  * The tree and the tabs bar can be docked by drag-and-drop or from their right-click menu;
  * the layout, the opened tabs and the split editors are user preferences kept in localStorage.
- * A "/" in a document name puts it in a folder of the tree, e.g. "notes/todo".
+ * Folders are listed on top of the tree and can hold sub-folders, up to maxFolderDepth levels;
+ * a folder is known by its path, e.g. "work/projects". A document is in at most one folder.
+ * The folders and which document is in which are kept under foldersKey and go to the cloud
+ * with the notebook.
+ * Documents in the tree can be selected with Ctrl/Cmd+click (one more) and Shift+click (a range);
+ * opening, deleting, moving and dragging then act on all the selected documents.
  *
  * Split view: up to 4 editor panes, each showing one opened tab. The focused pane's editor
  * carries id="editor" (and is editorObject), so the rest of the app works on it unchanged;
@@ -11,10 +16,14 @@
 const layoutKey = "__layout__";
 const openedTabsKey = "__openedTabs__";
 const openedEditorsKey = "__openedEditors__";
-const treeFolderSeparator = "/";
+const foldersKey = "__folders__";
+const folderSeparator = "/";
+const maxFolderDepth = 5;
 const untitledTabLabel = "Untitled";
 const maxEditors = 4;
 const tabDragType = "application/x-writejs-tab";
+const documentDragType = "application/x-writejs-document";
+const folderDragType = "application/x-writejs-folder";
 
 const layout = Object.assign(
 	{ treeSide: "left", tabsSide: "top", treeHidden: false, collapsedFolders: [] },
@@ -32,6 +41,11 @@ let focusedPane = null;
 let renderedTreeKey = null;
 let draggedTabId = null;
 let draggedPane = null;
+let draggedDocuments = null;
+// documents selected in the tree; the anchor is where a Shift+click range starts
+let selectedDocuments = new Set();
+let selectionAnchor = null;
+let draggedFolder = null;
 
 const fileTreeList = document.getElementById("file-tree-list");
 const fileTreeSearch = document.getElementById("file-tree-search");
@@ -53,6 +67,7 @@ window.addEventListener("load", () => {
 		focusedPane.tabId = tab.id;
 		renderTabs();
 	}
+	migratePathFolders();
 	refreshFileTree(true);
 });
 window.addEventListener("beforeunload", (e) => {
@@ -75,21 +90,58 @@ document.addEventListener("keydown", (e) => {
 
 document.getElementById("split-btn").addEventListener("click", () => splitEditor());
 document.getElementById("file-tree-new").addEventListener("click", createNewDocument);
+document.getElementById("file-tree-new-folder").addEventListener("click", () => createFolder());
 document.getElementById("file-tree-hide").addEventListener("click", hideFileTree);
 document.getElementById("file-tree-scrim").addEventListener("click", hideFileTree);
 fileTreeSearch.addEventListener("input", () => refreshFileTree());
+fileTreeList.addEventListener("keydown", (e) => {
+	if ( e.key === "Escape" && selectedDocuments.size ) { clearDocumentSelection() }
+	if ( e.key === "Delete" && selectedDocuments.size ) { e.preventDefault(); deleteDocuments([...selectedDocuments]) }
+});
 fileTreeSearch.addEventListener("keydown", (e) => {
 	if ( e.key === "Escape" ) { fileTreeSearch.value = ""; refreshFileTree() }
 });
 document.getElementById("file-tree").addEventListener("contextmenu", (e) => openContextMenu(e, treePanelMenuItems()));
 document.getElementById("tab-bar").addEventListener("contextmenu", (e) => openContextMenu(e, tabsPanelMenuItems()));
 setupDocking("file-tree-head", "tree");
+setupDocumentDropping();
 setupDocking("tab-grip", "tabs");
+setupNameTooltip();
 
 document.addEventListener("click", (e) => { if ( !contextMenu.contains(e.target) ) { closeContextMenu() } });
 document.addEventListener("keydown", (e) => { if ( e.key === "Escape" ) { closeContextMenu() } });
 window.addEventListener("resize", closeContextMenu);
 window.addEventListener("blur", closeContextMenu);
+// mobile: keep the top bar and the toolbar on screen; iOS doesn't resize the page for the keyboard
+// (interactive-widget is ignored there), it pans the visual viewport over the page instead
+if ( window.visualViewport ) {
+	let viewportFrame = 0;
+	const scheduleFit = () => {
+		if ( !viewportFrame ) { viewportFrame = requestAnimationFrame(fitToVisualViewport) }
+	};
+	visualViewport.addEventListener("resize", scheduleFit);
+	visualViewport.addEventListener("scroll", scheduleFit);
+	window.addEventListener("scroll", scheduleFit);
+	fitToVisualViewport();
+
+	function fitToVisualViewport(){
+		viewportFrame = 0;
+		// the page never scrolls (styles.css); undo a scroll the browser did to reveal the caret
+		if ( window.scrollY || window.scrollX ) { window.scrollTo(0, 0) }
+		const style = document.body.style;
+		const top = Math.max(0, Math.round(visualViewport.offsetTop));
+		const height = Math.round(visualViewport.height);
+		// pinch-zoomed (iOS ignores maximum-scale): let the user pan around the page
+		if ( visualViewport.scale > 1.01 || (!top && height >= window.innerHeight) ) {
+			style.removeProperty("--app-top");
+			style.removeProperty("--app-height");
+			return
+		}
+		// set only on change: every change re-lays out the editors
+		if ( style.getPropertyValue("--app-top") !== top + "px" ) { style.setProperty("--app-top", top + "px") }
+		if ( style.getPropertyValue("--app-height") !== height + "px" ) { style.setProperty("--app-height", height + "px") }
+	}
+}
 
 
 // preferences
@@ -200,9 +252,12 @@ function refreshFileTree(force=false){
 	const names = validateUserConsent(false) ? getDocumentNamesFromLocalStorage().sort((a, b) => a.localeCompare(b)) : null;
 	const filter = fileTreeSearch.value.trim().toLowerCase();
 	// autosave calls this on every keystroke, so skip rebuilding an unchanged tree
-	const key = JSON.stringify([names, filter, getDocumentName(), layout.collapsedFolders]);
+	const folders = names === null ? null : localStorage.getItem(foldersKey);
+	const key = JSON.stringify([names, folders, filter, getDocumentName(), layout.collapsedFolders]);
 	if ( !force && key === renderedTreeKey ) { return }
 	renderedTreeKey = key;
+	// deleted documents leave the selection
+	if ( names ) { selectedDocuments = new Set([...selectedDocuments].filter(n => names.includes(n))) }
 
 	fileTreeList.replaceChildren();
 	if ( names === null ) {
@@ -211,75 +266,155 @@ function refreshFileTree(force=false){
 		const matches = names.filter(name => name.toLowerCase().includes(filter));
 		matches.forEach(name => fileTreeList.append(treeDocumentItem(name, name, 0)));
 		if ( !matches.length ) { fileTreeList.append(treeMessage("No matching documents.")) }
-	} else if ( !names.length ) {
+	} else if ( !names.length && !readFolders().folders.length ) {
 		fileTreeList.append(treeMessage("You don't have any saved documents yet. Just create one :)"));
 	} else {
-		renderTreeLevel(fileTreeList, buildTree(names), "", 0);
+		renderFolders(fileTreeList, names);
 	}
 }
 
-function buildTree(names){
-	const root = { folders: new Map(), documents: [] };
+function renderFolders(list, names){
+	// folders first, then the documents that aren't in a folder
+	const store = readFolders();
+	const byFolder = new Map(store.folders.map(f => [f, []]));
+	const loose = [];
 	for ( const name of names ) {
-		const parts = name.split(treeFolderSeparator);
-		const label = parts.pop();
-		// names like "/x" or "a//b" have empty parts; show them unsplit
-		if ( !label || parts.some(p => !p) ) {
-			root.documents.push({ label: name, name });
-			continue;
-		}
-		let node = root;
-		for ( const part of parts ) {
-			if ( !node.folders.has(part) ) { node.folders.set(part, { folders: new Map(), documents: [] }) }
-			node = node.folders.get(part);
-		}
-		node.documents.push({ label, name });
+		(byFolder.get(store.documents[name]) || loose).push(name);
 	}
-	return root;
+	renderFolderLevel(list, "", store.folders, byFolder, 0);
+	loose.forEach(name => list.append(treeDocumentItem(name, name, 0)));
 }
 
-function renderTreeLevel(list, node, path, depth){
-	const folderNames = [...node.folders.keys()].sort((a, b) => a.localeCompare(b));
-	for ( const folderName of folderNames ) {
-		const folderPath = path + folderName + treeFolderSeparator;
-		const collapsed = layout.collapsedFolders.includes(folderPath);
-		const li = document.createElement("li");
-		li.setAttribute("role", "treeitem");
-		li.setAttribute("aria-expanded", String(!collapsed));
-		const row = treeRow("tree-folder", folderName, depth);
-		row.addEventListener("click", () => toggleFolder(folderPath));
-		li.append(row);
-		if ( !collapsed ) {
-			const group = document.createElement("ul");
-			group.setAttribute("role", "group");
-			renderTreeLevel(group, node.folders.get(folderName), folderPath, depth + 1);
-			li.append(group);
-		}
-		list.append(li);
+function renderFolderLevel(list, parent, folders, byFolder, depth){
+	const children = folders.filter(f => parentFolder(f) === parent).sort((a, b) => folderLabel(a).localeCompare(folderLabel(b)));
+	for ( const folder of children ) {
+		list.append(treeFolderItem(folder, folders, byFolder, depth));
 	}
-	for ( const doc of node.documents ) {
-		list.append(treeDocumentItem(doc.name, doc.label, depth));
+}
+
+function treeFolderItem(folder, folders, byFolder, depth){
+	const names = byFolder.get(folder);
+	const collapsed = layout.collapsedFolders.includes(folder);
+	const li = document.createElement("li");
+	li.setAttribute("role", "treeitem");
+	li.setAttribute("aria-expanded", String(!collapsed));
+	li.dataset.folder = folder;
+	const row = treeRow("tree-folder", folderLabel(folder), depth);
+	row.title = `${displayFolder(folder)} (${names.length} document${names.length === 1 ? "" : "s"})`;
+	row.draggable = true;
+	row.addEventListener("dragstart", (e) => {
+		e.stopPropagation();
+		draggedFolder = folder;
+		e.dataTransfer.effectAllowed = "move";
+		e.dataTransfer.setData(folderDragType, folder);
+		e.dataTransfer.setData("text/plain", folder);
+	});
+	row.addEventListener("dragend", () => {
+		draggedFolder = null;
+		clearDocumentDropTargets();
+	});
+	row.addEventListener("click", () => toggleFolder(folder));
+	row.addEventListener("contextmenu", (e) => openContextMenu(e, [
+		{ label: "New document in folder", action: () => createNewDocumentInFolder(folder) },
+		{ label: "New sub-folder", action: () => createFolder(folder), disabled: folderDepth(folder) >= maxFolderDepth },
+		{ label: "Rename folder", action: () => renameFolder(folder) },
+		{ label: "Move to top level", action: () => moveFolder(folder, ""), disabled: !parentFolder(folder) },
+		{ label: "Delete folder", danger: true, action: () => deleteFolder(folder) },
+		null,
+		...treePanelMenuItems(),
+	]));
+	li.append(row);
+	if ( !collapsed ) {
+		const group = document.createElement("ul");
+		group.setAttribute("role", "group");
+		renderFolderLevel(group, folder, folders, byFolder, depth + 1);
+		names.forEach(name => group.append(treeDocumentItem(name, name, depth + 1)));
+		if ( !group.children.length ) { group.append(treeMessage("Empty folder", depth + 1)) }
+		li.append(group);
 	}
+	return li;
 }
 
 function treeDocumentItem(name, label, depth){
 	const li = document.createElement("li");
 	li.setAttribute("role", "treeitem");
 	const row = treeRow("tree-document", label, depth);
-	row.title = name;
-	if ( name === getDocumentName() ) {
-		row.classList.add("active");
-		li.setAttribute("aria-selected", "true");
-	}
-	row.addEventListener("click", () => openDocumentFromTree(name));
-	row.addEventListener("contextmenu", (e) => openContextMenu(e, [
-		{ label: "Open", action: () => openDocumentFromTree(name) },
-		{ label: "Delete", danger: true, action: () => deleteDocumentInLocalStorage(name) },
-		null,
-		...treePanelMenuItems(),
-	]));
+	row.dataset.name = name;
+	const folder = folderOfDocument(name);
+	row.title = folder ? `${displayFolder(folder)} / ${name}` : name;
+	row.draggable = true;
+	row.addEventListener("dragstart", (e) => {
+		// dragging a selected document takes the whole selection along
+		draggedDocuments = selectedDocuments.has(name) ? [...selectedDocuments] : [name];
+		e.dataTransfer.effectAllowed = "move";
+		e.dataTransfer.setData(documentDragType, draggedDocuments.join("\n"));
+		e.dataTransfer.setData("text/plain", draggedDocuments.join("\n"));
+	});
+	row.addEventListener("dragend", () => {
+		draggedDocuments = null;
+		clearDocumentDropTargets();
+	});
+	if ( name === getDocumentName() ) { row.classList.add("active") }
+	li.setAttribute("aria-selected", String(selectedDocuments.has(name)));
+	row.classList.toggle("selected", selectedDocuments.has(name));
+	row.addEventListener("click", (e) => clickDocumentInTree(e, name));
+	row.addEventListener("contextmenu", (e) => {
+		// a selected document's menu acts on the selection, any other document's on itself
+		const names = selectedDocuments.has(name) && selectedDocuments.size > 1 ? [...selectedDocuments] : [name];
+		if ( names.length === 1 ) { clearDocumentSelection() }
+		const count = names.length > 1 ? ` ${names.length} documents` : "";
+		openContextMenu(e, [
+			{ label: "Open" + count, action: () => names.forEach(openDocumentFromTree) },
+			{ label: "Delete" + count, danger: true, action: () => names.length > 1 ? deleteDocuments(names) : deleteDocumentInLocalStorage(name) },
+			...(names.length > 1 ? [{ label: "Clear selection", action: clearDocumentSelection }] : []),
+			null,
+			...moveToFolderMenuItems(names),
+			null,
+			...treePanelMenuItems(),
+		]);
+	});
 	li.append(row);
 	return li;
+}
+
+function clickDocumentInTree(e, name){
+	// Ctrl/Cmd+click adds or removes one document, Shift+click selects a range, a plain click opens
+	if ( e.shiftKey ) {
+		const rows = [...fileTreeList.querySelectorAll(".tree-document")].map(r => r.dataset.name);
+		const anchor = rows.includes(selectionAnchor) ? selectionAnchor : rows.includes(getDocumentName()) ? getDocumentName() : name;
+		const [from, to] = [rows.indexOf(anchor), rows.indexOf(name)].sort((a, b) => a - b);
+		if ( !(e.ctrlKey || e.metaKey) ) { selectedDocuments.clear() }
+		rows.slice(from, to + 1).forEach(n => selectedDocuments.add(n));
+		selectionAnchor = anchor;
+	} else if ( e.ctrlKey || e.metaKey ) {
+		if ( !selectedDocuments.size && name !== getDocumentName() && documentExists(getDocumentName()) ) {
+			// the opened document is the start of the selection, like in a file explorer
+			selectedDocuments.add(getDocumentName());
+		}
+		selectedDocuments.has(name) ? selectedDocuments.delete(name) : selectedDocuments.add(name);
+		selectionAnchor = name;
+	} else {
+		selectedDocuments.clear();
+		selectionAnchor = name;
+		showDocumentSelection();
+		openDocumentFromTree(name);
+		return;
+	}
+	showDocumentSelection();
+}
+
+function showDocumentSelection(){
+	// marks the selected rows without rebuilding the tree
+	for ( const row of fileTreeList.querySelectorAll(".tree-document") ) {
+		const selected = selectedDocuments.has(row.dataset.name);
+		row.classList.toggle("selected", selected);
+		row.parentElement.setAttribute("aria-selected", String(selected));
+	}
+}
+
+function clearDocumentSelection(){
+	selectedDocuments.clear();
+	showDocumentSelection();
 }
 
 function treeRow(className, label, depth){
@@ -290,18 +425,112 @@ function treeRow(className, label, depth){
 	return row;
 }
 
-function treeMessage(text){
+function setupNameTooltip(){
+	// the full name of a tab, a document in the tree or an editor shown on hover, sooner than the
+	// browser's own title tooltip; the element's title is held back while the tooltip is shown
+	if ( !matchMedia("(hover: hover)").matches ) { return }
+	const tooltip = document.createElement("div");
+	tooltip.className = "name-tooltip";
+	tooltip.setAttribute("role", "tooltip");
+	document.body.append(tooltip);
+	let target = null;
+	let timer = null;
+
+	const hide = () => {
+		clearTimeout(timer);
+		tooltip.classList.remove("visible");
+		if ( target && target.dataset.tooltip !== undefined ) {
+			if ( !target.hasAttribute("title") ) { target.title = target.dataset.tooltip }
+			delete target.dataset.tooltip;
+		}
+		target = null;
+	};
+	const show = () => {
+		if ( !target?.isConnected ) { return }
+		tooltip.textContent = target.dataset.tooltip;
+		tooltip.classList.add("visible");
+		const rect = target.getBoundingClientRect();
+		const width = tooltip.offsetWidth;
+		const height = tooltip.offsetHeight;
+		const left = Math.max(4, Math.min(rect.left, innerWidth - width - 4));
+		const top = rect.bottom + 4 + height <= innerHeight ? rect.bottom + 4 : rect.top - height - 4;
+		tooltip.style.left = `${left}px`;
+		tooltip.style.top = `${top}px`;
+	};
+
+	document.addEventListener("mouseover", (e) => {
+		const el = e.target.closest?.(".tab, .tree-row, .pane-name");
+		if ( el === target ) { return }
+		hide();
+		if ( !el?.title ) { return }
+		target = el;
+		target.dataset.tooltip = target.title;
+		target.removeAttribute("title");
+		timer = setTimeout(show, 300);
+	});
+	document.addEventListener("mouseout", (e) => { if ( !e.relatedTarget ) { hide() } });   // the pointer left the page
+	document.addEventListener("mousedown", hide, true);
+	document.addEventListener("dragstart", hide, true);
+	document.addEventListener("scroll", hide, true);
+	window.addEventListener("blur", hide);
+}
+
+function treeMessage(text, depth=0){
 	const li = document.createElement("li");
 	li.className = "tree-message muted small";
+	li.style.setProperty("--depth", depth);
 	li.textContent = text;
 	return li;
 }
 
-function toggleFolder(folderPath){
-	const i = layout.collapsedFolders.indexOf(folderPath);
-	i === -1 ? layout.collapsedFolders.push(folderPath) : layout.collapsedFolders.splice(i, 1);
+function toggleFolder(folder){
+	const i = layout.collapsedFolders.indexOf(folder);
+	i === -1 ? layout.collapsedFolders.push(folder) : layout.collapsedFolders.splice(i, 1);
 	saveLayout();
 	refreshFileTree(true);
+}
+
+function expandFolder(folder){
+	// opens the folder and the folders it is in
+	const shown = [folder, ...folderAncestors(folder)];
+	const collapsed = layout.collapsedFolders.filter(f => !shown.includes(f));
+	if ( collapsed.length !== layout.collapsedFolders.length ) {
+		layout.collapsedFolders = collapsed;
+		saveLayout();
+	}
+}
+
+function setupDocumentDropping(){
+	// a document or a folder dragged onto a folder goes into it, dropped anywhere else in the tree it goes to the top level
+	const dragging = () => draggedDocuments !== null || draggedFolder !== null;
+	const targetOf = (e) => e.target.closest("[data-folder]") || fileTreeList;
+	fileTreeList.addEventListener("dragover", (e) => {
+		if ( !dragging() ) { return }
+		const target = targetOf(e);
+		if ( draggedFolder !== null && !canMoveFolder(draggedFolder, target.dataset.folder || "") ) {
+			clearDocumentDropTargets();
+			return;
+		}
+		e.preventDefault();
+		e.dataTransfer.dropEffect = "move";
+		if ( !target.classList.contains("drop-target") ) {
+			clearDocumentDropTargets();
+			target.classList.add("drop-target");
+		}
+	});
+	fileTreeList.addEventListener("dragleave", (e) => { if ( !fileTreeList.contains(e.relatedTarget) ) { clearDocumentDropTargets() } });
+	fileTreeList.addEventListener("drop", (e) => {
+		if ( !dragging() ) { return }
+		e.preventDefault();
+		const folder = targetOf(e).dataset.folder || "";
+		const [names, dragged] = [draggedDocuments, draggedFolder];
+		clearDocumentDropTargets();
+		names !== null ? moveDocumentsToFolder(names, folder) : moveFolder(dragged, folder, true);
+	});
+}
+
+function clearDocumentDropTargets(){
+	fileTreeList.parentElement.querySelectorAll(".drop-target").forEach(x => x.classList.remove("drop-target"));
 }
 
 function openDocumentFromTree(name){
@@ -325,7 +554,8 @@ function paneOfTab(tab){
 }
 
 function createTab(name, html=null, dirty=false){
-	const tab = { id: ++tabSeq, name, html, dirty };
+	// folder: where the document goes when it is first saved (or saved under a new name)
+	const tab = { id: ++tabSeq, name, html, dirty, folder: name ? folderOfDocument(name) : "" };
 	const activeIndex = tabs.indexOf(getActiveTab());
 	activeIndex === -1 ? tabs.push(tab) : tabs.splice(activeIndex + 1, 0, tab);
 	return tab;
@@ -355,6 +585,7 @@ function openDocumentInTab(name){
 	if ( !tab && active && !active.name && !active.dirty ) {
 		// an untouched untitled tab is replaced, not kept beside the document
 		active.name = name;
+		active.folder = folderOfDocument(name);
 		tab = active;
 	}
 	setPaneTab(focusedPane, tab || createTab(name));
@@ -419,6 +650,9 @@ function markActiveTabSaved(){
 	if ( tab ) {
 		tab.name = getDocumentName();
 		tab.dirty = false;
+		// a new or renamed document goes to the tab's folder, a document saved over keeps its own
+		if ( tab.folder && !folderOfDocument(tab.name) ) { assignDocumentFolder(tab.name, tab.folder) }
+		tab.folder = folderOfDocument(tab.name);
 	}
 	renderTabs();
 	refreshFileTree();
@@ -684,9 +918,294 @@ function renderPanes(){
 		const isFocused = pane === focusedPane;
 		pane.el.classList.toggle("focused", isFocused);
 		pane.el.querySelector(".pane-number").textContent = i + 1;
-		pane.el.querySelector(".pane-name").textContent = (tab ? tabLabel(tab) : untitledTabLabel) + (tab?.dirty ? " ●" : "");
+		const paneName = pane.el.querySelector(".pane-name");
+		paneName.textContent = (tab ? tabLabel(tab) : untitledTabLabel) + (tab?.dirty ? " ●" : "");
+		paneName.title = (tab ? tabLabel(tab) : untitledTabLabel) + (tab?.dirty ? " (unsaved)" : "");
 		pane.el.setAttribute("aria-label", `Editor ${i + 1}` + (isFocused ? " (focused)" : ""));
 	});
+}
+
+
+// folders
+function readFolders(){
+	// {folders: [name], documents: {documentName: folderName}}
+	const store = readJsonSetting(foldersKey);
+	return {
+		folders: Array.isArray(store.folders) ? normalizeFolders(store.folders.filter(f => typeof f === "string")) : [],
+		documents: store.documents && typeof store.documents === "object" ? store.documents : {},
+	};
+}
+
+function writeFolders(store){
+	if ( !validateUserConsent() ) { return }
+	localStorage.setItem(foldersKey, JSON.stringify(store));
+	refreshFileTree();
+}
+
+function syncFolders(){
+	// folder changes reach the cloud with remote autosave, otherwise with the next push
+	if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() }
+}
+
+function folderOfDocument(name){
+	if ( !validateUserConsent(false) ) { return "" }
+	const store = readFolders();
+	const folder = store.documents[name];
+	return store.folders.includes(folder) ? folder : "";
+}
+
+function assignDocumentFolder(name, folder){
+	const store = readFolders();
+	if ( folder && store.folders.includes(folder) ) {
+		store.documents[name] = folder;
+	} else {
+		delete store.documents[name];
+	}
+	writeFolders(store);
+}
+
+function forgetDocumentFolder(name){
+	// the document was deleted; a new one with its name starts outside of folders
+	if ( !validateUserConsent(false) || !(name in readFolders().documents) ) { return }
+	assignDocumentFolder(name, "");
+}
+
+function folderDepth(folder){
+	return folder ? folder.split(folderSeparator).length : 0;
+}
+
+function parentFolder(folder){
+	const i = folder.lastIndexOf(folderSeparator);
+	return i === -1 ? "" : folder.slice(0, i);
+}
+
+function folderLabel(folder){
+	return folder.slice(folder.lastIndexOf(folderSeparator) + 1);
+}
+
+function displayFolder(folder){
+	return folder.split(folderSeparator).join(" / ");
+}
+
+function folderAncestors(folder){
+	const ancestors = [];
+	for ( let f = parentFolder(folder); f; f = parentFolder(f) ) { ancestors.push(f) }
+	return ancestors;
+}
+
+function isInFolder(folder, ancestor){
+	// the folder itself or any folder under it
+	return folder === ancestor || folder.startsWith(ancestor + folderSeparator);
+}
+
+function joinFolder(parent, name){
+	return parent ? parent + folderSeparator + name : name;
+}
+
+function subtreeHeight(folder, folders){
+	// levels the folder takes up, itself included
+	return Math.max(...folders.filter(f => isInFolder(f, folder)).map(f => folderDepth(f) - folderDepth(folder) + 1));
+}
+
+function validFolderName(name, parent="", current=null){
+	name = (name || "").trim();
+	if ( !name ) { return null }
+	if ( name.includes(folderSeparator) ) {
+		createNotification(`Folder name can't contain '${folderSeparator}'!`, "error");
+		return null;
+	}
+	const path = joinFolder(parent, name);
+	if ( path !== current && readFolders().folders.includes(path) ) {
+		createNotification(`Folder '${displayFolder(path)}' already exists!`, "error");
+		return null;
+	}
+	return name;
+}
+
+function createFolder(parent=""){
+	if ( !validateUserConsent() ) { return null }
+	if ( folderDepth(parent) >= maxFolderDepth ) {
+		createNotification(`Folders can be nested up to ${maxFolderDepth} levels.`, "warning");
+		return null;
+	}
+	const name = validFolderName(window.prompt(parent ? `New sub-folder in '${displayFolder(parent)}':` : "New folder name:"), parent);
+	if ( !name ) { return null }
+	const folder = joinFolder(parent, name);
+	const store = readFolders();
+	store.folders.push(folder);
+	expandFolder(folder);
+	writeFolders(store);
+	syncFolders();
+	return folder;
+}
+
+function renameFolder(folder){
+	const parent = parentFolder(folder);
+	const name = validFolderName(window.prompt("Rename folder:", folderLabel(folder)), parent, folder);
+	if ( !name ) { return }
+	relocateFolder(folder, joinFolder(parent, name));
+}
+
+function canMoveFolder(folder, parent){
+	// not into itself, not where it already is, and no deeper than maxFolderDepth
+	if ( isInFolder(parent, folder) || parentFolder(folder) === parent ) { return false }
+	return folderDepth(parent) + subtreeHeight(folder, readFolders().folders) <= maxFolderDepth;
+}
+
+function moveFolder(folder, parent, fromDrop=false){
+	if ( !canMoveFolder(folder, parent) ) {
+		if ( !fromDrop && parentFolder(folder) !== parent ) {
+			createNotification(`Folders can be nested up to ${maxFolderDepth} levels.`, "warning");
+		}
+		return;
+	}
+	const path = joinFolder(parent, folderLabel(folder));
+	if ( readFolders().folders.includes(path) ) {
+		createNotification(`Folder '${displayFolder(path)}' already exists!`, "error");
+		return;
+	}
+	relocateFolder(folder, path);
+}
+
+function relocateFolder(folder, path){
+	// renames or moves the folder together with its sub-folders and documents
+	if ( folder === path ) { return }
+	const moved = (f) => isInFolder(f, folder) ? path + f.slice(folder.length) : f;
+	const store = readFolders();
+	store.folders = store.folders.map(moved);
+	for ( const [doc, f] of Object.entries(store.documents) ) { store.documents[doc] = moved(f) }
+	tabs.forEach(t => t.folder = moved(t.folder || ""));
+	layout.collapsedFolders = layout.collapsedFolders.map(moved);
+	expandFolder(parentFolder(path));
+	saveLayout();
+	writeFolders(store);
+	syncFolders();
+}
+
+function deleteFolder(folder){
+	// a folder with documents or sub-folders goes only after confirmation, together with all of them
+	const store = readFolders();
+	const subfolders = store.folders.filter(f => f !== folder && isInFolder(f, folder));
+	const names = getDocumentNamesFromLocalStorage().filter(name => isInFolder(store.documents[name] || "", folder)).sort((a, b) => a.localeCompare(b));
+	if ( names.length || subfolders.length ) {
+		const counts = [
+			names.length ? `${names.length} document${names.length === 1 ? "" : "s"}` : "",
+			subfolders.length ? `${subfolders.length} sub-folder${subfolders.length === 1 ? "" : "s"}` : "",
+		].filter(Boolean).join(" and ");
+		const shown = names.slice(0, 10).map(name => `- ${name}`).join("\n") + (names.length > 10 ? `\n...and ${names.length - 10} more` : "");
+		if ( !showConfirm(`Folder '${displayFolder(folder)}' is not empty. Delete it together with its ${counts}?` + (shown ? `\n\n${shown}` : "")) ) { return }
+	}
+	for ( const name of names ) {
+		localStorage.removeItem(docPrefix + name);
+		closeTabsOfDocument(name);
+	}
+	store.folders = store.folders.filter(f => !isInFolder(f, folder));
+	for ( const [doc, f] of Object.entries(store.documents) ) {
+		if ( isInFolder(f, folder) ) { delete store.documents[doc] }
+	}
+	tabs.filter(t => isInFolder(t.folder || "", folder)).forEach(t => t.folder = "");
+	layout.collapsedFolders = layout.collapsedFolders.filter(f => !isInFolder(f, folder));
+	saveLayout();
+	writeFolders(store);
+	if ( names.length && typeof sendNotebook !== "undefined" ) {
+		if ( remoteAutoSaveEnabled || showConfirm("Do you want to send updated Notebook to the cloud?") ) { sendNotebookForce() }
+	} else {
+		syncFolders();
+	}
+}
+
+function moveDocumentsToFolder(names, folder){
+	if ( !validateUserConsent() ) { return }
+	names = names.filter(name => folderOfDocument(name) !== folder);
+	if ( !names.length ) { return }
+	const store = readFolders();
+	for ( const name of names ) {
+		if ( folder ) {
+			store.documents[name] = folder;
+		} else {
+			delete store.documents[name];
+		}
+	}
+	tabs.filter(t => names.includes(t.name)).forEach(t => t.folder = folder);
+	if ( folder ) { expandFolder(folder) }
+	writeFolders(store);
+	refreshFileTree(true);
+	syncFolders();
+}
+
+function moveToFolderMenuItems(names){
+	// folders the documents aren't all in already
+	const current = new Set(names.map(folderOfDocument));
+	const sole = current.size === 1 ? [...current][0] : null;
+	const folders = readFolders().folders.filter(f => f !== sole).sort((a, b) => a.localeCompare(b));
+	return [
+		...folders.map(f => ({ label: `Move to '${displayFolder(f)}'`, action: () => moveDocumentsToFolder(names, f) })),
+		{ label: "Move to new folder...", action: () => { const f = createFolder(); if ( f ) { moveDocumentsToFolder(names, f) } } },
+		...(sole !== "" ? [{ label: "Move out of folder", action: () => moveDocumentsToFolder(names, "") }] : []),
+	];
+}
+
+function deleteDocuments(names){
+	// several documents at once, after one confirmation
+	if ( !validateUserConsent() || !names.length ) { return }
+	if ( names.length === 1 ) { return deleteDocumentInLocalStorage(names[0]) }
+	const shown = names.slice(0, 10).map(name => `- ${name}`).join("\n") + (names.length > 10 ? `\n...and ${names.length - 10} more` : "");
+	if ( !showConfirm(`Delete ${names.length} documents?\n\n${shown}`) ) { return }
+	const store = readFolders();
+	for ( const name of names ) {
+		localStorage.removeItem(docPrefix + name);
+		delete store.documents[name];
+		closeTabsOfDocument(name);
+	}
+	clearDocumentSelection();
+	writeFolders(store);
+	if ( typeof sendNotebook !== "undefined" ) {
+		if ( remoteAutoSaveEnabled || showConfirm("Do you want to send updated Notebook to the cloud?") ) { sendNotebookForce() }
+	}
+}
+
+function createNewDocumentInFolder(folder){
+	// the folder is applied when the document is first saved
+	createNewDocument();
+	const tab = getActiveTab();
+	if ( tab ) { tab.folder = folder }
+	expandFolder(folder);
+	document.body.classList.remove("tree-drawer-open");
+	documentNameObject.focus();
+}
+
+function mergeFolders(json){
+	// a pulled notebook or backup: folders from both are kept, the incoming document placement wins
+	let incoming;
+	try { incoming = JSON.parse(json) } catch ( err ) { return }
+	if ( !incoming || typeof incoming !== "object" ) { return }
+	const store = readFolders();
+	const folders = Array.isArray(incoming.folders) ? incoming.folders.filter(f => typeof f === "string" && f) : [];
+	store.folders = normalizeFolders([...store.folders, ...folders]);
+	Object.assign(store.documents, incoming.documents && typeof incoming.documents === "object" ? incoming.documents : {});
+	localStorage.setItem(foldersKey, JSON.stringify(store));
+}
+
+function normalizeFolders(folders){
+	// unique paths, no empty names, at most maxFolderDepth deep, and every folder's parents present
+	const valid = folders.filter(f => f.split(folderSeparator).every(Boolean) && folderDepth(f) <= maxFolderDepth);
+	return [...new Set(valid.flatMap(f => [...folderAncestors(f).reverse(), f]))];
+}
+
+function migratePathFolders(){
+	// documents named "folder/name" were shown in folders before folders existed; keep them there
+	if ( !validateUserConsent(false) || localStorage.getItem(foldersKey) !== null ) { return }
+	const store = { folders: [], documents: {} };
+	for ( const name of getDocumentNamesFromLocalStorage() ) {
+		const parts = name.split(folderSeparator);
+		parts.pop();
+		if ( !parts.length || !name.split(folderSeparator).every(Boolean) ) { continue }
+		const folder = parts.slice(0, maxFolderDepth).join(folderSeparator);
+		store.folders.push(folder);
+		store.documents[name] = folder;
+	}
+	store.folders = normalizeFolders(store.folders);
+	if ( store.folders.length ) { localStorage.setItem(foldersKey, JSON.stringify(store)) }
 }
 
 
@@ -694,6 +1213,7 @@ function renderPanes(){
 function treePanelMenuItems(){
 	return [
 		{ label: "New document", action: createNewDocument },
+		{ label: "New folder", action: createFolder },
 		{ label: "Move documents to the left", action: () => setTreeSide("left"), disabled: layout.treeSide === "left" },
 		{ label: "Move documents to the right", action: () => setTreeSide("right"), disabled: layout.treeSide === "right" },
 		{ label: "Hide documents", action: hideFileTree },

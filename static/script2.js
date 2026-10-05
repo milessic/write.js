@@ -3,8 +3,8 @@
  */
 
 if ( userLoggedIn === true ) {
-	purgeLocalStorage(false);
-	createLoginExpiredNotification();
+	// on "load" so the consent handling there doesn't close the modal
+	window.addEventListener("load", handleSessionExpired);
 } else {
 	document.getElementById("login-btn").addEventListener('click', () => {createAccountLoginModal()});
 	window.addEventListener("load", () => {
@@ -133,4 +133,43 @@ async function sendForgottenPasswordRequest(){
 function createAccountLoginModalWithNotificationClose(){
 	closeAllNotifications();
 	createAccountLoginModal();
+}
+
+function handleSessionExpired(){
+	"session ended without logout (expired, or 401 while syncing): the user decides what happens to the documents on this device"
+	const documentCount = getDocumentNamesFromLocalStorage()?.length ?? 0;
+	if ( !documentCount ){
+		purgeLocalStorage(false);
+		setUserLoggedIn(false);
+		createLoginExpiredNotification();
+		return
+	}
+	// edits made offline never reached the cloud, deleting them loses them for good
+	const unsynced = localStorage.getItem(syncPendingKey)
+		? `<p class="danger"><strong>Some changes were made offline and were never uploaded to the cloud.</strong> If you delete them now, they are lost.</p>`
+		: "";
+	createModal("Session expired", `
+	<p>Your session has expired. What should happen with the ${documentCount} document(s) stored on this device?</p>
+	${unsynced}
+	<p class="muted small">Kept documents stay in this browser and are synced again after you log in. Delete them on a shared computer.</p>
+	<div class="row">
+		<button class="btn primary" id="session-expired-keep">Keep them on this device</button>
+		<button class="btn danger" id="session-expired-delete">Delete them from this device</button>
+	</div>`);
+	document.getElementById("session-expired-keep").addEventListener("click", () => {
+		setUserLoggedIn(false);
+		closeAllModals();
+		createLoginExpiredNotification();
+	});
+	document.getElementById("session-expired-delete").addEventListener("click", () => {
+		if ( unsynced && !showConfirm("Delete documents with changes that were never uploaded?") ) { return }
+		// documents are already open in tabs by now, close them so autosave can't write them back
+		for ( const name of getDocumentNamesFromLocalStorage() ) { closeTabsOfDocument(name) }
+		const tempUserConsent = userConsent;
+		purgeLocalStorage(false);
+		setUserConsent(tempUserConsent, false);
+		setUserLoggedIn(false);
+		closeAllModals();
+		createLoginExpiredNotification();
+	});
 }

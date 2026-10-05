@@ -38,3 +38,13 @@ async def read_index(request: Request):
 async def read_favicon():
     """Serve the favicon.svg file."""
     return STATIC_DIR / "favicon.svg"
+
+
+@router.get("/sw.js", response_class=FileResponse)
+async def read_service_worker():
+    """Serve the service worker from the root, so its scope covers the whole app."""
+    return FileResponse(
+        STATIC_DIR / "sw.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
