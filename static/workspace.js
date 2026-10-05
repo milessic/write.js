@@ -17,6 +17,10 @@ const layoutKey = "__layout__";
 const openedTabsKey = "__openedTabs__";
 const openedEditorsKey = "__openedEditors__";
 const foldersKey = "__folders__";
+// the tree's width is a preference of this device only, it doesn't go to the cloud (isDeviceOnlyKey)
+const treeWidthKey = "__treeWidth__";
+const minTreeWidth = 160;
+const maxTreeWidth = 600;
 const folderSeparator = "/";
 const maxFolderDepth = 5;
 const untitledTabLabel = "Untitled";
@@ -104,6 +108,7 @@ fileTreeSearch.addEventListener("keydown", (e) => {
 document.getElementById("file-tree").addEventListener("contextmenu", (e) => openContextMenu(e, treePanelMenuItems()));
 document.getElementById("tab-bar").addEventListener("contextmenu", (e) => openContextMenu(e, tabsPanelMenuItems()));
 setupDocking("file-tree-head", "tree");
+setupTreeResizing();
 setupDocumentDropping();
 setupDocking("tab-grip", "tabs");
 setupNameTooltip();
@@ -162,6 +167,53 @@ function applyLayout(){
 	document.body.dataset.treeSide = layout.treeSide;
 	document.body.dataset.tabsSide = layout.tabsSide;
 	document.body.classList.toggle("tree-hidden", layout.treeHidden);
+}
+
+function setupTreeResizing(){
+	// the edge of the tree next to the editors is dragged to set its width
+	const tree = document.getElementById("file-tree");
+	const resizer = document.getElementById("file-tree-resizer");
+	applyTreeWidth(Number(localStorage.getItem(treeWidthKey)) || null);
+
+	resizer.addEventListener("pointerdown", (e) => {
+		if ( e.button !== 0 ) { return }
+		e.preventDefault();
+		resizer.setPointerCapture(e.pointerId);
+		const startX = e.clientX;
+		const startWidth = tree.getBoundingClientRect().width;
+		// docked right, the edge is on the tree's left: dragging left makes it wider
+		const direction = layout.treeSide === "right" ? -1 : 1;
+		document.body.classList.add("tree-resizing");
+
+		const move = (ev) => applyTreeWidth(startWidth + (ev.clientX - startX) * direction);
+		const end = () => {
+			resizer.removeEventListener("pointermove", move);
+			resizer.removeEventListener("pointerup", end);
+			resizer.removeEventListener("pointercancel", end);
+			document.body.classList.remove("tree-resizing");
+			saveTreeWidth(Math.round(tree.getBoundingClientRect().width));
+		};
+		resizer.addEventListener("pointermove", move);
+		resizer.addEventListener("pointerup", end);
+		resizer.addEventListener("pointercancel", end);
+	});
+	resizer.addEventListener("dblclick", () => {
+		applyTreeWidth(null);
+		saveTreeWidth(null);
+	});
+}
+
+function applyTreeWidth(width){
+	const style = document.getElementById("file-tree").style;
+	if ( !width ) { style.removeProperty("--tree-width"); return }
+	const clamped = Math.min(maxTreeWidth, Math.max(minTreeWidth, width));
+	style.setProperty("--tree-width", clamped + "px");
+}
+
+function saveTreeWidth(width){
+	if ( !validateUserConsent(false) ) { return }
+	if ( width ) { localStorage.setItem(treeWidthKey, String(width)) }
+	else { localStorage.removeItem(treeWidthKey) }
 }
 
 function setTreeSide(side){

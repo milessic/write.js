@@ -57,7 +57,9 @@ body.app > .topbar {
 /* documents tree (file explorer) */
 .file-tree {
 	flex: none;
-	width: 15rem;
+	position: relative;
+	/* --tree-width is set by dragging the tree's inner edge (workspace.js) */
+	width: var(--tree-width, 15rem);
 	display: flex;
 	flex-direction: column;
 	gap: .4rem;
@@ -73,6 +75,30 @@ body.app > .topbar {
 .tree-hidden .file-tree,
 .file-tree-scrim {
 	display: none;
+}
+/* the tree's inner edge, dragged to resize it */
+.file-tree-resizer {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	right: -3px;
+	z-index: 5;
+	width: 6px;
+	cursor: col-resize;
+	touch-action: none;
+}
+[data-tree-side="right"] .file-tree-resizer {
+	right: auto;
+	left: -3px;
+}
+.file-tree-resizer:hover,
+.tree-resizing .file-tree-resizer {
+	background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+/* while resizing: keep the cursor and don't select text across the page */
+.tree-resizing {
+	cursor: col-resize;
+	user-select: none;
 }
 .file-tree-head {
 	display: flex;
@@ -511,6 +537,9 @@ body.app > .topbar {
 	}
 	.tree-drawer-open .file-tree {
 		display: flex;
+	}
+	.file-tree-resizer {
+		display: none;
 	}
 	/* split editors stack on narrow screens */
 	.editor-grid[data-count] {

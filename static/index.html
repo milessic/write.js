@@ -21,7 +21,7 @@
 	{% if themes_available %}
 	<script src="{{ themes_url }}/js/themes.js?v={{ themes_version }}" data-persist="false" data-restore="false"></script>
 	{% endif %}
-    <link rel="stylesheet" href="static/styles.css?77">
+    <link rel="stylesheet" href="static/styles.css?78">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
@@ -86,6 +86,7 @@
 		</div>
 		<input type="search" id="file-tree-search" placeholder="Filter documents" aria-label="Filter documents">
 		<ul class="tree" id="file-tree-list" role="tree" aria-multiselectable="true" aria-label="Saved documents"></ul>
+		<div class="file-tree-resizer" id="file-tree-resizer" role="separator" aria-orientation="vertical" aria-label="Resize documents" title="Drag to resize, double-click to reset"></div>
 	</aside>
 	<div class="file-tree-scrim" id="file-tree-scrim"></div>
 	<div class="editor-area">
@@ -154,8 +155,8 @@
 	-->
 	<script src="static/showdown.min.js?2.1.0"></script>
 	<script src="static/pako.js?64"></script>
-    <script src="static/script.js?78"></script>
-    <script src="static/workspace.js?77"></script>
+    <script src="static/script.js?79"></script>
+    <script src="static/workspace.js?78"></script>
 	{% if is_authenticated %}
     	<script src="static/script3.js?68"></script>
 	{% else %}
