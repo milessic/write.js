@@ -473,7 +473,10 @@ function treeRow(className, label, depth){
 	const row = document.createElement("button");
 	row.className = `tree-row ${className}`;
 	row.style.setProperty("--depth", depth);
-	row.textContent = label;
+	const name = document.createElement("span");
+	name.className = "tree-label";
+	name.textContent = label;
+	row.append(name);
 	return row;
 }
 
@@ -607,7 +610,8 @@ function paneOfTab(tab){
 
 function createTab(name, html=null, dirty=false){
 	// folder: where the document goes when it is first saved (or saved under a new name)
-	const tab = { id: ++tabSeq, name, html, dirty, folder: name ? folderOfDocument(name) : "" };
+	// savedName: the name the document is stored under, so a save under a new name renames it
+	const tab = { id: ++tabSeq, name, html, dirty, folder: name ? folderOfDocument(name) : "", savedName: name && documentExists(name) ? name : "" };
 	const activeIndex = tabs.indexOf(getActiveTab());
 	activeIndex === -1 ? tabs.push(tab) : tabs.splice(activeIndex + 1, 0, tab);
 	return tab;
@@ -637,6 +641,7 @@ function openDocumentInTab(name){
 	if ( !tab && active && !active.name && !active.dirty ) {
 		// an untouched untitled tab is replaced, not kept beside the document
 		active.name = name;
+		active.savedName = name;
 		active.folder = folderOfDocument(name);
 		tab = active;
 	}
@@ -705,10 +710,19 @@ function markActiveTabSaved(){
 		// a new or renamed document goes to the tab's folder, a document saved over keeps its own
 		if ( tab.folder && !folderOfDocument(tab.name) ) { assignDocumentFolder(tab.name, tab.folder) }
 		tab.folder = folderOfDocument(tab.name);
+		if ( tab.savedName && tab.savedName !== tab.name ) { removeRenamedDocument(tab.savedName) }
+		tab.savedName = tab.name;
 	}
 	renderTabs();
 	refreshFileTree();
 	saveOpenedTabs();
+}
+
+function removeRenamedDocument(oldName){
+	// the document was saved under a new name: the old one goes, unless another tab still holds it
+	if ( tabs.some(t => t.name === oldName) ) { return }
+	localStorage.removeItem(docPrefix + oldName);
+	forgetDocumentFolder(oldName);
 }
 
 function tabLabel(tab){

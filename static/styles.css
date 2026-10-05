@@ -128,8 +128,12 @@ body.app > .topbar {
 	min-height: 0;
 	overflow-y: auto;
 }
+/* a thin line after each top-level folder, separating it from what follows */
+.tree > [data-folder]:not(:last-child) {
+	border-bottom: 1px solid var(--line);
+}
 .tree-row {
-	display: block;
+	display: flex;
 	width: 100%;
 	padding: .25rem .4rem .25rem calc(.4rem + var(--depth, 0) * .9rem);
 	font: inherit;
@@ -140,13 +144,21 @@ body.app > .topbar {
 	border: 0;
 	border-radius: calc(var(--radius) / 3);
 	cursor: pointer;
-	overflow: hidden;
-	text-overflow: ellipsis;
 	white-space: nowrap;
 	/* Shift+click selects documents, not their names' text */
 	user-select: none;
 }
-.tree-row:hover {
+/* the name is cut short, the folder mark stays visible */
+.tree-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.tree-folder .tree-label::before {
+	content: "/";
+	color: var(--muted);
+	font-weight: normal;
+}.tree-row:hover {
 	background: var(--surface-2);
 }
 .tree-row:focus-visible {
@@ -164,6 +176,7 @@ body.app > .topbar {
 }
 .tree-folder::before {
 	content: "▾";
+	flex: none;
 	display: inline-block;
 	width: 1em;
 }
@@ -172,6 +185,7 @@ body.app > .topbar {
 }
 .tree-document::before {
 	content: "";
+	flex: none;
 	display: inline-block;
 	width: 1em;
 }
