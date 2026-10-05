@@ -1200,12 +1200,10 @@ function moveDocumentsToFolder(names, folder){
 }
 
 function moveToFolderMenuItems(names){
-	// folders the documents aren't all in already
+	// existing folders aren't listed, documents are dragged onto those
 	const current = new Set(names.map(folderOfDocument));
 	const sole = current.size === 1 ? [...current][0] : null;
-	const folders = readFolders().folders.filter(f => f !== sole).sort((a, b) => a.localeCompare(b));
 	return [
-		...folders.map(f => ({ label: `Move to '${displayFolder(f)}'`, action: () => moveDocumentsToFolder(names, f) })),
 		{ label: "Move to new folder...", action: () => { const f = createFolder(); if ( f ) { moveDocumentsToFolder(names, f) } } },
 		...(sole !== "" ? [{ label: "Move out of folder", action: () => moveDocumentsToFolder(names, "") }] : []),
 	];
