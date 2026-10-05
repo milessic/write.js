@@ -501,6 +501,7 @@ function deleteDocumentInLocalStorage(name){
 	if ( !validateUserConsent() ) { return }
 	if ( showConfirm(`Delete document '${name}' ?`) ){
 		localStorage.removeItem(docPrefix + name);
+		forgetDocumentFolder(name);
 		closeTabsOfDocument(name);
 		refreshFileTree();
 		if ( typeof sendNotebook !== 'undefined' ) {
@@ -802,6 +803,7 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 		// TODO add support for current document
 		if ( key === docPrefix + getDocumentName() && excludeCurrentDocument ) { console.log('skipping current doc');continue }
 		if ( isDeviceOnlyKey(key) ) { continue }
+		if ( key === foldersKey ) { mergeFolders(value); continue }
 		const existingDocument = localStorage.getItem(key)  
 		if ( existingDocument === value ) { continue }    // if document is the same, don't overwrite
 		else if ( existingDocument != null && !showConfirm(`!Do you want to overwrite '${key.replace(docPrefix, "")}'?`)){ continue } // for edited documents in both sources 

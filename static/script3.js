@@ -32,8 +32,49 @@ window.addEventListener("offline", () => {
 })
 
 document.getElementById("account-btn").addEventListener('click', createAccountModal);
+
+// browsers cap localStorage at ~5M characters per origin (keys + values)
+const localStorageLimit = 5 * 1024 * 1024;
+
+function getNotebookWordCount(){
+	let total = 0;
+	for ( const name of getDocumentNamesFromLocalStorage() || [] ){
+		const html = localStorage.getItem(docPrefix + name) || "";
+		// block tags and line breaks separate words, other tags (b, i, span...) don't
+		const spaced = html.replace(/<(br|\/?(p|div|li|ul|ol|h[1-6]|tr|td|th|blockquote|pre))\b[^>]*>/gi, " ");
+		const text = new DOMParser().parseFromString(spaced, "text/html").body.textContent.trim();
+		if ( text ) { total += text.split(/\s+/).length }
+	}
+	return total;
+}
+
+function getNotebookUsage(){
+	let used = 0;
+	for ( let i = 0; i < localStorage.length; i++ ){
+		const key = localStorage.key(i);
+		used += key.length + (localStorage.getItem(key) || "").length;
+	}
+	return { used, limit: localStorageLimit, percent: used / localStorageLimit * 100 };
+}
+
+function formatBytes(n){
+	if ( n < 1024 ) { return `${n} B` }
+	if ( n < 1024 * 1024 ) { return `${(n / 1024).toFixed(1)} KB` }
+	return `${(n / 1024 / 1024).toFixed(2)} MB`
+}
 async function createAccountModal(){
+	const usage = getNotebookUsage();
 	const html = `
+	<h3>Notebook</h3>
+	<div class="stack">
+		<div class="row usage-row"><span class="muted">Total words count</span><strong>${getNotebookWordCount()}</strong></div>
+		<div class="usage-meter">
+			<div class="row usage-row"><span class="muted">Notebook usage</span><span>${formatBytes(usage.used)} / ${formatBytes(usage.limit)} (${usage.percent.toFixed(1)}%)</span></div>
+			<div class="usage-bar" role="progressbar" aria-label="Notebook usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(usage.percent)}">
+				<div class="usage-bar-fill${usage.percent >= 90 ? ' danger' : ''}" style="width: ${Math.min(usage.percent, 100)}%"></div>
+			</div>
+		</div>
+	</div>
 	<h3>Logout</h3>
 	<div class="row">
 		<form method="GET" action="/api/auth/user/logout/">

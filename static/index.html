@@ -21,7 +21,7 @@
 	{% if themes_available %}
 	<script src="{{ themes_url }}/js/themes.js?v={{ themes_version }}" data-persist="false" data-restore="false"></script>
 	{% endif %}
-    <link rel="stylesheet" href="static/styles.css?74">
+    <link rel="stylesheet" href="static/styles.css?76">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
@@ -81,10 +81,11 @@
 		<div class="file-tree-head" id="file-tree-head" draggable="true" title="Drag to the other side, or right-click for options">
 			<span class="file-tree-title">Documents</span>
 			<button class="small-btn" id="file-tree-new" title="New document" aria-label="New document">+</button>
+			<button class="small-btn" id="file-tree-new-folder" title="New folder" aria-label="New folder"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10v6M9 13h6"/></svg></button>
 			<button class="small-btn" id="file-tree-hide" title="Hide documents" aria-label="Hide documents">✕</button>
 		</div>
 		<input type="search" id="file-tree-search" placeholder="Filter documents" aria-label="Filter documents">
-		<ul class="tree" id="file-tree-list" role="tree" aria-label="Saved documents"></ul>
+		<ul class="tree" id="file-tree-list" role="tree" aria-multiselectable="true" aria-label="Saved documents"></ul>
 	</aside>
 	<div class="file-tree-scrim" id="file-tree-scrim"></div>
 	<div class="editor-area">
@@ -153,8 +154,8 @@
 	-->
 	<script src="static/showdown.min.js?2.1.0"></script>
 	<script src="static/pako.js?64"></script>
-    <script src="static/script.js?76"></script>
-    <script src="static/workspace.js?74"></script>
+    <script src="static/script.js?77"></script>
+    <script src="static/workspace.js?77"></script>
 	{% if is_authenticated %}
     	<script src="static/script3.js?67"></script>
 	{% else %}
