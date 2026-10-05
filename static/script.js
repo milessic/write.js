@@ -91,7 +91,7 @@ document.getElementById("hamburger-menu").addEventListener("click", toggleMenu);
 document.getElementById("save-btn").addEventListener("click", saveDocumentToLocalStorage);
 // workspace.js loads after this file, so its functions are looked up on click
 document.getElementById("open-btn").addEventListener("click", () => toggleFileTree());
-document.getElementById("open-doc-btn").addEventListener("click", () => openDocumentFromLocalStorage());
+document.getElementById("open-doc-btn").addEventListener("click", () => showFileTree());
 document.getElementById("import-doc-btn").addEventListener("click", importDocument);
 document.getElementById("toggle-format-btn").addEventListener("click", toggleFormattingBar);
 document.getElementById("spellcheck-btn").addEventListener("click", toggleSpellCheck);
@@ -315,12 +315,6 @@ function getDocumentName(){
 	return documentNameObject.value;
 }
 
-function openDocumentFromLocalStorage(search=""){
-	if ( !validateUserConsent() ) { return } 
-	let names = getDocumentNamesFromLocalStorage().sort((a, b) => a.localeCompare(b));
-	createOpenDocumentModal(names, search);
-}
-
 function createModal(title, html){
 	// milessic-themes contract: <dialog class="modal-container">, title + close in a .section-head.
 	// show() (not showModal()) keeps notifications above it; #overlay stays the backdrop.
@@ -340,55 +334,6 @@ function createModal(title, html){
 	document.body.appendChild(modalContainer)
 	modalContainer.show();
 }
-function createOpenDocumentModal(documentNames, search=""){
-	createModal("Open document", `
-	<div class="toolbar" id="search-container">
-		<label class="grow">Search<input id="modal-search" placeholder="Type to begin search" type="search" autocomplete="off"></label>
-		<button class="btn" id="clear-modal-search">Clear</button>
-	</div>
-	<div id="menu-modal" class="doc-list stack"></div>`);
-	const list = document.getElementById("menu-modal");
-	const searchInput = document.getElementById("modal-search");
-	if ( !documentNames.length ){
-		list.innerHTML = `<p class="muted">You don't have any saved documents yet. Just create one :)</p>`
-	}
-	// built with DOM nodes: document names may contain quotes or HTML
-	for ( const name of documentNames ){
-		const row = document.createElement("div");
-		row.className = "row";
-		const openBtn = document.createElement("button");
-		openBtn.className = "btn grow";
-		openBtn.textContent = name;
-		openBtn.addEventListener("click", () => { closeAllModals(); loadDocumentFromLocalStorage(name) });
-		const deleteBtn = document.createElement("button");
-		deleteBtn.className = "btn danger small";
-		deleteBtn.textContent = "Delete";
-		deleteBtn.addEventListener("click", () => {
-			const searchValue = searchInput.value;
-			deleteDocumentInLocalStorage(name);
-			// the delete closes the modal; reopen it with the same search
-			if ( !checkIfDocumentNameExists(name) ) { openDocumentFromLocalStorage(searchValue) }
-		});
-		row.append(openBtn, deleteBtn);
-		list.append(row);
-	}
-	const filter = () => {
-		const term = searchInput.value.trim().toLowerCase();
-		list.querySelectorAll(".row").forEach((row) => {
-			row.classList.toggle("burried", !row.firstChild.textContent.toLowerCase().includes(term));
-		});
-	};
-	searchInput.value = search;
-	filter();
-	searchInput.addEventListener("input", filter);
-	searchInput.addEventListener("keydown", (e) => {
-		// Enter opens the first match
-		if ( e.key === "Enter" ){ list.querySelector(".row:not(.burried) .btn.grow")?.click() }
-	});
-	document.getElementById("clear-modal-search").addEventListener("click", () => { searchInput.value = ""; filter(); searchInput.focus() });
-	searchInput.focus();
-}
-
 function saveDocumentToLocalStorage(){
 	if ( !validateUserConsent() ) { return }
 	let documentNameValue = ''

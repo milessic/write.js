@@ -411,7 +411,6 @@ function firstLoginOnDevice(){
 	if ( !countDocuments ) { return }
 	startRefreshTokenTimer({"access_token_expires": 63});
 	createNotification("Welcome back!", "info")
-	setTimeout(openDocumentFromLocalStorage, 100);
 }
 
 function createNewNotebookModal(){

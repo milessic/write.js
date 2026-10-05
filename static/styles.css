@@ -631,17 +631,6 @@ body.app > .topbar {
 	background: rgba(0, 0, 0, .45);
 	cursor: pointer;
 }
-.doc-list {
-	max-height: 50vh;
-	overflow-y: auto;
-}
-.doc-list .grow {
-	flex: 1;
-	justify-content: flex-start;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
 .insert-link-modal {
 	top: 6rem;
 	transform: translateX(-50%);

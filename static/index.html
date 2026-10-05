@@ -21,7 +21,7 @@
 	{% if themes_available %}
 	<script src="{{ themes_url }}/js/themes.js?v={{ themes_version }}" data-persist="false" data-restore="false"></script>
 	{% endif %}
-    <link rel="stylesheet" href="static/styles.css?76">
+    <link rel="stylesheet" href="static/styles.css?77">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
@@ -38,7 +38,7 @@
 				<button class="btn ghost" id="hamburger-button" aria-label="Menu">☰</button>
 				<div class="menu" id="menu" role="menu">
 					<button role="menuitem" id="new-doc-btn">Create New Document</button>
-					<button role="menuitem" id="open-doc-btn">Open Document</button>
+					<button role="menuitem" id="open-doc-btn">File Explorer</button>
 					<button role="menuitem" id="import-doc-btn">Import Document</button>
 					<hr>
 					{% if is_authenticated %}
@@ -154,10 +154,10 @@
 	-->
 	<script src="static/showdown.min.js?2.1.0"></script>
 	<script src="static/pako.js?64"></script>
-    <script src="static/script.js?77"></script>
+    <script src="static/script.js?78"></script>
     <script src="static/workspace.js?77"></script>
 	{% if is_authenticated %}
-    	<script src="static/script3.js?67"></script>
+    	<script src="static/script3.js?68"></script>
 	{% else %}
     	<script src="static/script2.js?67"></script>
 	{% endif %}
