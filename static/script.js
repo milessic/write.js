@@ -5,6 +5,7 @@ const lastOpenedKey= "__lastOpened__";
 const docPrefix = "__doc__";
 const autosaveKey = "__autosave__";
 const syncPendingKey = "__syncPending__"; // set while there are changes that couldn't reach the cloud (offline)
+const syncBaseKey = "__syncBase__"; // {key: hash} of what the cloud held at the last sync, tells which side changed a document
 const themeCookie = "theme";
 
 let autosaveEnabled = 0;
@@ -720,7 +721,7 @@ function simulateEnter() {
 function isDeviceOnlyKey(key){
 	// state of this device that never goes to the cloud or a notebook backup
 	// (the workspace.js keys are looked up on call, that file loads after this one)
-	return [userLoggedInKey, syncPendingKey, openedTabsKey, openedEditorsKey, treeWidthKey, layoutKey].includes(key);
+	return [userLoggedInKey, syncPendingKey, syncBaseKey, openedTabsKey, openedEditorsKey, treeWidthKey, layoutKey].includes(key);
 }
 
 function getAllLocalStorageItems() {
@@ -734,32 +735,135 @@ function getAllLocalStorageItems() {
 	return data
 }
 
-function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, loadLastOpened=true){
+function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, loadLastOpened=true, fromCloud=false){
+	// fromCloud: a pulled notebook is checked against the last sync. A document changed only in the cloud
+	// is taken without asking, one changed only here is kept (the next push sends it), and one changed
+	// on both sides is shown side by side to pick from. From a backup every differing document is shown.
 	if ( !validateUserConsent() ) { return }
 	let dataObject = JSON.parse(jsonObject);
 	if ( typeof(dataObject) != 'object' ){
 		// this is a check for complex documents
 		dataObject = JSON.parse(dataObject);
 	}
+	const base = fromCloud ? readSyncBase() : {};
+	const synced = {};
+	const conflicts = [];
 
 	for ( const [key, value] of Object.entries(dataObject) ){
 		if ( key  === lastOpenedKey ) { continue }
-		// check for documents that are different
-		// TODO add support for current document
 		if ( key === docPrefix + getDocumentName() && excludeCurrentDocument ) { console.log('skipping current doc');continue }
 		if ( isDeviceOnlyKey(key) ) { continue }
 		if ( key === foldersKey ) { mergeFolders(value); continue }
-		const existingDocument = localStorage.getItem(key)  
-		if ( existingDocument === value ) { continue }    // if document is the same, don't overwrite
-		else if ( existingDocument != null && !showConfirm(`!Do you want to overwrite '${key.replace(docPrefix, "")}'?`)){ continue } // for edited documents in both sources 
+		const name = key.startsWith(docPrefix) ? key.replace(docPrefix, "") : null;
+		const unsaved = name === null ? null : unsavedDocumentHtml(name);
+		const existingDocument = localStorage.getItem(key)
+		if ( existingDocument === value ) { synced[key] = value; continue }
+		if ( fromCloud && base[key] === hashText(value) ) { continue } // only this device changed it
+		const editedHere = existingDocument != null && ( !fromCloud || unsaved !== null || base[key] !== hashText(existingDocument) );
+		if ( editedHere && name !== null ) {
+			conflicts.push({ key, name, local: unsaved ?? existingDocument, remote: value });
+			continue
+		}
+		if ( editedHere && !showConfirm(`!Do you want to overwrite '${key}'?`) ) { continue }
 
 		// set remote value
 		localStorage.setItem(key, value);
+		synced[key] = value;
+		if ( name !== null ) { reloadDocumentTabs(name) }
 	}
+	if ( fromCloud ) { rememberSynced(synced) }
 	refreshFileTree();
 	if (loadLastOpened){
 		loadLastOpenedDocument();
 	}
+	resolveSyncConflicts(conflicts, fromCloud ? "Cloud" : "Backup", fromCloud);
+}
+
+function resolveSyncConflicts(conflicts, sourceLabel, fromCloud){
+	// one document at a time: this device's version and the incoming one side by side (stacked on phones).
+	// Closing the modal keeps this device's versions of the rest; a cloud conflict is asked again on the next sync.
+	const conflict = conflicts.shift();
+	if ( !conflict ) { return }
+	const {key, name, local, remote} = conflict;
+	closeAllModals();
+	createModal("Sync conflict", `
+	<p class="sync-compare-info"></p>
+	<div class="compare-grid">
+		<section class="compare-side"><h3>This device</h3><div class="compare-view"></div></section>
+		<section class="compare-side"><h3>${sourceLabel}</h3><div class="compare-view"></div></section>
+	</div>
+	<div class="row">
+		<button class="btn" data-pick="local">Keep this device's</button>
+		<button class="btn primary" data-pick="remote">Use ${sourceLabel.toLowerCase()}'s</button>
+		<button class="btn" data-pick="both">Keep both</button>
+	</div>`);
+	const modal = document.getElementById("modal");
+	modal.classList.add("sync-compare-modal");
+	modal.querySelector(".sync-compare-info").textContent =
+		`'${name}' was changed on this device and ${fromCloud ? "in the cloud since the last sync" : "differs from the backup"}. Pick the version to keep.`
+		+ (conflicts.length ? ` ${conflicts.length} more after this one.` : "");
+	const views = modal.querySelectorAll(".compare-view");
+	views[0].innerHTML = local;
+	views[1].innerHTML = remote;
+	syncScroll(...views);
+
+	modal.querySelectorAll("[data-pick]").forEach((btn) => btn.addEventListener("click", () => {
+		const pick = btn.dataset.pick;
+		if ( pick === "remote" ) {
+			localStorage.setItem(key, remote);
+			reloadDocumentTabs(name, true);
+		} else if ( pick === "both" ) {
+			let copyName = `${name} (${sourceLabel.toLowerCase()})`;
+			for ( let i = 2; documentExists(copyName); i++ ) { copyName = `${name} (${sourceLabel.toLowerCase()} ${i})` }
+			localStorage.setItem(docPrefix + copyName, remote);
+			const folder = folderOfDocument(name);
+			if ( folder ) { assignDocumentFolder(copyName, folder) }
+		}
+		if ( fromCloud ) { rememberSynced({ [key]: remote }) }
+		refreshFileTree();
+		// this device's version or the copy goes to the cloud with the next push
+		if ( pick !== "remote" && typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() }
+		closeAllModals();
+		resolveSyncConflicts(conflicts, sourceLabel, fromCloud);
+	}));
+}
+
+function syncScroll(a, b){
+	// scrolling one view scrolls the other to the same relative position
+	let leader = null;
+	const follow = (from, to) => from.addEventListener("scroll", () => {
+		if ( leader && leader !== from ) { return }
+		leader = from;
+		const range = from.scrollHeight - from.clientHeight;
+		to.scrollTop = range > 0 ? from.scrollTop / range * (to.scrollHeight - to.clientHeight) : 0;
+		requestAnimationFrame(() => requestAnimationFrame(() => { leader = null }));
+	});
+	follow(a, b);
+	follow(b, a);
+}
+
+function hashText(text){
+	// cyrb53: a short fingerprint of a document, enough to tell whether it changed since the last sync
+	let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+	for ( let i = 0; i < text.length; i++ ) {
+		const ch = text.charCodeAt(i);
+		h1 = Math.imul(h1 ^ ch, 2654435761);
+		h2 = Math.imul(h2 ^ ch, 1597334677);
+	}
+	h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+	h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+	return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
+function readSyncBase(){
+	try { return JSON.parse(localStorage.getItem(syncBaseKey)) || {} } catch ( err ) { return {} }
+}
+
+function rememberSynced(entries, replace=false){
+	// entries: {key: value} the cloud holds now; replace after a push, when the cloud holds exactly them
+	const base = replace ? {} : readSyncBase();
+	for ( const [key, value] of Object.entries(entries) ) { base[key] = hashText(value) }
+	localStorage.setItem(syncBaseKey, JSON.stringify(base));
 }
 
 
@@ -1495,9 +1599,9 @@ function countDocuments(){
 	return count;
 }
 
-function loadNotebookFromJson(json, excludeCurrentDocument=true, loadLastOpened=true){
+function loadNotebookFromJson(json, excludeCurrentDocument=true, loadLastOpened=true, fromCloud=false){
 	jsonObject = decompressObject(json);
-	loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument, loadLastOpened);
+	loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument, loadLastOpened, fromCloud);
 	if (loadLastOpened){
 		loadLastOpenedDocument(excludeCurrentDocument, loadLastOpened);
 	}

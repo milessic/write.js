@@ -682,6 +682,27 @@ function closeOtherTabs(id){
 	tabs.filter(t => t.id !== id).forEach(t => closeTab(t.id));
 }
 
+function unsavedDocumentHtml(name){
+	// the edits of a document that aren't saved to localStorage yet, or null
+	const tab = tabs.find(t => t.name === name && t.dirty);
+	if ( !tab ) { return null }
+	const pane = paneOfTab(tab);
+	return pane ? pane.editor.innerHTML : tab.html;
+}
+
+function reloadDocumentTabs(name, discardUnsaved=false){
+	// the document changed in localStorage (pulled from the cloud): its tabs show the new content,
+	// tabs with unsaved edits only when they are discarded
+	const reloaded = tabs.filter(t => t.name === name && (discardUnsaved || !t.dirty));
+	for ( const tab of reloaded ) {
+		tab.dirty = false;
+		tab.html = null;
+		const pane = paneOfTab(tab);
+		if ( pane ) { loadPane(pane) }
+	}
+	if ( reloaded.length ) { renderTabs() }
+}
+
 function closeTabsOfDocument(name){
 	// the document was deleted: its tabs go without asking
 	for ( const tab of tabs.filter(t => t.name === name) ) {

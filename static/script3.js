@@ -211,7 +211,8 @@ function markSyncPending(){
 async function sendNotebookForce(){
 	if ( !navigator.onLine ) { markSyncPending(); return }
 	try {
-		const payload = compressObject(JSON.stringify(getAllLocalStorageItems()));
+		const data = getAllLocalStorageItems();
+		const payload = compressObject(JSON.stringify(data));
 		const resp = await fetch("/api/notebooks/notebook", {
 			method: "POST",
 			headers: {"Content-Type": "application/json"},
@@ -222,6 +223,7 @@ async function sendNotebookForce(){
 			throw new Error(resp);
 		}
 		localStorage.removeItem(syncPendingKey);
+		rememberSynced(data, true);
 		createNotification("Notebook pushed to remote", "info", notificationTimeoutShort)
 
 	} catch(err) {
@@ -265,7 +267,7 @@ async function loadNotebookFromEvent(e){
 async function loadNotebook(excludeCurrentDocument=false, loadLastDocument=true){
 	const encodedNotebook = await fetchNotebook();
 	if ( encodedNotebook ){
-		loadNotebookFromJson(encodedNotebook, excludeCurrentDocument, loadLastDocument);
+		loadNotebookFromJson(encodedNotebook, excludeCurrentDocument, loadLastDocument, true);
 		return
 	}
 }

@@ -687,6 +687,41 @@ body.app > .topbar {
 	width: min(320px, calc(100vw - 32px));
 }
 
+/* sync conflicts: the two versions side by side, stacked on phones */
+.sync-compare-modal {
+	width: min(1100px, calc(100vw - 32px));
+}
+.compare-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 1rem;
+}
+.compare-side {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+.compare-side h3 {
+	margin: 0 0 .4rem;
+}
+.compare-view {
+	height: 55vh;
+	overflow: auto;
+	padding: .6rem .8rem;
+	border: 1px solid var(--line);
+	border-radius: calc(var(--radius) / 2);
+	background: var(--surface);
+	overflow-wrap: anywhere;
+}
+@media (max-width: 999px) {
+	.compare-grid {
+		grid-template-columns: 1fr;
+	}
+	.compare-view {
+		height: 28vh;
+	}
+}
+
 /* notifications: .notification-* is styled by the theme, the app stacks and fades them */
 #notifications-container {
 	position: fixed;
