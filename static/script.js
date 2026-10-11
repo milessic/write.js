@@ -76,6 +76,7 @@ window.addEventListener("resize", handleWidth);
 window.addEventListener("keydown", handleMobileScrollEvent);
 document.getElementById("editor-grid").addEventListener('keydown', (e) => {performAutoSave();changeTabBehavior(e);handleCheckboxEnter(e)});
 document.getElementById("editor-grid").addEventListener('click', updateCaretPosition);
+document.getElementById("editor-grid").addEventListener('paste', handlePasteLinkOnSelection);
 document.getElementById("editor-grid").addEventListener('keyup', (e) => {updateCaretPosition();handleWordCounter()});
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
 document.getElementById('editor-grid').addEventListener('click', focusEditor);
@@ -1032,6 +1033,19 @@ function insertLink(){
 	injectHtml(html)
 	document.execCommand('createlink', false, href)
 	closeInsertLinkModal();
+}
+
+function handlePasteLinkOnSelection(e){
+	// pasting an http(s) url while text is selected turns the selection into a link
+	const url = (e.clipboardData?.getData("text/plain") || "").trim();
+	if ( !/^https?:\/\/\S+$/i.test(url) ) { return }
+	const selection = window.getSelection();
+	if ( !selection.rangeCount || selection.isCollapsed || !selection.toString().trim() ) { return }
+	if ( !e.target.closest('[contenteditable="true"]') ) { return }
+	e.preventDefault();
+	document.execCommand('createlink', false, url);
+	const anchor = selection.anchorNode?.parentElement?.closest("a");
+	if ( anchor ) { anchor.setAttribute("target", "about:blank") }
 }
 
 function closeInsertLinkModal(){
