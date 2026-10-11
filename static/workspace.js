@@ -795,8 +795,22 @@ function renderTabs(){
 		setupTabDragging(el, tab);
 		tabsContainer.append(el);
 	}
-	tabsContainer.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+	revealActiveTab();
 	renderPanes();
+}
+
+function revealActiveTab(){
+	// scroll only the tab strip: scrollIntoView also scrolls every ancestor, and renderTabs runs
+	// on each autosave, so typing (Enter on mobile) jumped the editor and the page around
+	const active = tabsContainer.querySelector(".tab.active");
+	if ( !active ) { return }
+	const strip = tabsContainer.getBoundingClientRect();
+	const rect = active.getBoundingClientRect();
+	if ( rect.left < strip.left ) {
+		tabsContainer.scrollLeft -= strip.left - rect.left;
+	} else if ( rect.right > strip.right ) {
+		tabsContainer.scrollLeft += Math.min(rect.right - strip.right, rect.left - strip.left);
+	}
 }
 
 function setupTabDragging(el, tab){
