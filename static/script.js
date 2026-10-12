@@ -789,6 +789,7 @@ function resolveSyncConflicts(conflicts, sourceLabel, fromCloud){
 	closeAllModals();
 	createModal("Sync conflict", `
 	<p class="sync-compare-info"></p>
+	<p class="diff-summary"></p>
 	<div class="compare-grid">
 		<section class="compare-side"><h3>This device</h3><div class="compare-view"></div></section>
 		<section class="compare-side"><h3>${sourceLabel}</h3><div class="compare-view"></div></section>
@@ -804,8 +805,15 @@ function resolveSyncConflicts(conflicts, sourceLabel, fromCloud){
 		`'${name}' was changed on this device and ${fromCloud ? "in the cloud since the last sync" : "differs from the backup"}. Pick the version to keep.`
 		+ (conflicts.length ? ` ${conflicts.length} more after this one.` : "");
 	const views = modal.querySelectorAll(".compare-view");
-	views[0].innerHTML = local;
-	views[1].innerHTML = remote;
+	const diff = renderLineDiff(views[0], views[1], local, remote);
+	const summary = modal.querySelector(".diff-summary");
+	if ( diff.removed || diff.added ) {
+		summary.innerHTML = `<span class="diff-count-removed">−${diff.removed}</span>`
+			+ ` <span class="diff-count-added">+${diff.added}</span>`
+			+ ` <span class="diff-count-same">lines · ${diff.unchanged} unchanged</span>`;
+	} else {
+		summary.textContent = "No visible differences.";
+	}
 	syncScroll(...views);
 
 	modal.querySelectorAll("[data-pick]").forEach((btn) => btn.addEventListener("click", () => {
@@ -827,6 +835,62 @@ function resolveSyncConflicts(conflicts, sourceLabel, fromCloud){
 		closeAllModals();
 		resolveSyncConflicts(conflicts, sourceLabel, fromCloud);
 	}));
+}
+
+const inlineTags = new Set(["A", "ABBR", "B", "CODE", "EM", "I", "INPUT", "KBD", "LABEL", "MARK", "S", "SMALL", "SPAN", "STRIKE", "STRONG", "SUB", "SUP", "U"]);
+
+function documentLines(html){
+	// a document's lines: each top-level block, or a run of inline nodes up to a <br>, wrapped in a <div>
+	const source = document.createElement("div");
+	source.innerHTML = html;
+	const lines = [];
+	let run = null;
+	const endRun = () => {
+		if ( run && ( run.textContent.trim() !== "" || run.querySelector("input, img") ) ) { lines.push(run) }
+		run = null;
+	};
+	for ( const node of [...source.childNodes] ) {
+		const inline = node.nodeType === Node.TEXT_NODE || inlineTags.has(node.nodeName);
+		if ( inline ) {
+			run ??= document.createElement("div");
+			run.appendChild(node);
+		} else if ( node.nodeName === "BR" ) {
+			if ( run ) { run.appendChild(node); endRun() }
+		} else if ( node.nodeType === Node.ELEMENT_NODE ) {
+			endRun();
+			lines.push(node);
+		}
+	}
+	endRun();
+	return lines;
+}
+
+function renderLineDiff(localView, remoteView, localHtml, remoteHtml){
+	// fills both views with their document, marking lines only on this device as removed (red)
+	// and lines only in the incoming version as added (green); returns the counts for the summary
+	const a = documentLines(localHtml), b = documentLines(remoteHtml);
+	const ka = a.map((n) => n.outerHTML), kb = b.map((n) => n.outerHTML);
+	// longest common subsequence, after trimming the shared start and end
+	let start = 0;
+	while ( start < ka.length && start < kb.length && ka[start] === kb[start] ) { start++ }
+	let endA = ka.length, endB = kb.length;
+	while ( endA > start && endB > start && ka[endA - 1] === kb[endB - 1] ) { endA--; endB-- }
+	const n = endA - start, m = endB - start;
+	const lcs = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+	for ( let i = n - 1; i >= 0; i-- ) {
+		for ( let j = m - 1; j >= 0; j-- ) {
+			lcs[i][j] = ka[start + i] === kb[start + j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+		}
+	}
+	let removed = 0, added = 0;
+	for ( let i = 0, j = 0; i < n || j < m; ) {
+		if ( i < n && j < m && ka[start + i] === kb[start + j] ) { i++; j++ }
+		else if ( j < m && ( i === n || lcs[i][j + 1] >= lcs[i + 1][j] ) ) { b[start + j++].classList.add("diff-added"); added++ }
+		else { a[start + i++].classList.add("diff-removed"); removed++ }
+	}
+	localView.replaceChildren(...a);
+	remoteView.replaceChildren(...b);
+	return { removed, added, unchanged: a.length - removed };
 }
 
 function syncScroll(a, b){

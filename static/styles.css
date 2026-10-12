@@ -713,6 +713,33 @@ body.app > .topbar {
 	background: var(--surface);
 	overflow-wrap: anywhere;
 }
+.diff-summary {
+	margin: 0 0 .6rem;
+	font-family: var(--font-mono);
+	font-size: .9em;
+	color: var(--muted);
+}
+.diff-count-removed {
+	color: var(--tone-fail);
+	font-weight: 600;
+}
+.diff-count-added {
+	color: var(--tone-ok);
+	font-weight: 600;
+}
+.compare-view .diff-removed,
+.compare-view .diff-added {
+	margin: 0 -.8rem;
+	padding: 0 .8rem 0 calc(.8rem - 3px);
+}
+.compare-view .diff-removed {
+	background: color-mix(in srgb, var(--tone-fail) 16%, transparent);
+	border-left: 3px solid var(--tone-fail);
+}
+.compare-view .diff-added {
+	background: color-mix(in srgb, var(--tone-ok) 16%, transparent);
+	border-left: 3px solid var(--tone-ok);
+}
 @media (max-width: 999px) {
 	.compare-grid {
 		grid-template-columns: 1fr;
