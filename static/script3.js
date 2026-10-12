@@ -75,6 +75,10 @@ async function createAccountModal(){
 			</div>
 		</div>
 	</div>
+	<h3>Settings</h3>
+	<div class="stack">
+		<label class="check"><input id="setting-heading-breaks" type="checkbox"${headingBreaksEnabled() ? " checked" : ""}>Auto-insert break lines under headings</label>
+	</div>
 	<h3>Logout</h3>
 	<div class="row">
 		<form method="GET" action="/api/auth/user/logout/">
@@ -105,6 +109,12 @@ async function createAccountModal(){
 	`
 	createModal("Account", html)
 	// set events
+	// settings
+	document.getElementById("setting-heading-breaks").addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = false; return }
+		localStorage.setItem(headingBreaksKey, e.target.checked ? "1" : "0");
+		handleRemoteAutosave(); // the setting goes to the cloud with the notebook
+	});
 	// Who am i
 	 try{
 		const resp = await fetch("/api/auth/me", 

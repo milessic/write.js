@@ -21,7 +21,7 @@
 	{% if themes_available %}
 	<script src="{{ themes_url }}/js/themes.js?v={{ themes_version }}" data-persist="false" data-restore="false"></script>
 	{% endif %}
-    <link rel="stylesheet" href="static/styles.css?82">
+    <link rel="stylesheet" href="static/styles.css?83">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
@@ -103,9 +103,16 @@
 	<div class="workspace" id="workspace">
 		<div class="format-bar" id="sub-bar">
 			<div class="toolbar-bar" role="toolbar" aria-label="Formatting">
-				<button id="tb-btn-h1" class="small-btn" title="Heading 1" aria-label="Heading 1">h1</button>
-				<button id="tb-btn-h2" class="small-btn" title="Heading 2" aria-label="Heading 2">h2</button>
-				<button id="tb-btn-text" class="small-btn" title="Normal text" aria-label="Normal text">Text</button>
+				<div class="block-select" id="tb-block-select">
+					<button id="tb-block-btn" class="small-btn block-select-btn" title="Text style" aria-label="Text style" aria-haspopup="listbox" aria-expanded="false"><span id="tb-block-label">Text</span><span class="block-select-caret" aria-hidden="true">▾</span></button>
+					<div class="menu block-select-menu" id="tb-block-menu" role="listbox" aria-label="Text style">
+						<button role="option" data-block="div" data-label="Text" aria-selected="true">Text</button>
+						<button role="option" data-block="h1" data-label="H1" aria-selected="false" class="block-option-h1">Heading 1</button>
+						<button role="option" data-block="h2" data-label="H2" aria-selected="false" class="block-option-h2">Heading 2</button>
+						<button role="option" data-block="h3" data-label="H3" aria-selected="false" class="block-option-h3">Heading 3</button>
+						<button role="option" data-block="h4" data-label="H4" aria-selected="false" class="block-option-h4">Heading 4</button>
+					</div>
+				</div>
 				<span class="toolbar-sep" aria-hidden="true"></span>
 				<button id="tb-btn-bl" class="small-btn" title="Bulleted list" aria-label="Bulleted list">*</button>
 				<button id="tb-btn-nl" class="small-btn" title="Numbered list" aria-label="Numbered list">1,2,3</button>
@@ -159,10 +166,10 @@
 	-->
 	<script src="static/showdown.min.js?2.1.0"></script>
 	<script src="static/pako.js?64"></script>
-    <script src="static/script.js?85"></script>
+    <script src="static/script.js?86"></script>
     <script src="static/workspace.js?82"></script>
 	{% if is_authenticated %}
-    	<script src="static/script3.js?69"></script>
+    	<script src="static/script3.js?70"></script>
 	{% else %}
     	<script src="static/script2.js?67"></script>
 	{% endif %}

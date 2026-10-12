@@ -651,6 +651,43 @@ body.app > .topbar {
 	max-width: 960px;
 	margin: 0 auto;
 }
+/* text style dropdown (Text / H1-H4); .menu is styled by the theme */
+.block-select {
+	position: relative;
+	display: inline-flex;
+}
+.block-select-btn {
+	gap: .35rem;
+	min-width: 4.2rem;
+	justify-content: space-between;
+}
+.block-select-caret {
+	font-size: .7em;
+	opacity: .7;
+}
+.block-select-menu {
+	display: none;
+	position: absolute;
+	left: 0;
+	top: calc(100% + .3rem);
+	z-index: 20;
+	min-width: 10rem;
+}
+.block-select-menu.menu-opened {
+	display: flex;
+}
+.block-select-menu > [aria-selected="true"] {
+	color: var(--accent);
+}
+.block-select-menu > .block-option-h1 { font-size: 1.3rem; font-weight: 700; }
+.block-select-menu > .block-option-h2 { font-size: 1.15rem; font-weight: 700; }
+.block-select-menu > .block-option-h3 { font-size: 1rem; font-weight: 700; }
+.block-select-menu > .block-option-h4 { font-size: .9rem; font-weight: 700; }
+/* the theme sizes h2/h3 for the app's UI (h3 is below the editor's text): a document gets its own scale */
+:is(.editor, #content) h2 { font-size: 1.25rem; }
+:is(.editor, #content) :is(h3, h4) { color: inherit; font-weight: 700; margin-bottom: .3rem; }
+:is(.editor, #content) h3 { font-size: 1.12rem; }
+:is(.editor, #content) h4 { font-size: 1.05rem; }
 #checkbox-icon-container {
 	display: inline-block;
 	width: .7em;
@@ -681,7 +718,7 @@ body.app > .topbar {
 #content > :last-child {
 	margin-bottom: 55vh;
 }
-:where(.editor, #content) :is(h1, h2, h3, p, div, ul, ol, pre, hr) {
+:where(.editor, #content) :is(h1, h2, h3, h4, p, div, ul, ol, pre, hr) {
 	margin-top: .3rem;
 }
 :where(.editor, #content) :is(ul, ol) {

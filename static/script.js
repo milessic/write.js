@@ -4,6 +4,7 @@ const userConsentKey = "__userConsent__";
 const lastOpenedKey= "__lastOpened__";
 const docPrefix = "__doc__";
 const autosaveKey = "__autosave__";
+const headingBreaksKey = "__headingBreaks__"; // "1" when an <hr> is auto-inserted under each heading (Account setting)
 const syncPendingKey = "__syncPending__"; // set while there are changes that couldn't reach the cloud (offline)
 const syncBaseKey = "__syncBase__"; // {key: hash} of what the cloud held at the last sync, tells which side changed a document
 const themeCookie = "theme";
@@ -74,7 +75,7 @@ window.addEventListener("load", function() {
 // Setup Events
 window.addEventListener("resize", handleWidth);
 window.addEventListener("keydown", handleMobileScrollEvent);
-document.getElementById("editor-grid").addEventListener('keydown', (e) => {performAutoSave();changeTabBehavior(e);handleCheckboxEnter(e)});
+document.getElementById("editor-grid").addEventListener('keydown', (e) => {performAutoSave();changeTabBehavior(e);handleCheckboxEnter(e);handleHeadingBreakEnter(e)});
 document.getElementById("editor-grid").addEventListener('click', updateCaretPosition);
 document.getElementById("editor-grid").addEventListener('paste', handlePasteLinkOnSelection);
 document.getElementById("editor-grid").addEventListener('beforeinput', handleListItemBackspace);
@@ -87,6 +88,7 @@ document.addEventListener("selectionchange", () => {
 	const selection = window.getSelection();
 	if ( selection.rangeCount && document.getElementById("editor").contains(selection.anchorNode) ){
 		lastEditorRange = selection.getRangeAt(0).cloneRange();
+		updateBlockSelect();
 	}
 });
 document.getElementById("hamburger-menu").addEventListener("click", toggleMenu);
@@ -107,9 +109,7 @@ document.getElementById("generate-pdf").addEventListener("click", generatePDF);
 document.getElementById("contact").addEventListener("click", () => createNotification("Thank you!", 'info'))
 documentNameObject.addEventListener("change", updateTitle);
 // toolbar
-document.getElementById("tb-btn-h1").addEventListener("click", () => { formatText("h1") } );
-document.getElementById("tb-btn-h2").addEventListener("click", () => { formatText("h2") } );
-document.getElementById("tb-btn-text").addEventListener("click", () => { formatText("div") } );
+initBlockSelect();
 document.getElementById("tb-btn-bl").addEventListener("click", () => { formatText("ul") } );
 document.getElementById("tb-btn-nl").addEventListener("click", () => { formatText("ol") } );
 document.getElementById("tb-btn-cl").addEventListener("click", () => { formatText("checkbox") } );
@@ -132,12 +132,8 @@ function formatText(command) {
         document.execCommand("italic", false, null);
     } else if (command === "underline") {
         document.execCommand("underline", false, null);
-    } else if (command === "h1") {
-        document.execCommand("formatBlock", false, "h1");
-    } else if (command === "h2") {
-        document.execCommand("formatBlock", false, "h2");
-    } else if (command === "div"){
-		document.execCommand("formatBlock", false, "div");
+    } else if (["h1", "h2", "h3", "h4", "div"].includes(command)) {
+		formatBlockWithHeadingBreaks(command);
 	} else if (command === "ul") {
         document.execCommand("insertUnorderedList", false, null);
     } else if (command === "ol") {
@@ -162,6 +158,119 @@ function formatText(command) {
 		console.error("Not supported command - ", command);
 	}
 	focusEditor();
+	performAutoSave();
+}
+
+// text style dropdown of the toolbar: Text / H1-H4, the label follows the block under the caret
+function initBlockSelect(){
+	const select = document.getElementById("tb-block-select");
+	const btn = document.getElementById("tb-block-btn");
+	const menu = document.getElementById("tb-block-menu");
+	const options = [...menu.querySelectorAll("[data-block]")];
+	const close = () => {
+		menu.classList.remove("menu-opened");
+		btn.setAttribute("aria-expanded", "false");
+	};
+	const open = () => {
+		menu.classList.add("menu-opened");
+		btn.setAttribute("aria-expanded", "true");
+	};
+	// mousedown keeps the editor's selection (and the phone keyboard) while picking
+	select.addEventListener("mousedown", (e) => e.preventDefault());
+	btn.addEventListener("click", () => menu.classList.contains("menu-opened") ? close() : open());
+	for ( const option of options ) {
+		option.addEventListener("click", () => {
+			close();
+			formatText(option.dataset.block);
+		});
+	}
+	select.addEventListener("keydown", (e) => {
+		const index = options.indexOf(document.activeElement);
+		if ( e.key === "Escape" ) {
+			close();
+			btn.focus();
+		} else if ( e.key === "ArrowDown" || e.key === "ArrowUp" ) {
+			e.preventDefault();
+			open();
+			const step = e.key === "ArrowDown" ? 1 : -1;
+			const from = index === -1 ? options.findIndex(o => o.getAttribute("aria-selected") === "true") - step : index;
+			options[(from + step + options.length) % options.length].focus();
+		}
+	});
+	document.addEventListener("click", (e) => { if ( !select.contains(e.target) ) { close() } });
+}
+
+function updateBlockSelect(){
+	const selection = window.getSelection();
+	const editor = document.getElementById("editor");
+	if ( !selection.rangeCount || !editor.contains(selection.anchorNode) ) { return }
+	const node = selection.anchorNode;
+	const heading = (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement).closest("h1, h2, h3, h4");
+	const block = heading && editor.contains(heading) ? heading.tagName.toLowerCase() : "div";
+	for ( const option of document.querySelectorAll("#tb-block-menu [data-block]") ) {
+		const selected = option.dataset.block === block;
+		option.setAttribute("aria-selected", String(selected));
+		if ( selected ) { document.getElementById("tb-block-label").textContent = option.dataset.label }
+	}
+}
+
+function headingBreaksEnabled(){
+	return validateUserConsent(false) && localStorage.getItem(headingBreaksKey) === "1";
+}
+
+function isHeadingBreak(el){
+	return el?.tagName === "HR" && el.classList.contains("heading-break");
+}
+
+function headingsInSelection(editor){
+	const selection = window.getSelection();
+	if ( !selection.rangeCount ) { return [] }
+	const range = selection.getRangeAt(0);
+	return [...editor.querySelectorAll("h1, h2, h3, h4")].filter(h => range.intersectsNode(h));
+}
+
+function formatBlockWithHeadingBreaks(tag){
+	// the auto-inserted <hr> (.heading-break) goes away with its heading; a manually inserted one stays
+	restoreEditorSelection();
+	const editor = document.getElementById("editor");
+	const breaks = headingsInSelection(editor).map(h => h.nextElementSibling).filter(isHeadingBreak);
+	document.execCommand("formatBlock", false, tag);
+	for ( const hr of breaks ) {
+		if ( !hr.previousElementSibling?.matches("h1, h2, h3, h4") ) { hr.remove() }
+	}
+	if ( tag === "div" || !headingBreaksEnabled() ) { return }
+	for ( const heading of headingsInSelection(editor) ) {
+		if ( heading.nextElementSibling?.tagName === "HR" ) { continue }
+		const hr = document.createElement("hr");
+		hr.className = "heading-break";
+		heading.after(hr);
+	}
+}
+
+function handleHeadingBreakEnter(e){
+	// Enter at the end of a heading starts the new line under its break, not between the two
+	if ( e.key !== "Enter" || e.shiftKey || e.defaultPrevented ) { return }
+	const selection = window.getSelection();
+	if ( !selection.rangeCount || !selection.isCollapsed ) { return }
+	const range = selection.getRangeAt(0);
+	const node = range.startContainer;
+	const heading = (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement).closest("h1, h2, h3, h4");
+	if ( !heading || !document.getElementById("editor").contains(heading) ) { return }
+	const hr = heading.nextElementSibling;
+	if ( hr?.tagName !== "HR" ) { return }
+	const rest = document.createRange();
+	rest.selectNodeContents(heading);
+	rest.setStart(range.startContainer, range.startOffset);
+	if ( rest.toString() !== "" ) { return }
+	e.preventDefault();
+	const line = document.createElement("div");
+	line.appendChild(document.createElement("br"));
+	hr.after(line);
+	const caret = document.createRange();
+	caret.setStart(line, 0);
+	caret.collapse(true);
+	selection.removeAllRanges();
+	selection.addRange(caret);
 	performAutoSave();
 }
 
@@ -631,6 +740,9 @@ function getContentAsMarkdown(){
                         break;
                     case "h3":
                         markdown += `### ${traverse(child)}\n`;
+                        break;
+                    case "h4":
+                        markdown += `#### ${traverse(child)}\n`;
                         break;
                     case "hr":
                         markdown += "---\n";
