@@ -121,7 +121,6 @@ document.getElementById("tb-btn-underline").addEventListener("click", () => { fo
 document.getElementById("tb-btn-link").addEventListener("click", () => { formatText("a") } );
 document.getElementById("tb-btn-softreturn").addEventListener("click", () => { formatText("softreturn") } );
 document.getElementById("tb-btn-inserttab").addEventListener("click", () => { formatText("inserttab") } );
-document.getElementById("tb-btn-removetab").addEventListener("click", () => { formatText("removetab") } );
 
 
 function formatText(command) {
@@ -157,8 +156,6 @@ function formatText(command) {
 		adjustSelectionRange(1);
 	} else if (command === "inserttab") {
 		insertTab();
-	} else if (command === "removetab") {
-		removeTab();
 	} else if ( command === "checkbox" ) {
 		insertCheckbox();
 	} else {
