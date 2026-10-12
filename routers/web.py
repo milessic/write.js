@@ -48,3 +48,30 @@ async def read_service_worker():
         media_type="application/javascript",
         headers={"Cache-Control": "no-cache"},
     )
+
+
+# bump when the text of a legal page changes
+LEGAL_UPDATED = "2026-10-12"
+
+
+def _legal_page(request: Request, template: str):
+    return templates.TemplateResponse(
+        template,
+        {
+            "request": request,
+            "updated": LEGAL_UPDATED,
+            **theme_context(request.cookies.get(THEME_COOKIE)),
+        },
+    )
+
+
+@router.get("/privacy")
+async def read_privacy(request: Request):
+    """Serve the Privacy Policy."""
+    return _legal_page(request, "legal/privacy.html")
+
+
+@router.get("/terms")
+async def read_terms(request: Request):
+    """Serve the Terms of Service."""
+    return _legal_page(request, "legal/terms.html")

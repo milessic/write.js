@@ -1181,29 +1181,34 @@ function copyMarkdown(){
 	);
 }
 
-function userConsentModal(){
-	if ( userConsent == 1) { return }
+function userConsentModal(force=false){
+	// force: opened from the menu, so it shows (and allows withdrawing) an already given consent
+	if ( userConsent == 1 && !force ) { return }
+	const given = userConsent == 1;
 	const html = `
-	<div>
-	Do you agree to:
-	<ul>
-		<li>Storing some cookies on your browser</li>
-		<li>Storing documents you have created in LocalStorage</li>
-	</ul>
-	<div class="modal-bottom">
-		<div class="row">
-			<button class="btn primary" onclick="setUserConsent(1)">Yes</button>
-			<button class="btn" onclick="setUserConsent(0)">No</button>
+	<div class="stack">
+		<p>Write.JS keeps your work in your browser. To do that, it needs your consent to store
+		<strong>documents and settings</strong> in your browser's LocalStorage (documents, folders, autosave, layout, last opened document).</p>
+		<p class="muted small">
+			Some cookies are set only when you use the feature that needs them: a theme cookie when you pick a theme,
+			and session cookies when you log in. Write.JS uses no analytics, tracking or advertising cookies.
+		</p>
+		<div class="modal-bottom stack">
+			${given ? `<p><strong>You have agreed.</strong> Withdrawing stops saving new data; documents already saved stay until you use <em>Clear localStorage</em>.</p>` : ""}
+			<div class="row">
+				<button class="btn primary" onclick="setUserConsent(1)">${given ? "Keep agreeing" : "Agree"}</button>
+				<button class="btn" onclick="setUserConsent(0)">${given ? "Withdraw consent" : "Decline"}</button>
+			</div>
+			${given ? "" : `<p class="small">Without consent this dialog shows on every visit, and saving documents and autosave won't work.
+			<strong>If you have already written something, agree, then save it or enable AutoSave.</strong></p>`}
+			<p class="small">
+				<a href="/privacy" target="_blank">Privacy Policy</a> ·
+				<a href="/terms" target="_blank">Terms of Service</a>
+			</p>
 		</div>
-		If you won't agree, this will be displayed at every visit and core app functionalities such as document saving won't work.
-		<br>
-		<hr>
-		<br>
-		<strong>If you have some data already written, agree, <br>then save documents / enable AutoSave feature</strong>
-	</div>
 	</div>
 	`
-	createModal("Cookies and LocalStorage", html)
+	createModal("Your data in Write.JS", html)
 }
 
 function setUserConsent(value, reloadAfter=false){
@@ -1216,6 +1221,8 @@ function setUserConsent(value, reloadAfter=false){
 		}
 	} else {
 		userConsent = 0;
+		// forget a previously given consent, so it isn't restored on the next visit
+		localStorage.removeItem(userConsentKey);
 		closeAllModals();
 	}
 }

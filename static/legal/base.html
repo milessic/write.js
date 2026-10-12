@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{ theme or 'writejs' }}">
+<head>
+	<link rel="icon" href="favicon.svg" sizes="any" type="image/svg+xml">
+	<meta name="theme-color" content="#2c2c2c">
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta name="author" content="Miłosz 'milessic' Jura">
+	<title>{% block title %}{% endblock %} - Write.JS</title>
+	<!-- milessic-themes: falls back to the bundled Write.js theme if the themes server fails -->
+	<link rel="stylesheet" data-milessic-theme crossorigin="anonymous" href="{{ theme_stylesheet or 'static/themes/writejs.css' }}"
+		onerror="this.onerror=null;document.documentElement.dataset.theme='{{ default_theme or 'writejs' }}';this.href='{{ theme_backup_stylesheet or 'static/themes/writejs.css' }}'">
+	<style>
+		.legal { max-width: 760px; margin: 0 auto; line-height: 1.6; }
+		.legal h1 { margin-top: 0; }
+		.legal h2 { margin-top: 1.75rem; }
+		.legal table { width: 100%; border-collapse: collapse; }
+		.legal th, .legal td { text-align: left; vertical-align: top; padding: .4rem .5rem; border-bottom: 1px solid var(--line, #8884); }
+		.legal code { overflow-wrap: anywhere; }
+		.legal-nav { display: flex; gap: 1rem; flex-wrap: wrap; }
+	</style>
+</head>
+<body class="app">
+	<header class="topbar">
+		<a class="btn" href="/">← Back to Write.JS</a>
+		<nav class="topbar-end legal-nav">
+			<a href="/privacy">Privacy Policy</a>
+			<a href="/terms">Terms of Service</a>
+		</nav>
+	</header>
+	<div class="container">
+		<article class="card legal">
+			{% block content %}{% endblock %}
+		</article>
+	</div>
+</body>
+</html>

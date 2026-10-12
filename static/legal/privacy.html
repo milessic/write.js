@@ -1,0 +1,69 @@
+{% extends "legal/base.html" %}
+{% block title %}Privacy Policy{% endblock %}
+{% block content %}
+<h1>Privacy Policy</h1>
+<p class="muted small">Last updated: {{ updated }}</p>
+
+<p>This policy explains what data Write.JS ("the app", "we") stores, where it is stored and why.
+Write.JS is run by Miłosz Jura. Questions about this policy or your data can be sent to
+<a href="mailto:writejs.help@gmail.com?subject=Write.JS privacy">writejs.help@gmail.com</a>.</p>
+
+<h2>1. Using Write.JS without an account</h2>
+<p>Without an account, your documents never leave your device. If you agree to storage in the consent dialog,
+documents and settings are saved in your browser's <code>localStorage</code>. We cannot see or recover them.
+Clearing your browser data, or using <em>Clear localStorage</em> in the menu, removes them for good.</p>
+
+<h2>2. Using Write.JS with an account</h2>
+<p>When you register, we store:</p>
+<ul>
+	<li>your username and email address,</li>
+	<li>your password, stored only as a salted hash (we never store or see the plain password),</li>
+	<li>when the account was created and when the password was last changed,</li>
+	<li>login sessions (access and refresh tokens, with their issue and expiry times),</li>
+	<li>failed login attempts, used to temporarily lock an account against password guessing,</li>
+	<li>password reset links you request (valid for a limited time).</li>
+</ul>
+<p>When you sync, a copy of your notebook (documents and folder structure) is uploaded to our server and stored
+so you can open it on other devices. Your documents are not read, analysed, sold or used for advertising.</p>
+<p>Your email address is used only to send messages you request, such as a password reset.</p>
+
+<h2>3. Cookies and browser storage</h2>
+<table>
+	<thead><tr><th>Name</th><th>Type</th><th>Purpose</th><th>Kept for</th></tr></thead>
+	<tbody>
+		<tr><td><code>access_token</code></td><td>Cookie, strictly necessary</td><td>Keeps you logged in</td><td>Until the session expires or you log out</td></tr>
+		<tr><td><code>refresh_token</code></td><td>Cookie, strictly necessary</td><td>Renews your login session</td><td>Until it expires or you log out</td></tr>
+		<tr><td><code>theme</code></td><td>Cookie, preference</td><td>Remembers the theme you picked</td><td>1 year</td></tr>
+		<tr><td><code>__doc__*</code>, <code>__userConsent__</code>, <code>__autosave__</code>, <code>__lastOpened__</code>, layout and folder keys</td><td>localStorage</td><td>Your documents, settings and workspace layout</td><td>Until you clear them</td></tr>
+		<tr><td>Service worker cache</td><td>Cache storage</td><td>Lets the app open offline</td><td>Until replaced by a newer version or cleared</td></tr>
+	</tbody>
+</table>
+<p>The login cookies are set only when you log in, because the account cannot work without them.
+Documents and settings are stored in <code>localStorage</code> only after you agree in the consent dialog.
+We do not use analytics, tracking or advertising cookies.</p>
+
+<h2>4. Third parties</h2>
+<ul>
+	<li><strong>Google Fonts</strong>: the editor font is loaded from Google's servers, which receive your IP address
+		and browser details as part of that request. See <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a>.</li>
+	<li><strong>Themes server</strong>: the look of the app may be loaded from the milessic-themes server, which receives the same request details.</li>
+	<li><strong>Email</strong>: password reset emails are sent through an external SMTP provider.</li>
+</ul>
+<p>We do not sell or share your data with anyone else.</p>
+
+<h2>5. How long we keep data</h2>
+<p>Account data and synced notebooks are kept until you delete your account. Sessions, failed login records and
+password reset links expire automatically. Deleting your account removes your account and its related records from our database.</p>
+
+<h2>6. Your rights</h2>
+<p>You can access, export (<em>Export Notebook</em>), correct or delete your data at any time. You can delete your account
+from the <em>Account</em> menu, or ask us to do it by email. If you are in the EU/EEA, you also have the rights given by the GDPR,
+including the right to complain to your local data protection authority.</p>
+
+<h2>7. Security</h2>
+<p>Passwords are hashed, sessions expire, and repeated failed logins lock the account temporarily.
+No system is perfectly secure, so keep your own backups of important documents.</p>
+
+<h2>8. Changes</h2>
+<p>If this policy changes, the date at the top will change too. Significant changes will be announced in the app.</p>
+{% endblock %}
