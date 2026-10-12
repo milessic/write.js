@@ -77,6 +77,7 @@ window.addEventListener("keydown", handleMobileScrollEvent);
 document.getElementById("editor-grid").addEventListener('keydown', (e) => {performAutoSave();changeTabBehavior(e);handleCheckboxEnter(e)});
 document.getElementById("editor-grid").addEventListener('click', updateCaretPosition);
 document.getElementById("editor-grid").addEventListener('paste', handlePasteLinkOnSelection);
+document.getElementById("editor-grid").addEventListener('beforeinput', handleListItemBackspace);
 document.getElementById("editor-grid").addEventListener('keyup', (e) => {updateCaretPosition();handleWordCounter()});
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
 document.getElementById('editor-grid').addEventListener('click', focusEditor);
@@ -120,6 +121,7 @@ document.getElementById("tb-btn-underline").addEventListener("click", () => { fo
 document.getElementById("tb-btn-link").addEventListener("click", () => { formatText("a") } );
 document.getElementById("tb-btn-softreturn").addEventListener("click", () => { formatText("softreturn") } );
 document.getElementById("tb-btn-inserttab").addEventListener("click", () => { formatText("inserttab") } );
+document.getElementById("tb-btn-removetab").addEventListener("click", () => { formatText("removetab") } );
 
 
 function formatText(command) {
@@ -155,6 +157,8 @@ function formatText(command) {
 		adjustSelectionRange(1);
 	} else if (command === "inserttab") {
 		insertTab();
+	} else if (command === "removetab") {
+		removeTab();
 	} else if ( command === "checkbox" ) {
 		insertCheckbox();
 	} else {
@@ -657,15 +661,8 @@ function getContentAsMarkdown(){
                         markdown += `<ins>${traverse(child)}</ins>`;
                         break;
                     case "ol":
-                        let i = 1;
-                        for (const li of child.querySelectorAll("li")) {
-                            markdown += `${i++}. ${traverse(li)}\n`;
-                        }
-                        break;
                     case "ul":
-                        for (const li of child.querySelectorAll("li")) {
-                            markdown += `- ${traverse(li)}\n`;
-                        }
+                        markdown += listToMarkdown(child, 0);
                         break;
                     case "li":
                         markdown += traverse(child) + "\n";
@@ -685,6 +682,28 @@ function getContentAsMarkdown(){
             }
         }
 
+        return markdown;
+    }
+
+    function listToMarkdown(list, depth) {
+        // nested lists (inside an <li>, or directly in the list as execCommand("indent") makes them) are indented
+        let markdown = "";
+        let i = 1;
+        const isOrdered = list.tagName.toLowerCase() === "ol";
+        for (const child of list.children) {
+            const tagName = child.tagName.toLowerCase();
+            if (tagName === "ul" || tagName === "ol") {
+                markdown += listToMarkdown(child, depth + 1);
+            } else if (tagName === "li") {
+                const sublists = [...child.children].filter(c => ["ul", "ol"].includes(c.tagName.toLowerCase()));
+                const item = child.cloneNode(true);
+                item.querySelectorAll(":scope > ul, :scope > ol").forEach(c => c.remove());
+                markdown += `${"    ".repeat(depth)}${isOrdered ? `${i++}.` : "-"} ${traverse(item).trim()}\n`;
+                for (const sublist of sublists) {
+                    markdown += listToMarkdown(sublist, depth + 1);
+                }
+            }
+        }
         return markdown;
     }
 
@@ -1220,11 +1239,41 @@ function adjustSelectionRange(n) {
 function changeTabBehavior(e){
 	if ( e.key === "Tab" ){
 		e.preventDefault();
-		insertTab();
+		e.shiftKey ? removeTab() : insertTab();
     }
 }
 
+function getCaretListItem(){
+	// the <li> holding the caret in the focused editor, or null
+	const editor = document.getElementById("editor");
+	const selection = window.getSelection();
+	if ( !selection.rangeCount ) { return null }
+	const node = selection.getRangeAt(0).startContainer;
+	const li = (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)?.closest("li");
+	return li && editor.contains(li) ? li : null;
+}
+
+function restoreEditorSelection(){
+	// toolbar buttons may take the focus: bring the caret back into the editor
+	const editor = document.getElementById("editor");
+	const selection = window.getSelection();
+	if ( selection.rangeCount && editor.contains(selection.anchorNode) ) { return }
+	if ( lastEditorRange && editor.contains(lastEditorRange.commonAncestorContainer) ){
+		editor.focus();
+		selection.removeAllRanges();
+		selection.addRange(lastEditorRange);
+	}
+}
+
 function insertTab(){
+	restoreEditorSelection();
+	// in a list, Tab nests the item (moves the bullet right)
+	if ( getCaretListItem() ) {
+		document.execCommand("indent", false, null);
+		updateCaretPosition();
+		return
+	}
+	updateCaretPosition();
 	// delete selection
     caretPosition.deleteContents();
 	
@@ -1237,6 +1286,47 @@ function insertTab(){
 	caretPosition.setEndAfter(tabNode);
 	selection.removeAllRanges();
 	selection.addRange(caretPosition);
+}
+
+function removeTab(){
+	restoreEditorSelection();
+	// in a list, Shift+Tab un-nests the item (moves the bullet left)
+	if ( getCaretListItem() ) {
+		document.execCommand("outdent", false, null);
+		updateCaretPosition();
+		return
+	}
+	// elsewhere it removes up to one indent of spaces before the caret
+	const selection = window.getSelection();
+	if ( !selection.rangeCount || !selection.isCollapsed ) { return }
+	const range = selection.getRangeAt(0);
+	const node = range.startContainer;
+	if ( node.nodeType !== Node.TEXT_NODE ) { return }
+	const before = node.textContent.slice(0, range.startOffset);
+	const spaces = before.length - before.replace(/[ \u00a0]+$/, "").length;
+	const n = Math.min(spaces, indentSize);
+	if ( !n ) { return }
+	range.setStart(node, range.startOffset - n);
+	selection.removeAllRanges();
+	selection.addRange(range);
+	document.execCommand("delete", false, null);
+	updateCaretPosition();
+}
+
+function handleListItemBackspace(e){
+	// mobile: Backspace at the beginning of a list item un-nests it, like Shift+Tab
+	if ( !isLowWidthViewport || e.inputType !== "deleteContentBackward" || !e.cancelable ) { return }
+	const selection = window.getSelection();
+	if ( !selection.rangeCount || !selection.isCollapsed ) { return }
+	const li = getCaretListItem();
+	if ( !li ) { return }
+	const beforeCaret = document.createRange();
+	beforeCaret.setStart(li, 0);
+	beforeCaret.setEnd(selection.anchorNode, selection.anchorOffset);
+	if ( beforeCaret.toString().replace(/\u200b/g, "") !== "" ) { return }
+	e.preventDefault();
+	removeTab();
+	performAutoSave();
 }
 
 function copyMarkdown(){
