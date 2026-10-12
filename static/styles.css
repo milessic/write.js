@@ -673,6 +673,10 @@ body.app > .topbar {
 	z-index: 20;
 	min-width: 10rem;
 }
+/* themes may drop the .menu border (writejs: [data-theme] .menu), a dropdown over the toolbar keeps one */
+.block-select > .block-select-menu {
+	border: 1px solid var(--line-strong);
+}
 /* the last dropdown of the toolbar opens leftwards, so it stays on the screen */
 #tb-more-select .block-select-menu {
 	left: auto;
