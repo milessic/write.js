@@ -19,6 +19,11 @@ const openedEditorsKey = "__openedEditors__";
 const foldersKey = "__folders__";
 // the tree's width is a preference of this device only, it doesn't go to the cloud (isDeviceOnlyKey)
 const treeWidthKey = "__treeWidth__";
+// the pinned tree's width on phones and tablets is kept apart from the desktop one
+const treeWidthMobileKey = "__treeWidthMobile__";
+// phones and tablets: a pinned tree stays open beside the editor, without the scrim, and can be resized;
+// device only as well (isDeviceOnlyKey)
+const treePinnedKey = "__treePinned__";
 const minTreeWidth = 160;
 const maxTreeWidth = 600;
 const folderSeparator = "/";
@@ -29,6 +34,7 @@ const tabDragType = "application/x-writejs-tab";
 const documentDragType = "application/x-writejs-document";
 const folderDragType = "application/x-writejs-folder";
 
+let treePinned = localStorage.getItem(treePinnedKey) === "true";
 const layout = Object.assign(
 	{ treeSide: "left", tabsSide: "top", treeHidden: false, collapsedFolders: [] },
 	readJsonSetting(layoutKey)
@@ -57,6 +63,9 @@ const tabsContainer = document.getElementById("tabs");
 const contextMenu = document.getElementById("context-menu");
 
 applyLayout();
+applyTreePinned();
+// pinned: the drawer is open from the start (it only takes effect on narrow screens)
+if ( treePinned ) { document.body.classList.add("tree-drawer-open") }
 focusedPane = setupPane(editorGrid.querySelector(".editor-pane"));
 panes.push(focusedPane);
 restoreOpenedTabs();
@@ -95,6 +104,7 @@ document.addEventListener("keydown", (e) => {
 document.getElementById("split-btn").addEventListener("click", () => splitEditor());
 document.getElementById("file-tree-new").addEventListener("click", createNewDocument);
 document.getElementById("file-tree-new-folder").addEventListener("click", () => createFolder());
+document.getElementById("file-tree-pin").addEventListener("click", toggleTreePinned);
 document.getElementById("file-tree-hide").addEventListener("click", hideFileTree);
 document.getElementById("file-tree-scrim").addEventListener("click", hideFileTree);
 fileTreeSearch.addEventListener("input", () => refreshFileTree());
@@ -173,7 +183,8 @@ function setupTreeResizing(){
 	// the edge of the tree next to the editors is dragged to set its width
 	const tree = document.getElementById("file-tree");
 	const resizer = document.getElementById("file-tree-resizer");
-	applyTreeWidth(Number(localStorage.getItem(treeWidthKey)) || null);
+	applyTreeWidth(Number(localStorage.getItem(treeWidthKey)) || null, false);
+	applyTreeWidth(Number(localStorage.getItem(treeWidthMobileKey)) || null, true);
 
 	resizer.addEventListener("pointerdown", (e) => {
 		if ( e.button !== 0 ) { return }
@@ -183,37 +194,55 @@ function setupTreeResizing(){
 		const startWidth = tree.getBoundingClientRect().width;
 		// docked right, the edge is on the tree's left: dragging left makes it wider
 		const direction = layout.treeSide === "right" ? -1 : 1;
+		const mobile = isLowWidthViewport;
 		document.body.classList.add("tree-resizing");
 
-		const move = (ev) => applyTreeWidth(startWidth + (ev.clientX - startX) * direction);
+		const move = (ev) => applyTreeWidth(startWidth + (ev.clientX - startX) * direction, mobile);
 		const end = () => {
 			resizer.removeEventListener("pointermove", move);
 			resizer.removeEventListener("pointerup", end);
 			resizer.removeEventListener("pointercancel", end);
 			document.body.classList.remove("tree-resizing");
-			saveTreeWidth(Math.round(tree.getBoundingClientRect().width));
+			saveTreeWidth(Math.round(tree.getBoundingClientRect().width), mobile);
 		};
 		resizer.addEventListener("pointermove", move);
 		resizer.addEventListener("pointerup", end);
 		resizer.addEventListener("pointercancel", end);
 	});
 	resizer.addEventListener("dblclick", () => {
-		applyTreeWidth(null);
-		saveTreeWidth(null);
+		applyTreeWidth(null, isLowWidthViewport);
+		saveTreeWidth(null, isLowWidthViewport);
 	});
 }
 
-function applyTreeWidth(width){
+function applyTreeWidth(width, mobile){
 	const style = document.getElementById("file-tree").style;
-	if ( !width ) { style.removeProperty("--tree-width"); return }
+	const property = mobile ? "--tree-width-mobile" : "--tree-width";
+	if ( !width ) { style.removeProperty(property); return }
 	const clamped = Math.min(maxTreeWidth, Math.max(minTreeWidth, width));
-	style.setProperty("--tree-width", clamped + "px");
+	style.setProperty(property, clamped + "px");
 }
 
-function saveTreeWidth(width){
+function saveTreeWidth(width, mobile){
 	if ( !validateUserConsent(false) ) { return }
-	if ( width ) { localStorage.setItem(treeWidthKey, String(width)) }
-	else { localStorage.removeItem(treeWidthKey) }
+	const key = mobile ? treeWidthMobileKey : treeWidthKey;
+	if ( width ) { localStorage.setItem(key, String(width)) }
+	else { localStorage.removeItem(key) }
+}
+
+function applyTreePinned(){
+	document.body.classList.toggle("tree-pinned", treePinned);
+	const button = document.getElementById("file-tree-pin");
+	button.setAttribute("aria-pressed", String(treePinned));
+	button.title = treePinned ? "Unpin documents" : "Pin documents open";
+}
+
+function toggleTreePinned(){
+	treePinned = !treePinned;
+	applyTreePinned();
+	if ( !validateUserConsent(false) ) { return }
+	if ( treePinned ) { localStorage.setItem(treePinnedKey, "true") }
+	else { localStorage.removeItem(treePinnedKey) }
 }
 
 function setTreeSide(side){
@@ -294,6 +323,11 @@ function hideFileTree(){
 		layout.treeHidden = true;
 		saveLayout();
 	}
+}
+
+function closeTreeDrawer(){
+	// after opening or creating a document; a pinned tree stays open
+	if ( !treePinned ) { document.body.classList.remove("tree-drawer-open") }
 }
 
 function toggleFileTree(){
@@ -590,7 +624,7 @@ function clearDocumentDropTargets(){
 
 function openDocumentFromTree(name){
 	loadDocumentFromLocalStorage(name);
-	document.body.classList.remove("tree-drawer-open");
+	closeTreeDrawer();
 }
 
 
@@ -1269,7 +1303,7 @@ function createNewDocumentInFolder(folder){
 	const tab = getActiveTab();
 	if ( tab ) { tab.folder = folder }
 	expandFolder(folder);
-	document.body.classList.remove("tree-drawer-open");
+	closeTreeDrawer();
 	documentNameObject.focus();
 }
 

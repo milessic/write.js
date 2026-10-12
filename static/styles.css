@@ -76,6 +76,12 @@ body.app > .topbar {
 .file-tree-scrim {
 	display: none;
 }
+/* pinning only matters where the tree is a drawer (phones and tablets) */
+@media (min-width: 1000px) {
+	.tree-pin-btn {
+		display: none;
+	}
+}
 /* the tree's inner edge, dragged to resize it */
 .file-tree-resizer {
 	position: absolute;
@@ -560,6 +566,31 @@ body.app > .topbar {
 		display: flex;
 	}
 	.file-tree-resizer {
+		display: none;
+	}
+	/* pinned (the user's choice): the tree sits beside the editor like on a desktop, stays open
+	   and is resized by its inner edge, made wider for fingers */
+	.tree-pinned.tree-drawer-open .file-tree {
+		position: relative;
+		top: auto;
+		bottom: auto;
+		left: auto;
+		right: auto;
+		z-index: auto;
+		/* --tree-width-mobile: the pinned tree's own width, apart from the desktop --tree-width */
+		width: min(var(--tree-width-mobile, 15rem), 85vw);
+		box-shadow: none;
+	}
+	.tree-pinned .file-tree-resizer {
+		display: block;
+		width: 16px;
+		right: -8px;
+	}
+	[data-tree-side="right"].tree-pinned .file-tree-resizer {
+		right: auto;
+		left: -8px;
+	}
+	.tree-pinned.tree-drawer-open .file-tree-scrim {
 		display: none;
 	}
 	/* split editors stack on narrow screens */
