@@ -25,6 +25,8 @@ const treeWidthMobileKey = "__treeWidthMobile__";
 // device only as well (isDeviceOnlyKey)
 const treePinnedKey = "__treePinned__";
 const minTreeWidth = 160;
+// the pinned tree on phones and tablets can be narrower, it shares the screen with the editor
+const minTreeWidthMobile = minTreeWidth / 2;
 const maxTreeWidth = 600;
 const folderSeparator = "/";
 const maxFolderDepth = 5;
@@ -219,7 +221,7 @@ function applyTreeWidth(width, mobile){
 	const style = document.getElementById("file-tree").style;
 	const property = mobile ? "--tree-width-mobile" : "--tree-width";
 	if ( !width ) { style.removeProperty(property); return }
-	const clamped = Math.min(maxTreeWidth, Math.max(minTreeWidth, width));
+	const clamped = Math.min(maxTreeWidth, Math.max(mobile ? minTreeWidthMobile : minTreeWidth, width));
 	style.setProperty(property, clamped + "px");
 }
 
