@@ -8,6 +8,9 @@ const headingBreaksKey = "__headingBreaks__"; // "1" when an <hr> is auto-insert
 const syncPendingKey = "__syncPending__"; // set while there are changes that couldn't reach the cloud (offline)
 const syncBaseKey = "__syncBase__"; // {key: hash} of what the cloud held at the last sync, tells which side changed a document
 const themeCookie = "theme";
+const viModeKey = "__viMode__"; // "1" when the vi keybindings are on (Settings), goes with the notebook
+const viEscButtonKey = "__viEscButton__"; // "1" shows the vi Esc button on touch screens, this device only
+const viScriptUrl = "static/vi.js?1";
 
 let autosaveEnabled = 0;
 let documentNames = [];
@@ -56,6 +59,7 @@ const documentNameObject = document.getElementById("doc-name");
 window.addEventListener("load", function() { 
 	userConsentModal();
 	if ( userConsent ) { loadLastOpenedDocument();}
+	applyViMode();
 	if ( wordCounterEnabled ){
 		handleWordCounter();
 	};
@@ -83,6 +87,7 @@ document.getElementById("editor-grid").addEventListener('keyup', (e) => {updateC
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
 document.getElementById('editor-grid').addEventListener('click', focusEditor);
 document.getElementById("theme-btn").addEventListener("click", createThemeModal);
+document.getElementById("settings-btn").addEventListener("click", createSettingsModal);
 document.getElementById("offline-btn").addEventListener("click", createOfflineModal);
 document.addEventListener("selectionchange", () => {
 	const selection = window.getSelection();
@@ -284,6 +289,49 @@ function createThemeModal(){
 			closeAllModals();
 			createNotification("Could not load themes!", "error");
 		});
+}
+
+function createSettingsModal(){
+	createModal("Settings", `
+	<h3>Vi mode</h3>
+	<div class="stack">
+		<label class="check"><input id="setting-vi-mode" type="checkbox"${viModeEnabled() ? " checked" : ""}>Vi keybindings (like Neovim)</label>
+		<label class="check"><input id="setting-vi-esc" type="checkbox"${localStorage.getItem(viEscButtonKey) === "1" ? " checked" : ""}${viModeEnabled() ? "" : " disabled"}>Show Esc on mobiles <span class="muted small">(this device only)</span></label>
+		<p class="muted small">Starts in NORMAL mode: <kbd>i</kbd> to type, <kbd>Esc</kbd> to go back, <kbd>v</kbd> / <kbd>V</kbd> to select, <kbd>:w</kbd> saves, <kbd>:q</kbd> closes the tab. The mode is shown in the top right corner.</p>
+	</div>`);
+	document.getElementById("setting-vi-mode").addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = false; return }
+		localStorage.setItem(viModeKey, e.target.checked ? "1" : "0");
+		document.getElementById("setting-vi-esc").disabled = !e.target.checked;
+		applyViMode();
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
+	document.getElementById("setting-vi-esc").addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = false; return }
+		localStorage.setItem(viEscButtonKey, e.target.checked ? "1" : "0");
+		window.WriteVi?.setEscButton(e.target.checked);
+	});
+}
+
+function viModeEnabled(){
+	return validateUserConsent(false) && localStorage.getItem(viModeKey) === "1";
+}
+
+function applyViMode(){
+	// vi.js is only downloaded once vi mode is on
+	if ( window.WriteVi ) {
+		viModeEnabled() ? WriteVi.enable() : WriteVi.disable();
+		return
+	}
+	if ( !viModeEnabled() || document.getElementById("vi-script") ) { return }
+	const script = document.createElement("script");
+	script.id = "vi-script";
+	script.src = viScriptUrl;
+	script.onerror = () => {
+		script.remove();
+		createNotification("Could not load vi mode!", "error");
+	};
+	document.head.appendChild(script);
 }
 
 function saveTheme(key){
@@ -846,7 +894,7 @@ function simulateEnter() {
 function isDeviceOnlyKey(key){
 	// state of this device that never goes to the cloud or a notebook backup
 	// (the workspace.js keys are looked up on call, that file loads after this one)
-	return [userLoggedInKey, syncPendingKey, syncBaseKey, openedTabsKey, openedEditorsKey, treeWidthKey, treeWidthMobileKey, treePinnedKey, layoutKey].includes(key);
+	return [userLoggedInKey, syncPendingKey, syncBaseKey, viEscButtonKey, openedTabsKey, openedEditorsKey, treeWidthKey, treeWidthMobileKey, treePinnedKey, layoutKey].includes(key);
 }
 
 function getAllLocalStorageItems() {
