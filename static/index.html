@@ -21,7 +21,7 @@
 	{% if themes_available %}
 	<script src="{{ themes_url }}/js/themes.js?v={{ themes_version }}" data-persist="false" data-restore="false"></script>
 	{% endif %}
-    <link rel="stylesheet" href="static/styles.css?84">
+    <link rel="stylesheet" href="static/styles.css?85">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
@@ -122,19 +122,23 @@
 						<button role="menuitem" data-block="checkbox"><span class="block-option-icon" aria-hidden="true"><span id="checkbox-icon-container"></span></span>Checklist</button>
 					</div>
 				</div>
-				<span class="toolbar-sep" aria-hidden="true"></span>
-				<button id="tb-btn-hr" class="small-btn" title="Horizontal rule" aria-label="Horizontal rule">---</button>
-				<button id="tb-btn-code" class="small-btn" title="Code block" aria-label="Code block">code</button>
+				<span class="toolbar-sep desktop-btn" aria-hidden="true"></span>
+				<button id="tb-btn-hr" class="small-btn desktop-btn" title="Horizontal rule" aria-label="Horizontal rule">---</button>
+				<button id="tb-btn-code" class="small-btn desktop-btn" title="Code block" aria-label="Code block">code</button>
 				<span class="toolbar-sep" aria-hidden="true"></span>
 				<button id="tb-btn-bold" class="small-btn" title="Bold" aria-label="Bold"><b>B</b></button>
 				<button id="tb-btn-italic" class="small-btn" title="Italic" aria-label="Italic"><i>I</i></button>
 				<button id="tb-btn-underline" class="small-btn" title="Underline" aria-label="Underline"><u>U</u></button>
-				<span class="toolbar-sep" aria-hidden="true"></span>
-				<button id="tb-btn-link" class="small-btn" title="Insert link" aria-label="Insert link">Insert Link</button>
+				<span class="toolbar-sep desktop-btn" aria-hidden="true"></span>
+				<button id="tb-btn-link" class="small-btn desktop-btn" title="Insert link" aria-label="Insert link">Insert Link</button>
 				<span class="toolbar-sep mobile-btn" aria-hidden="true"></span>
 				<div class="block-select mobile-btn" id="tb-more-select">
 					<button class="small-btn block-select-btn" title="More" aria-label="More" aria-haspopup="menu" aria-expanded="false"><span>More</span><span class="block-select-caret" aria-hidden="true">▾</span></button>
 					<div class="menu block-select-menu" role="menu" aria-label="More">
+						<button role="menuitem" data-block="hr">Horizontal rule (---)</button>
+						<button role="menuitem" data-block="code">Code block</button>
+						<button role="menuitem" data-block="a">Insert Link</button>
+						<hr>
 						<button role="menuitem" data-block="softreturn">Soft Return</button>
 						<button role="menuitem" data-block="inserttab" title="In a list: move the item right">Insert Tab</button>
 					</div>

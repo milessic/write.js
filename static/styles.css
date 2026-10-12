@@ -716,7 +716,8 @@ body.app > .topbar {
 	}
 }
 @media (max-width: 999px) {
-	#open-btn {
+	/* on phones these move into the toolbar's "More" dropdown */
+	#open-btn, .desktop-btn {
 		display: none;
 	}
 }
