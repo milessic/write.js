@@ -21,7 +21,7 @@
 	{% if themes_available %}
 	<script src="{{ themes_url }}/js/themes.js?v={{ themes_version }}" data-persist="false" data-restore="false"></script>
 	{% endif %}
-    <link rel="stylesheet" href="static/styles.css?83">
+    <link rel="stylesheet" href="static/styles.css?84">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
@@ -104,8 +104,8 @@
 		<div class="format-bar" id="sub-bar">
 			<div class="toolbar-bar" role="toolbar" aria-label="Formatting">
 				<div class="block-select" id="tb-block-select">
-					<button id="tb-block-btn" class="small-btn block-select-btn" title="Text style" aria-label="Text style" aria-haspopup="listbox" aria-expanded="false"><span id="tb-block-label">Text</span><span class="block-select-caret" aria-hidden="true">▾</span></button>
-					<div class="menu block-select-menu" id="tb-block-menu" role="listbox" aria-label="Text style">
+					<button class="small-btn block-select-btn" title="Text style" aria-label="Text style" aria-haspopup="listbox" aria-expanded="false"><span id="tb-block-label">Text</span><span class="block-select-caret" aria-hidden="true">▾</span></button>
+					<div class="menu block-select-menu" role="listbox" aria-label="Text style">
 						<button role="option" data-block="div" data-label="Text" aria-selected="true">Text</button>
 						<button role="option" data-block="h1" data-label="H1" aria-selected="false" class="block-option-h1">Heading 1</button>
 						<button role="option" data-block="h2" data-label="H2" aria-selected="false" class="block-option-h2">Heading 2</button>
@@ -114,9 +114,14 @@
 					</div>
 				</div>
 				<span class="toolbar-sep" aria-hidden="true"></span>
-				<button id="tb-btn-bl" class="small-btn" title="Bulleted list" aria-label="Bulleted list">*</button>
-				<button id="tb-btn-nl" class="small-btn" title="Numbered list" aria-label="Numbered list">1,2,3</button>
-				<button id="tb-btn-cl" class="small-btn" title="Checklist" aria-label="Checklist"><span id="checkbox-icon-container"></span></button>
+				<div class="block-select" id="tb-list-select">
+					<button class="small-btn block-select-btn" title="Lists" aria-label="Lists" aria-haspopup="menu" aria-expanded="false"><span>List</span><span class="block-select-caret" aria-hidden="true">▾</span></button>
+					<div class="menu block-select-menu" role="menu" aria-label="Lists">
+						<button role="menuitem" data-block="ul"><span class="block-option-icon" aria-hidden="true">•</span>Bulleted list</button>
+						<button role="menuitem" data-block="ol"><span class="block-option-icon" aria-hidden="true">1.</span>Numbered list</button>
+						<button role="menuitem" data-block="checkbox"><span class="block-option-icon" aria-hidden="true"><span id="checkbox-icon-container"></span></span>Checklist</button>
+					</div>
+				</div>
 				<span class="toolbar-sep" aria-hidden="true"></span>
 				<button id="tb-btn-hr" class="small-btn" title="Horizontal rule" aria-label="Horizontal rule">---</button>
 				<button id="tb-btn-code" class="small-btn" title="Code block" aria-label="Code block">code</button>
@@ -127,8 +132,13 @@
 				<span class="toolbar-sep" aria-hidden="true"></span>
 				<button id="tb-btn-link" class="small-btn" title="Insert link" aria-label="Insert link">Insert Link</button>
 				<span class="toolbar-sep mobile-btn" aria-hidden="true"></span>
-				<button id="tb-btn-softreturn" class="small-btn mobile-btn" title="Soft return" aria-label="Soft return">Soft Return</button>
-				<button id="tb-btn-inserttab" class="small-btn mobile-btn" title="Insert tab (in a list: move the item right)" aria-label="Insert tab">Insert Tab</button>
+				<div class="block-select mobile-btn" id="tb-more-select">
+					<button class="small-btn block-select-btn" title="More" aria-label="More" aria-haspopup="menu" aria-expanded="false"><span>More</span><span class="block-select-caret" aria-hidden="true">▾</span></button>
+					<div class="menu block-select-menu" role="menu" aria-label="More">
+						<button role="menuitem" data-block="softreturn">Soft Return</button>
+						<button role="menuitem" data-block="inserttab" title="In a list: move the item right">Insert Tab</button>
+					</div>
+				</div>
 			</div>
 		</div>
 		<!-- split view: up to 4 editors (workspace.js); the focused one's editor has id="editor" -->
@@ -166,7 +176,7 @@
 	-->
 	<script src="static/showdown.min.js?2.1.0"></script>
 	<script src="static/pako.js?64"></script>
-    <script src="static/script.js?86"></script>
+    <script src="static/script.js?87"></script>
     <script src="static/workspace.js?82"></script>
 	{% if is_authenticated %}
     	<script src="static/script3.js?70"></script>

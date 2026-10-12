@@ -673,8 +673,23 @@ body.app > .topbar {
 	z-index: 20;
 	min-width: 10rem;
 }
+/* the last dropdown of the toolbar opens leftwards, so it stays on the screen */
+#tb-more-select .block-select-menu {
+	left: auto;
+	right: 0;
+}
 .block-select-menu.menu-opened {
 	display: flex;
+}
+.block-select-menu > button {
+	display: flex;
+	align-items: center;
+}
+.block-option-icon {
+	display: inline-flex;
+	justify-content: center;
+	width: 1.5rem;
+	margin-right: .5rem;
 }
 .block-select-menu > [aria-selected="true"] {
 	color: var(--accent);

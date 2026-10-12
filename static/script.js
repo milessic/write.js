@@ -109,18 +109,13 @@ document.getElementById("generate-pdf").addEventListener("click", generatePDF);
 document.getElementById("contact").addEventListener("click", () => createNotification("Thank you!", 'info'))
 documentNameObject.addEventListener("change", updateTitle);
 // toolbar
-initBlockSelect();
-document.getElementById("tb-btn-bl").addEventListener("click", () => { formatText("ul") } );
-document.getElementById("tb-btn-nl").addEventListener("click", () => { formatText("ol") } );
-document.getElementById("tb-btn-cl").addEventListener("click", () => { formatText("checkbox") } );
+document.querySelectorAll(".block-select").forEach(initBlockSelect);
 document.getElementById("tb-btn-hr").addEventListener("click", () => { formatText("hr") } );
 document.getElementById("tb-btn-code").addEventListener("click", () => { formatText("code") } );
 document.getElementById("tb-btn-bold").addEventListener("click", () => { formatText("bold") } );
 document.getElementById("tb-btn-italic").addEventListener("click", () => { formatText("italic") } );
 document.getElementById("tb-btn-underline").addEventListener("click", () => { formatText("underline") } );
 document.getElementById("tb-btn-link").addEventListener("click", () => { formatText("a") } );
-document.getElementById("tb-btn-softreturn").addEventListener("click", () => { formatText("softreturn") } );
-document.getElementById("tb-btn-inserttab").addEventListener("click", () => { formatText("inserttab") } );
 
 
 function formatText(command) {
@@ -161,11 +156,11 @@ function formatText(command) {
 	performAutoSave();
 }
 
-// text style dropdown of the toolbar: Text / H1-H4, the label follows the block under the caret
-function initBlockSelect(){
-	const select = document.getElementById("tb-block-select");
-	const btn = document.getElementById("tb-block-btn");
-	const menu = document.getElementById("tb-block-menu");
+// toolbar dropdowns (text style, lists, more): each option runs its data-block through formatText.
+// The text style one also follows the block under the caret (updateBlockSelect)
+function initBlockSelect(select){
+	const btn = select.querySelector(".block-select-btn");
+	const menu = select.querySelector(".block-select-menu");
 	const options = [...menu.querySelectorAll("[data-block]")];
 	const close = () => {
 		menu.classList.remove("menu-opened");
@@ -193,8 +188,9 @@ function initBlockSelect(){
 			e.preventDefault();
 			open();
 			const step = e.key === "ArrowDown" ? 1 : -1;
-			const from = index === -1 ? options.findIndex(o => o.getAttribute("aria-selected") === "true") - step : index;
-			options[(from + step + options.length) % options.length].focus();
+			const selected = options.findIndex(o => o.getAttribute("aria-selected") === "true");
+			const next = index !== -1 ? index + step : selected !== -1 ? selected : step === 1 ? 0 : -1;
+			options[(next + options.length) % options.length].focus();
 		}
 	});
 	document.addEventListener("click", (e) => { if ( !select.contains(e.target) ) { close() } });
@@ -207,7 +203,7 @@ function updateBlockSelect(){
 	const node = selection.anchorNode;
 	const heading = (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement).closest("h1, h2, h3, h4");
 	const block = heading && editor.contains(heading) ? heading.tagName.toLowerCase() : "div";
-	for ( const option of document.querySelectorAll("#tb-block-menu [data-block]") ) {
+	for ( const option of document.querySelectorAll("#tb-block-select [data-block]") ) {
 		const selected = option.dataset.block === block;
 		option.setAttribute("aria-selected", String(selected));
 		if ( selected ) { document.getElementById("tb-block-label").textContent = option.dataset.label }
