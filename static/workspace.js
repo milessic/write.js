@@ -539,6 +539,12 @@ function setupNameTooltip(){
 	const show = () => {
 		if ( !target?.isConnected ) { return }
 		tooltip.textContent = target.dataset.tooltip;
+		if ( target.dataset.path ) {
+			const path = document.createElement("span");
+			path.className = "name-tooltip-path";
+			path.textContent = target.dataset.path;
+			tooltip.prepend(path);
+		}
 		tooltip.classList.add("visible");
 		const rect = target.getBoundingClientRect();
 		const width = tooltip.offsetWidth;
@@ -799,6 +805,8 @@ function renderTabs(){
 		el.setAttribute("aria-selected", String(isActive));
 		el.tabIndex = isActive ? 0 : -1;
 		el.title = label + (tab.dirty ? " (unsaved)" : "") + (pane && panes.length > 1 ? ` - editor ${panes.indexOf(pane) + 1}` : "");
+		// the folders the document is in, shown grayed out before the name in the hover tooltip
+		if ( tab.name || label !== untitledTabLabel ) { el.dataset.path = folderSeparator + (tab.folder ? tab.folder + folderSeparator : "") }
 		el.draggable = true;
 
 		const name = document.createElement("span");

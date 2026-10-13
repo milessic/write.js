@@ -506,6 +506,9 @@ body.app > .topbar {
 .name-tooltip.visible {
 	display: block;
 }
+.name-tooltip-path {
+	color: var(--muted);
+}
 
 /* drop zones shown while a panel's handle is dragged */
 .dock-zones {
