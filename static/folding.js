@@ -156,12 +156,10 @@ function handleFoldDelete(e){
 }
 
 function headingFoldingSettingsHtml(){
+	// goes in the Headings section of Settings (createSettingsModal, script.js)
 	return `
-	<h3>Headings</h3>
-	<div class="stack">
 		<label class="check"><input id="setting-heading-folding" type="checkbox"${headingFoldingEnabled() ? " checked" : ""}>Collapse and expand sections by their headings</label>
-		<p class="muted small">Click the arrow left of a heading. Collapsed sections are saved with the document; turned off, everything shows.</p>
-	</div>`;
+		<p class="muted small">Click the arrow left of a heading. Collapsed sections are saved with the document; turned off, everything shows.</p>`;
 }
 
 function initHeadingFoldingSettings(){

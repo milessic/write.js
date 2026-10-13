@@ -4,7 +4,7 @@ const userConsentKey = "__userConsent__";
 const lastOpenedKey= "__lastOpened__";
 const docPrefix = "__doc__";
 const autosaveKey = "__autosave__";
-const headingBreaksKey = "__headingBreaks__"; // "1" when an <hr> is auto-inserted under each heading (Account setting)
+const headingBreaksKey = "__headingBreaks__"; // "1" when an <hr> is auto-inserted under each heading (Settings), goes with the notebook
 const syncPendingKey = "__syncPending__"; // set while there are changes that couldn't reach the cloud (offline)
 const syncBaseKey = "__syncBase__"; // {key: hash} of what the cloud held at the last sync, tells which side changed a document
 const themeCookie = "theme";
@@ -346,9 +346,19 @@ function createSettingsModal(){
 		<label class="check"><input id="setting-vi-mode" type="checkbox"${viModeEnabled() ? " checked" : ""}>Vi keybindings (like Neovim)</label>
 		<label class="check"><input id="setting-vi-esc" type="checkbox"${localStorage.getItem(viEscButtonKey) === "1" ? " checked" : ""}${viModeEnabled() ? "" : " disabled"}>Show Esc on mobiles <span class="muted small">(this device only)</span></label>
 		<p class="muted small">Starts in NORMAL mode: <kbd>i</kbd> to type, <kbd>Esc</kbd> to go back, <kbd>v</kbd> / <kbd>V</kbd> to select, <kbd>:w</kbd> saves, <kbd>:q</kbd> closes the tab, <kbd>:help</kbd> lists all the commands. The mode is shown in the top right corner.</p>
-	</div>` + headingFoldingSettingsHtml() + autoDetectSettingsHtml());
+	</div>
+	<h3>Headings</h3>
+	<div class="stack">
+		<label class="check"><input id="setting-heading-breaks" type="checkbox"${headingBreaksEnabled() ? " checked" : ""}>Auto-insert break lines under headings</label>
+		${headingFoldingSettingsHtml()}
+	</div>` + autoDetectSettingsHtml());
 	initHeadingFoldingSettings();
 	initAutoDetectSettings();
+	document.getElementById("setting-heading-breaks").addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = false; return }
+		localStorage.setItem(headingBreaksKey, e.target.checked ? "1" : "0");
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
 	document.getElementById("setting-vi-mode").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
 		localStorage.setItem(viModeKey, e.target.checked ? "1" : "0");
