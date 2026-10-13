@@ -43,6 +43,7 @@ let composing = null;                   // IME composition started outside INSER
 let commandLine = null;                 // {input, editor, index, kind, visual}
 let lastEditor = null;                  // the editor the mobile Esc button goes back to
 let lastRange = null;                   // and its selection when it lost the focus
+const editorRanges = new WeakMap();     // each editor's selection, for going back to it with Ctrl+W h j k l
 let escapeAt = -Infinity;               // when vi got an Esc in an editor
 let pointerAt = -Infinity;              // the last click / tap: a focus change that comes after one is the user's
 
@@ -336,7 +337,7 @@ function keyName(e){
 	return e.key;
 }
 
-const ctrlKeys = new Set(["<C-r>", "<C-d>", "<C-u>"]);
+const ctrlKeys = new Set(["<C-r>", "<C-d>", "<C-u>", "<C-w>"]);
 const namedKeys = new Set(["Escape", "Enter", "Backspace", "Delete", "Tab", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"]);
 
 function onKeydown(e){
@@ -359,7 +360,8 @@ function onKeydown(e){
 		return
 	}
 	// NORMAL / VISUAL: browser shortcuts that vi doesn't use pass through (Ctrl+S, Ctrl+\, Alt+...)
-	if ( e.altKey || (key.startsWith("<C-") && !ctrlKeys.has(key)) ) { return }
+	// after Ctrl+W any key is its window command (Ctrl+W Ctrl+V splits)
+	if ( e.altKey || (key.startsWith("<C-") && !ctrlKeys.has(key) && pending.at(-1) !== "<C-w>") ) { return }
 	if ( key.length > 1 && !key.startsWith("<C-") && !namedKeys.has(key) ) { return }
 	e.preventDefault();
 	e.stopPropagation();
@@ -474,7 +476,10 @@ function onFocusIn(e){
 function onFocusOut(e){
 	const selection = window.getSelection();
 	const editor = editorOf(e.target);
-	if ( editor && selection.rangeCount ) { lastRange = selection.getRangeAt(0).cloneRange() }
+	if ( editor && selection.rangeCount ) {
+		lastRange = selection.getRangeAt(0).cloneRange();
+		editorRanges.set(editor, lastRange);
+	}
 	// Esc must only change the mode, but browser extensions (Vimium, Surfingkeys, ...) take the Esc key before
 	// the page and blur the editor: the focus going nowhere, without a click, Tab or switching windows, is that Esc
 	if ( editor && e.target === editor && !e.relatedTarget && !commandLine && performance.now() - pointerAt > 500 ) {
@@ -889,6 +894,19 @@ function runNormal(editor, keys){
 		return;
 	}
 	case "gi": enterInsert(model, i); return;
+	// windows (editors side by side) and tabs
+	case "<C-w>": {
+		const command = r.next().replace(/^<C-(.)>$/, "$1");
+		const directions = {h: "left", j: "down", k: "up", l: "right", ArrowLeft: "left", ArrowDown: "down", ArrowUp: "up", ArrowRight: "right"};
+		if ( command === "Escape" ) { return }
+		if ( directions[command] ) { focusEditorTowards(editor, directions[command], count) }
+		else if ( command === "w" || command === "W" ) { focusNextEditor(editor, command === "w" ? count : -count) }
+		else if ( ["s", "S", "v"].includes(command) ) { splitEditor() }
+		else { return unknown }
+		return;
+	}
+	case "gt":
+	case "gT": goToTab(key === "gT" ? -count : count1 ? count1 : 1, key === "gt" && count1 > 0); return;
 	case "gJ": joinLines(editor, model, i, Math.max(count, 2), false); changed(); return {change: true, count: count1, keys: ["g", "J"]};
 	default: return unknown;
 	}
@@ -2019,6 +2037,70 @@ function clearSearchHighlight(){
 }
 
 
+// windows and tabs (workspace.js)
+function editorPanes(){
+	return [...document.querySelectorAll("#editor-grid .editor-pane")].filter(pane => pane.querySelector(".editor"));
+}
+
+function focusEditorTowards(editor, direction, count=1){
+	// the nearest editor on that side that is level with this one, like Neovim's Ctrl+W h j k l
+	for ( let n = 0; n < count; n++ ) {
+		const from = editor.closest(".editor-pane").getBoundingClientRect();
+		const horizontal = direction === "left" || direction === "right";
+		let best = null;
+		for ( const pane of editorPanes() ) {
+			const to = pane.getBoundingClientRect();
+			const gap = {left: from.left - to.right, right: to.left - from.right, up: from.top - to.bottom, down: to.top - from.bottom}[direction];
+			const overlap = horizontal ? Math.min(from.bottom, to.bottom) - Math.max(from.top, to.top) : Math.min(from.right, to.right) - Math.max(from.left, to.left);
+			if ( gap < -1 || overlap <= 0 ) { continue }
+			if ( !best || gap < best.gap - 1 || (Math.abs(gap - best.gap) <= 1 && overlap > best.overlap) ) { best = {pane, gap, overlap} }
+		}
+		if ( !best ) { break }
+		editor = best.pane.querySelector(".editor");
+	}
+	enterEditor(editor);
+}
+
+function focusNextEditor(editor, step){
+	const editors = editorPanes().map(pane => pane.querySelector(".editor"));
+	const i = editors.indexOf(editor);
+	enterEditor(editors[((i + step) % editors.length + editors.length) % editors.length]);
+}
+
+function enterEditor(editor){
+	// focuses an editor with its cursor where it was left
+	if ( !editor || editor === document.activeElement ) { return }
+	editor.focus({preventScroll: true});
+	const range = editorRanges.get(editor);
+	if ( range && editor.contains(range.startContainer) ) {
+		const selection = window.getSelection();
+		selection.removeAllRanges();
+		selection.addRange(range);
+		rememberSelection();
+	} else {
+		setCaret(textModel(editor), 0);
+	}
+	clampCaret(editor);
+	render();
+}
+
+function goToTab(step, absolute=false){
+	// gt gT: the next / previous tab, {count}gt: tab number count, in the order of the tab bar
+	if ( typeof tabs === "undefined" || !tabs.length ) { return }
+	const i = tabs.indexOf(getActiveTab());
+	const target = absolute ? step - 1 : ((i + step) % tabs.length + tabs.length) % tabs.length;
+	if ( !tabs[target] ) { return }
+	switchToTab(tabs[target].id);
+	const editor = focusedPane?.editor;
+	if ( !editor ) { return }
+	if ( editor !== document.activeElement ) { enterEditor(editor) } else {
+		setCaret(textModel(editor), 0);
+		clampCaret(editor);
+		render();
+	}
+}
+
+
 // scrolling
 function lineHeightOf(editor){
 	const style = getComputedStyle(editor);
@@ -2102,6 +2184,12 @@ const helpSections = [
 		["/text ?text", "search forward / backward: regular expressions, case-insensitive unless there's a capital letter"],
 		["n N", "next / previous match"],
 		["* #", "the word under the cursor, forward / backward"],
+	]],
+	["Editors and tabs", [
+		["Ctrl+w h j k l", "go to the editor on the left / below / above / on the right"],
+		["Ctrl+w w W", "next / previous editor"],
+		["Ctrl+w s v", "split the editor"],
+		["gt gT, 3gt", "next / previous tab, tab 3"],
 	]],
 	["Commands", [
 		[":w", "save"],
