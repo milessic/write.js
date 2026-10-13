@@ -710,15 +710,16 @@ body.app > .topbar {
 #tb-block-select .block-select-menu > [aria-selected="true"]::after {
 	visibility: visible;
 }
-.block-select-menu > .block-option-h1 { font-size: 1.3rem; font-weight: 700; }
-.block-select-menu > .block-option-h2 { font-size: 1.15rem; font-weight: 700; }
-.block-select-menu > .block-option-h3 { font-size: 1rem; font-weight: 700; }
-.block-select-menu > .block-option-h4 { font-size: .9rem; font-weight: 700; }
+.block-select-menu > .block-option-h1 { font-size: 1.5rem; font-weight: 700; }
+.block-select-menu > .block-option-h2 { font-size: 1.25rem; font-weight: 700; }
+.block-select-menu > .block-option-h3 { font-size: 1.1rem; font-weight: 700; }
+.block-select-menu > .block-option-h4 { font-size: .95rem; font-weight: 700; }
 /* the theme sizes h2/h3 for the app's UI (h3 is below the editor's text): a document gets its own scale */
-:is(.editor, #content) h2 { font-size: 1.25rem; }
-:is(.editor, #content) :is(h3, h4) { color: inherit; font-weight: 700; margin-bottom: .3rem; }
-:is(.editor, #content) h3 { font-size: 1.12rem; }
-:is(.editor, #content) h4 { font-size: 1.05rem; }
+:is(.editor, #content) :is(h1, h2, h3, h4) { color: inherit; font-weight: 700; line-height: 1.25; margin-bottom: .3rem; }
+:is(.editor, #content) h1 { font-size: 2em; }
+:is(.editor, #content) h2 { font-size: 1.6em; }
+:is(.editor, #content) h3 { font-size: 1.3em; }
+:is(.editor, #content) h4 { font-size: 1.1em; }
 #checkbox-icon-container {
 	display: inline-block;
 	width: .7em;

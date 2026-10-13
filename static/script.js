@@ -9,6 +9,7 @@ const syncPendingKey = "__syncPending__"; // set while there are changes that co
 const syncBaseKey = "__syncBase__"; // {key: hash} of what the cloud held at the last sync, tells which side changed a document
 const themeCookie = "theme";
 const viModeKey = "__viMode__"; // "1" when the vi keybindings are on (Settings), goes with the notebook
+const autoDetectKey = "__autoDetect__"; // {enabled, rules} for markdown typed into formatting (Settings, autodetect.js), goes with the notebook
 const viEscButtonKey = "__viEscButton__"; // "1" shows the vi Esc button on touch screens, this device only
 const viScriptUrl = "static/vi.js?17";
 
@@ -79,7 +80,7 @@ window.addEventListener("load", function() {
 // Setup Events
 window.addEventListener("resize", handleWidth);
 window.addEventListener("keydown", handleMobileScrollEvent);
-document.getElementById("editor-grid").addEventListener('keydown', (e) => {performAutoSave();changeTabBehavior(e);handleCheckboxEnter(e);handleHeadingBreakEnter(e)});
+document.getElementById("editor-grid").addEventListener('keydown', (e) => {performAutoSave();changeTabBehavior(e);handleCheckboxEnter(e);handleHeadingBreakEnter(e);handleCodeBlockArrowDown(e)});
 document.getElementById("editor-grid").addEventListener('click', updateCaretPosition);
 document.getElementById("editor-grid").addEventListener('paste', handlePasteLinkOnSelection);
 // formatting shortcuts and undo change the line's style without moving the caret
@@ -283,6 +284,44 @@ function handleHeadingBreakEnter(e){
 	performAutoSave();
 }
 
+function handleCodeBlockArrowDown(e){
+	// ArrowDown on the last line of a code block that ends the document leaves it for a new plain line
+	if ( e.key !== "ArrowDown" || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.defaultPrevented ) { return }
+	const selection = window.getSelection();
+	if ( !selection.rangeCount || !selection.isCollapsed ) { return }
+	const editor = document.getElementById("editor");
+	const node = selection.anchorNode;
+	const pre = (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)?.closest("pre");
+	if ( !pre || !editor.contains(pre) ) { return }
+	// with anything under the block, the browser moves there by itself
+	for ( let el = pre; el !== editor; el = el.parentNode ) {
+		for ( let next = el.nextSibling; next; next = next.nextSibling ) {
+			if ( next.nodeType === Node.ELEMENT_NODE || next.textContent.trim() !== "" ) { return }
+		}
+	}
+	const range = selection.getRangeAt(0);
+	const rest = document.createRange();
+	rest.setStart(range.startContainer, range.startOffset);
+	rest.setEnd(pre, pre.childNodes.length);
+	const after = rest.cloneContents();
+	if ( after.lastChild?.nodeName === "BR" ) { after.lastChild.remove() } // the browser's filler of an empty last line
+	if ( after.querySelector("br") || after.textContent.includes("\n") ) { return }
+	// a long last line wraps: only its bottom row leaves the block
+	const caretRect = range.getBoundingClientRect();
+	const endRect = rest.getBoundingClientRect();
+	if ( caretRect.height && endRect.height && caretRect.bottom < endRect.bottom - 2 ) { return }
+	e.preventDefault();
+	const line = document.createElement("div");
+	line.appendChild(document.createElement("br"));
+	pre.after(line);
+	const caret = document.createRange();
+	caret.setStart(line, 0);
+	caret.collapse(true);
+	selection.removeAllRanges();
+	selection.addRange(caret);
+	performAutoSave();
+}
+
 function createThemeModal(){
 	if ( typeof MilessicThemes === "undefined" ) {
 		createNotification("Themes are unavailable right now, using the default Write.js theme.", "warning");
@@ -306,7 +345,8 @@ function createSettingsModal(){
 		<label class="check"><input id="setting-vi-mode" type="checkbox"${viModeEnabled() ? " checked" : ""}>Vi keybindings (like Neovim)</label>
 		<label class="check"><input id="setting-vi-esc" type="checkbox"${localStorage.getItem(viEscButtonKey) === "1" ? " checked" : ""}${viModeEnabled() ? "" : " disabled"}>Show Esc on mobiles <span class="muted small">(this device only)</span></label>
 		<p class="muted small">Starts in NORMAL mode: <kbd>i</kbd> to type, <kbd>Esc</kbd> to go back, <kbd>v</kbd> / <kbd>V</kbd> to select, <kbd>:w</kbd> saves, <kbd>:q</kbd> closes the tab, <kbd>:help</kbd> lists all the commands. The mode is shown in the top right corner.</p>
-	</div>`);
+	</div>` + autoDetectSettingsHtml());
+	initAutoDetectSettings();
 	document.getElementById("setting-vi-mode").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
 		localStorage.setItem(viModeKey, e.target.checked ? "1" : "0");
@@ -821,6 +861,12 @@ function getContentAsMarkdown(){
                     case "u":
                         markdown += `<ins>${traverse(child)}</ins>`;
                         break;
+                    case "code": {
+                        const code = traverse(child);
+                        const ticks = code.includes("`") ? "``" : "`";
+                        markdown += `${ticks}${code}${ticks}`;
+                        break;
+                    }
                     case "ol":
                     case "ul":
                         markdown += listToMarkdown(child, 0);
