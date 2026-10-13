@@ -698,6 +698,18 @@ body.app > .topbar {
 .block-select-menu > [aria-selected="true"] {
 	color: var(--accent);
 }
+/* the caret's text style is ticked */
+#tb-block-select .block-select-menu > [role="option"]::after {
+	content: "✓";
+	margin-left: auto;
+	padding-left: 1rem;
+	font-size: .9rem;
+	font-weight: 700;
+	visibility: hidden;
+}
+#tb-block-select .block-select-menu > [aria-selected="true"]::after {
+	visibility: visible;
+}
 .block-select-menu > .block-option-h1 { font-size: 1.3rem; font-weight: 700; }
 .block-select-menu > .block-option-h2 { font-size: 1.15rem; font-weight: 700; }
 .block-select-menu > .block-option-h3 { font-size: 1rem; font-weight: 700; }

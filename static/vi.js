@@ -21,6 +21,8 @@ const changeCommands = new Set(["s", "i", "a", "I", "A", "o", "O", "R"]);
 const brackets = {"(": ")", "[": "]", "{": "}", "<": ">"};
 const closingBrackets = {")": "(", "]": "[", "}": "{", ">": "<"};
 const incomplete = Symbol("incomplete");
+const unknown = Symbol("unknown");      // keys that aren't a command: reported in the message line
+const textObjectKinds = new Set(["w", "W", "\"", "'", "`", "b", "(", ")", "[", "]", "B", "{", "}", "<", ">", "p"]);
 
 let enabled = false;
 let mode = "normal";
@@ -28,14 +30,21 @@ let pending = [];                       // keys of the command being typed in NO
 let register = {text: "", linewise: false};
 let lastFind = null;                    // {key: "f", char} for ; and ,
 let lastSearch = null;                  // {pattern, backward}
+let searchHighlight = false;            // hlsearch: matches of lastSearch stay highlighted until :noh
 let lastChange = null;                  // {count, keys, text} for .
 let recording = null;                  // the change being recorded while in INSERT
 let replaying = false;
 let visualAnchor = 0;                   // VISUAL: text indexes, both ends inclusive
 let visualHead = 0;
 let expectedSelection = null;           // the selection vi set itself, other changes come from the mouse
+let applying = false;                   // an execCommand is running (vi's or the toolbar's), not typing
+const nativeExecCommand = document.execCommand;
 let composing = null;                   // IME composition started outside INSERT (phone keyboards)
 let commandLine = null;                 // {input, editor, index, kind, visual}
+let lastEditor = null;                  // the editor the mobile Esc button goes back to
+let lastRange = null;                   // and its selection when it lost the focus
+let escapeAt = -Infinity;               // when vi got an Esc in an editor
+let pointerAt = -Infinity;              // the last click / tap: a focus change that comes after one is the user's
 
 const ui = {};
 
@@ -45,8 +54,20 @@ window.WriteVi = {
 	enable(){
 		if ( enabled ) { return }
 		enabled = true;
+		// Firefox and Safari fire beforeinput for execCommand: edits made by scripts (vi, the toolbar)
+		// must not be blocked in NORMAL or read as keys
+		document.execCommand = function(...args){
+			applying = true;
+			try {
+				return nativeExecCommand.apply(this, args);
+			} finally {
+				applying = false;
+			}
+		};
 		buildUi();
 		document.addEventListener("keydown", onKeydown, true);
+		document.addEventListener("keyup", onKeyup, true);
+		document.addEventListener("pointerdown", onPointerDown, true);
 		document.addEventListener("beforeinput", onBeforeInput, true);
 		document.addEventListener("compositionstart", onCompositionStart, true);
 		document.addEventListener("compositionend", onCompositionEnd, true);
@@ -54,6 +75,7 @@ window.WriteVi = {
 		document.addEventListener("focusin", onFocusIn);
 		document.addEventListener("focusout", onFocusOut);
 		document.addEventListener("scroll", renderCursor, true);
+		document.addEventListener("input", renderSearch, true);
 		window.addEventListener("resize", onResize);
 		setMode("normal");
 		WriteVi.setEscButton(localStorage.getItem(viEscButtonKey) === "1");
@@ -62,6 +84,8 @@ window.WriteVi = {
 		if ( !enabled ) { return }
 		closeCommandLine(false);
 		document.removeEventListener("keydown", onKeydown, true);
+		document.removeEventListener("keyup", onKeyup, true);
+		document.removeEventListener("pointerdown", onPointerDown, true);
 		document.removeEventListener("beforeinput", onBeforeInput, true);
 		document.removeEventListener("compositionstart", onCompositionStart, true);
 		document.removeEventListener("compositionend", onCompositionEnd, true);
@@ -69,7 +93,10 @@ window.WriteVi = {
 		document.removeEventListener("focusin", onFocusIn);
 		document.removeEventListener("focusout", onFocusOut);
 		document.removeEventListener("scroll", renderCursor, true);
+		document.removeEventListener("input", renderSearch, true);
 		window.removeEventListener("resize", onResize);
+		clearSearchHighlight();
+		document.execCommand = nativeExecCommand;
 		mode = "insert";
 		setTypingAttributes(true);
 		document.body.classList.remove("vi-enabled", "vi-block-caret", "vi-esc-enabled");
@@ -94,29 +121,40 @@ function buildUi(){
 	const style = document.createElement("style");
 	style.textContent = `
 		/* fixed colors, like a statusline: theme accents can be the same hue for two modes */
-		.vi-mode { --vi-color: #2f7de1; position: fixed; right: 12px; z-index: 30; display: flex; align-items: center; gap: .4rem;
-			padding: .15rem .55rem; border-radius: 999px; background: var(--vi-color); color: #fff; font: 700 .7rem/1.5 var(--font-mono, monospace);
+		/* one block: [ Esc | MODE ], the Esc segment only on phones (Settings) */
+		/* over the editors, under the rest of the UI (top bar 5, menus 10+, dropdowns and modals 20+) */
+		.vi-bar { position: fixed; z-index: 4; display: flex; align-items: center; gap: .4rem; pointer-events: none; }
+		.vi-mode { --vi-color: #2f7de1; display: flex; align-items: stretch; overflow: hidden; border-radius: calc(var(--radius, 10px) / 3); background: var(--vi-color); color: #fff; font: 700 .7rem/1.5 var(--font-mono, monospace);
 			letter-spacing: .06em; box-shadow: 0 1px 4px rgba(0, 0, 0, .25); pointer-events: none; user-select: none; transition: background-color .12s; }
 		.vi-mode[data-mode="insert"] { --vi-color: #1f9d48; }
 		.vi-mode[data-mode="visual"] { --vi-color: #9b4fe0; }
 		.vi-mode[data-mode="vline"] { --vi-color: #c2410c; }
 		.vi-mode[data-mode="replace"] { --vi-color: #d03b3b; }
 		.vi-mode[data-mode="command"] { --vi-color: #3a3a3a; pointer-events: auto; }
+		.vi-mode-body { display: flex; align-items: center; gap: .4rem; padding: .15rem .55rem; }
 		.vi-mode-keys:empty, .vi-mode-cmd { display: none; }
 		.vi-mode-keys { font-weight: 400; opacity: .85; }
 		.vi-mode[data-mode="command"] .vi-mode-cmd { display: flex; align-items: center; }
 		.vi-mode-cmd input:focus, .vi-mode-cmd input:focus-visible { outline: none; box-shadow: none; border: 0; }
 		.vi-mode-cmd input { all: unset; width: min(16rem, 60vw); padding-left: .15rem; color: inherit; caret-color: currentColor; font: 400 .8rem/1.5 var(--font-mono, monospace); }
-		.vi-cursor { position: fixed; z-index: 5; pointer-events: none; display: none; border-radius: 1px;
+		.vi-message { max-width: min(28rem, 55vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: .15rem .55rem; border-radius: calc(var(--radius, 10px) / 3);
+			background: #3a3a3a; color: #fff; font: 400 .72rem/1.5 var(--font-mono, monospace); box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
+		.vi-message[hidden] { display: none; }
+		.vi-message[data-type="error"] { background: #d03b3b; }
+		.vi-message[data-type="warning"] { background: #b45309; }
+		::highlight(vi-search) { background-color: rgba(245, 196, 0, .35); }
+		::highlight(vi-search-current) { background-color: #f5c400; color: #000; }
+		.vi-help { table-layout: fixed; }
+		.vi-help td:first-child { width: 40%; }
+		.vi-help kbd { white-space: nowrap; }
+		.vi-cursor { position: fixed; z-index: 3; pointer-events: none; display: none; border-radius: 1px;
 			background: color-mix(in srgb, var(--vi-color, #2f7de1) 55%, transparent); }
-		.vi-esc { position: fixed; right: 12px; bottom: 12px; z-index: 30; display: none; min-width: 3.2rem; min-height: 2.6rem; border-radius: 999px;
-			border: 0; background: var(--vi-color, #2f7de1); color: #fff; font: 700 .85rem var(--font-mono, monospace); box-shadow: 0 2px 8px rgba(0, 0, 0, .3); }
+		.vi-esc { all: unset; display: none; min-height: 2rem; padding: 0 .6rem 0 .75rem; pointer-events: auto; cursor: pointer;
+			border-right: 1px solid rgba(255, 255, 255, .45); color: inherit; font: 700 .75rem/1 var(--font-mono, monospace); letter-spacing: .04em; }
+		.vi-esc:active { background: rgba(0, 0, 0, .18); }
+		.vi-esc:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
 		@media (pointer: coarse) {
-			.vi-esc-enabled .vi-esc { display: block; }
-			.vi-esc-enabled #notifications-container { bottom: 4.5rem; }
-			/* Bevel has a taskbar at the bottom */
-			[data-theme="bevel"] .vi-esc { bottom: 3rem; }
-			[data-theme="bevel"] .vi-esc-enabled #notifications-container { bottom: 6.5rem; }
+			.vi-esc-enabled .vi-esc { display: flex; align-items: center; }
 		}
 		.vi-block-caret #editor-grid .editor { caret-color: transparent; }
 	`;
@@ -124,9 +162,9 @@ function buildUi(){
 	ui.root.id = "vi-root";
 	ui.indicator = document.createElement("div");
 	ui.indicator.className = "vi-mode";
-	ui.indicator.setAttribute("role", "status");
+	ui.indicator.setAttribute("role", "group");
 	ui.indicator.setAttribute("aria-label", "Vi mode");
-	ui.indicator.innerHTML = `<span class="vi-mode-name"></span><span class="vi-mode-keys"></span><span class="vi-mode-cmd"><span class="vi-mode-prefix"></span><input type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Vi command"></span>`;
+	ui.indicator.innerHTML = `<span class="vi-mode-body"><span class="vi-mode-name" role="status"></span><span class="vi-mode-keys"></span><span class="vi-mode-cmd"><span class="vi-mode-prefix"></span><input type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Vi command"></span></span>`;
 	ui.cursor = document.createElement("div");
 	ui.cursor.className = "vi-cursor";
 	ui.esc = document.createElement("button");
@@ -134,19 +172,29 @@ function buildUi(){
 	ui.esc.type = "button";
 	ui.esc.textContent = "Esc";
 	ui.esc.setAttribute("aria-label", "Escape (vi)");
-	// keeps the focus (and the phone keyboard) in the editor
-	ui.esc.addEventListener("pointerdown", (e) => e.preventDefault());
-	ui.esc.addEventListener("mousedown", (e) => e.preventDefault());
-	ui.esc.addEventListener("click", () => {
-		if ( commandLine ) { closeCommandLine(false); return }
-		const editor = focusedEditor() || document.getElementById("editor");
-		if ( document.activeElement !== editor ) { editor.focus() }
-		handleKey("Escape", editor);
+	// keeps the focus (and the phone keyboard) in the editor: Chrome on Android still focuses a tapped
+	// button when only pointerdown is cancelled, a cancelled touchstart stops the tap (and its click) entirely
+	ui.esc.tabIndex = -1;
+	ui.esc.addEventListener("touchstart", (e) => e.preventDefault(), {passive: false});
+	ui.esc.addEventListener("touchend", (e) => {
+		e.preventDefault();
+		const touch = e.changedTouches[0];
+		if ( touch && ui.esc.contains(document.elementFromPoint(touch.clientX, touch.clientY)) ) { pressEsc() }
 	});
+	ui.esc.addEventListener("mousedown", (e) => e.preventDefault());
+	ui.esc.addEventListener("click", pressEsc);
 	const input = ui.indicator.querySelector("input");
 	input.addEventListener("keydown", onCommandLineKeydown);
 	input.addEventListener("blur", () => { if ( commandLine ) { closeCommandLine(false) } });
-	ui.root.append(style, ui.indicator, ui.cursor, ui.esc);
+	ui.bar = document.createElement("div");
+	ui.bar.className = "vi-bar";
+	ui.message = document.createElement("span");
+	ui.message.className = "vi-message";
+	ui.message.hidden = true;
+	ui.message.setAttribute("role", "status");
+	ui.indicator.prepend(ui.esc);
+	ui.bar.append(ui.message, ui.indicator);
+	ui.root.append(style, ui.bar, ui.cursor);
 	document.body.appendChild(ui.root);
 	document.body.classList.add("vi-enabled");
 	placeIndicator();
@@ -157,8 +205,8 @@ function placeIndicator(){
 	const grid = document.getElementById("editor-grid").getBoundingClientRect();
 	const head = document.querySelector("#editor-grid .pane-head");
 	const headHeight = head?.offsetHeight ? head.getBoundingClientRect().height : 0;
-	ui.indicator.style.top = `${Math.round(grid.top + headHeight + 6)}px`;
-	ui.indicator.style.right = `${Math.round(window.innerWidth - grid.right + 20)}px`;
+	ui.bar.style.top = `${Math.round(grid.top + headHeight + 6)}px`;
+	ui.bar.style.right = `${Math.round(window.innerWidth - grid.right + 20)}px`;
 }
 
 function onResize(){
@@ -185,6 +233,7 @@ function render(){
 	ui.root.style.setProperty("--vi-color", color);
 	document.body.classList.toggle("vi-block-caret", mode !== "insert" && mode !== "replace");
 	renderCursor();
+	renderSearch();
 }
 
 function displayKey(key){
@@ -206,7 +255,9 @@ function renderCursor(){
 		return
 	}
 	const rect = characterRect(model, index);
-	if ( !rect ) {
+	// scrolled out of the editor: it would be drawn over the toolbar
+	const view = editor.closest(".pane-scroll")?.getBoundingClientRect();
+	if ( !rect || (view && (rect.bottom <= view.top || rect.top >= view.bottom)) ) {
 		ui.cursor.style.display = "none";
 		return
 	}
@@ -294,6 +345,7 @@ function onKeydown(e){
 	if ( e.isComposing || e.keyCode === 229 ) { return }   // phone keyboard: comes as beforeinput
 	const key = keyName(e);
 	if ( !key || e.metaKey ) { return }
+	if ( key === "Escape" ) { escapeAt = performance.now() }
 	if ( mode === "insert" || mode === "replace" ) {
 		if ( key === "Escape" ) {
 			e.preventDefault();
@@ -314,9 +366,21 @@ function onKeydown(e){
 	handleKey(key, editor);
 }
 
+function onKeyup(e){
+	if ( e.key === "Escape" && editorOf(e.target) && !commandLine ) {
+		e.preventDefault();
+		e.stopPropagation();
+	}
+}
+
+function onPointerDown(e){
+	// clicks in the editor don't move the focus away from it
+	if ( !editorOf(e.target) ) { pointerAt = performance.now() }
+}
+
 function onBeforeInput(e){
 	const editor = editorOf(e.target);
-	if ( !editor ) { return }
+	if ( !editor || applying ) { return }
 	if ( mode === "insert" || mode === "replace" ) {
 		if ( recording && !replaying ) { recordInput(e) }
 		return
@@ -384,13 +448,52 @@ function onSelectionChange(){
 	renderCursor();
 }
 
-function onFocusIn(){
+function pressEsc(){
+	if ( commandLine ) { closeCommandLine(false); return }
+	const editor = focusedEditor() || lastEditor || document.getElementById("editor");
+	if ( !editor ) { return }
+	if ( document.activeElement !== editor ) {
+		// the focus got away anyway: back to the editor, with its cursor
+		editor.focus({preventScroll: true});
+		if ( lastRange && editor.contains(lastRange.startContainer) ) {
+			const selection = window.getSelection();
+			selection.removeAllRanges();
+			selection.addRange(lastRange);
+		}
+	}
+	handleKey("Escape", editor);
+}
+
+function onFocusIn(e){
+	if ( editorOf(e.target) ) { lastEditor = editorOf(e.target) }
 	// editors opened by splitting need the same typing attributes
 	setTypingAttributes(mode === "insert" || mode === "replace");
 	renderCursor();
 }
 
-function onFocusOut(){
+function onFocusOut(e){
+	const selection = window.getSelection();
+	const editor = editorOf(e.target);
+	if ( editor && selection.rangeCount ) { lastRange = selection.getRangeAt(0).cloneRange() }
+	// Esc must only change the mode, but browser extensions (Vimium, Surfingkeys, ...) take the Esc key before
+	// the page and blur the editor: the focus going nowhere, without a click, Tab or switching windows, is that Esc
+	if ( editor && e.target === editor && !e.relatedTarget && !commandLine && performance.now() - pointerAt > 500 ) {
+		const range = lastRange;
+		const seenEscape = performance.now() - escapeAt < 1000;
+		escapeAt = -Infinity;
+		setTimeout(() => {
+			if ( !enabled || !editor.isConnected || !document.hasFocus() ) { return }
+			if ( document.activeElement && document.activeElement !== document.body ) { return }
+			editor.focus({preventScroll: true});
+			if ( range && editor.contains(range.startContainer) ) {
+				const selection = window.getSelection();
+				selection.removeAllRanges();
+				selection.addRange(range);
+			}
+			if ( !seenEscape && (mode === "insert" || mode === "replace") ) { handleKey("Escape", editor) }
+			renderCursor();
+		});
+	}
 	// the focus may go to a toolbar button and come back, so only the cursor goes
 	requestAnimationFrame(renderCursor);
 }
@@ -608,6 +711,7 @@ function changed(){
 
 // keys
 function handleKey(key, editor){
+	hideMessage();
 	if ( mode === "insert" || mode === "replace" ) {
 		if ( key === "Escape" ) { leaveInsert(editor) }
 		return
@@ -624,6 +728,7 @@ function handleKey(key, editor){
 		render();
 		return
 	}
+	if ( result === unknown ) { showMessage(`Unknown command: ${pending.map(displayKey).join("")} (:help lists the commands)`, "error") }
 	pending = [];
 	if ( result?.change && !replaying ) {
 		lastChange = {count: result.count, keys: result.keys, text: null};
@@ -676,6 +781,7 @@ function runNormal(editor, keys){
 		moveCaret(editor, model, i, motion, count1);
 		return
 	}
+	if ( ["f", "F", "t", "T"].includes(key) ) { return }   // f<Esc>
 
 	switch ( key ) {
 	// INSERT
@@ -755,7 +861,7 @@ function runNormal(editor, keys){
 	case "?": openCommandLine(editor, key); return;
 	case "n":
 	case "N":
-		if ( !lastSearch ) { notify("No previous search"); return }
+		if ( !lastSearch ) { showMessage("E35: No previous regular expression", "error"); return }
 		searchMove(editor, model, i, lastSearch.pattern, lastSearch.backward !== (key === "N"), count);
 		return;
 	case "*":
@@ -784,7 +890,7 @@ function runNormal(editor, keys){
 	}
 	case "gi": enterInsert(model, i); return;
 	case "gJ": joinLines(editor, model, i, Math.max(count, 2), false); changed(); return {change: true, count: count1, keys: ["g", "J"]};
-	default: return;
+	default: return unknown;
 	}
 	if ( changeCommands.has(key) ) { return {change: true, count: count1, keys: keysAfterCount()} }
 }
@@ -806,12 +912,15 @@ function runOperator(editor, model, i, op, count1, r, keysAfterCount, wholeLine=
 		to = lineEnd(text, last);
 		linewise = true;
 	} else if ( key === "i" || key === "a" ) {
-		const object = textObject(text, i, key === "a", r.next());
+		const kind = r.next();
+		if ( kind === "Escape" ) { return }
+		if ( !textObjectKinds.has(kind) ) { return unknown }
+		const object = textObject(text, i, key === "a", kind);
 		if ( !object ) { return }
 		[from, to] = object;
 	} else {
 		const motion = parseMotion(key, r);
-		if ( !motion ) { return }
+		if ( !motion ) { return motion === null && !["f", "F", "t", "T"].includes(key) ? unknown : undefined }
 		const target = evalMotion(editor, model, i, motion, count2 || count1 ? count : null, true);
 		if ( target === null ) { return }
 		linewise = target.linewise;
@@ -1497,6 +1606,7 @@ function runVisual(editor, keys){
 		return
 	}
 	const motion = parseMotion(key, r);
+	if ( !motion && ["f", "F", "t", "T"].includes(key) ) { return }   // f<Esc>
 	if ( motion ) {
 		const target = evalMotion(editor, model, visualHead, motion, count1, false);
 		if ( target ) { visualHead = Math.min(target.index, Math.max(text.length - 1, 0)) }
@@ -1597,7 +1707,7 @@ function runVisual(editor, keys){
 		return;
 	}
 	default:
-		return;
+		return unknown;
 	}
 }
 
@@ -1689,6 +1799,11 @@ function runExCommand(editor, value, visual){
 		substituteLines(editor, model, range || [lineNumber(text, i), lineNumber(text, i)], substitute[1], substitute[2]);
 		return
 	}
+	const heading = command.match(/^h(\d+)$/);
+	if ( heading ) {
+		setHeading(editor, model, range || [lineNumber(text, i), lineNumber(text, i)], parseInt(heading[1]), i);
+		return
+	}
 	const [name, ...args] = command.split(/\s+/);
 	const arg = args.join(" ");
 	switch ( name ) {
@@ -1704,12 +1819,17 @@ function runExCommand(editor, value, visual){
 		return;
 	case "e": case "edit": case "tabe": case "tabedit": case "tabnew":
 		if ( !arg ) { if ( name.startsWith("tab") ) { createNewDocument() } return }
-		if ( documentExists(arg) ) { openDocumentFromTree(arg) } else { notify(`No document "${arg}"`) }
+		if ( documentExists(arg) ) { openDocumentFromTree(arg) } else { showMessage(`No document "${arg}"`, "error") }
 		return;
 	case "sp": case "split": case "vs": case "vsp": case "vsplit": case "new": case "vnew":
 		splitEditor();
 		return;
 	case "noh": case "nohlsearch":
+		searchHighlight = false;
+		renderSearch();
+		return;
+	case "h": case "help":
+		showHelp();
 		return;
 	case "d": case "delete": case "y": case "yank": {
 		const [a, b] = range || [lineNumber(text, i), lineNumber(text, i)];
@@ -1719,8 +1839,26 @@ function runExCommand(editor, value, visual){
 		return;
 	}
 	default:
-		notify(`Not an editor command: ${command}`);
+		showMessage(`E492: Not an editor command: ${command}`, "error");
 	}
+}
+
+function setHeading(editor, model, [first, last], level, cursor){
+	// :h0 text, :h1-:h4 headings, like the toolbar's text style (and its break lines under headings)
+	if ( level > 4 ) {
+		showMessage(`E474: Invalid argument: h${level} (h0 is text, h1 to h4 headings)`, "error");
+		return
+	}
+	// line by line: one formatBlock over several lines makes them a single heading
+	for ( let line = Math.max(0, first); line <= Math.min(last, lineCount(model.text) - 1); line++ ) {
+		const current = textModel(editor);
+		const start = lineStartOfNumber(current.text, line);
+		selectRange(current, start, lineEnd(current.text, start));
+		formatText(level ? `h${level}` : "div");
+	}
+	// the text didn't change, so the cursor index is still valid
+	setCaret(textModel(editor), cursor);
+	clampCaret(editor);
 }
 
 function closeActiveTab(force){
@@ -1734,14 +1872,16 @@ function substituteLines(editor, model, [first, last], separator, rest){
 	// :s/pattern/replacement/flags with JavaScript regular expressions; & and \1 in the replacement
 	const parts = splitUnescaped(rest, separator);
 	const pattern = parts[0] || lastSearch?.pattern;
-	if ( !pattern ) { notify("No previous search"); return }
+	if ( !pattern ) { showMessage("E35: No previous regular expression", "error"); return }
 	const replacement = (parts[1] || "").replace(/\\(\d)/g, "$$$1").replace(/(^|[^\\])&/g, "$1$$&").replace(/\\&/g, "&").replace(/\\n/g, "\n");
 	const flags = parts[2] || "";
 	const regex = buildRegExp(pattern, flags.includes("g"), flags.includes("i") ? true : flags.includes("I") ? false : null);
 	lastSearch = {pattern, backward: false};
+	searchHighlight = true;
 	const text = model.text;
 	let total = 0;
 	let lastLine = null;
+	const substitutedLines = [];
 	for ( let line = Math.min(last, lineCount(text) - 1); line >= first; line-- ) {
 		const current = textModel(editor);
 		const start = lineStartOfNumber(current.text, line);
@@ -1753,6 +1893,7 @@ function substituteLines(editor, model, [first, last], separator, rest){
 		if ( !count ) { continue }
 		total += count;
 		lastLine = line;
+		substitutedLines.push(line);
 		if ( replaced.includes("\n") ) {
 			selectRange(current, start, end);
 			insertLines(replaced.split("\n"));
@@ -1767,11 +1908,11 @@ function substituteLines(editor, model, [first, last], separator, rest){
 			if ( middle ) { exec("insertText", middle) } else { exec("delete") }
 		}
 	}
-	if ( !total ) { notify(`Pattern not found: ${pattern}`); return }
+	if ( !total ) { showMessage(`E486: Pattern not found: ${pattern}`, "error"); return }
 	const after = textModel(editor);
 	setCaret(after, firstNonBlank(after.text, lineStartOfNumber(after.text, lastLine)));
 	changed();
-	if ( total > 1 ) { notify(`${total} substitutions`, "info") }
+	if ( total > 1 ) { showMessage(`${total} substitutions on ${new Set(substitutedLines).size} lines`) }
 }
 
 function splitUnescaped(s, separator){
@@ -1807,7 +1948,7 @@ function searchMove(editor, model, i, pattern, backward, count){
 		matches.push(match.index);
 		if ( !match[0].length ) { regex.lastIndex++ }
 	}
-	if ( !matches.length ) { notify(`Pattern not found: ${pattern}`); return }
+	if ( !matches.length ) { showMessage(`E486: Pattern not found: ${pattern}`, "error"); return }
 	let j = i;
 	let wrapped = false;
 	for ( let n = 0; n < count; n++ ) {
@@ -1818,9 +1959,63 @@ function searchMove(editor, model, i, pattern, backward, count){
 		}
 		j = next;
 	}
-	if ( wrapped ) { notify(backward ? "Search hit TOP, continuing at BOTTOM" : "Search hit BOTTOM, continuing at TOP", "info") }
+	searchHighlight = true;
+	if ( wrapped ) { showMessage(backward ? "search hit TOP, continuing at BOTTOM" : "search hit BOTTOM, continuing at TOP", "warning") }
 	setCaret(model, j);
 	scrollCaret(editor, "center");
+}
+
+function searchMatches(text, pattern, limit=2000){
+	const regex = buildRegExp(pattern);
+	const matches = [];
+	for ( const match of text.matchAll(regex) ) {
+		if ( !match[0].length ) { regex.lastIndex++; continue }
+		matches.push({start: match.index, end: match.index + match[0].length});
+		if ( matches.length >= limit ) { break }
+	}
+	return matches;
+}
+
+function renderSearch(){
+	// highlights the whole matches without touching the DOM (CSS Custom Highlight API):
+	// while typing / or ? the matches of the typed pattern (incsearch), then those of the last search (hlsearch)
+	if ( !window.CSS?.highlights || typeof Highlight !== "function" ) { return }
+	const typing = commandLine && commandLine.kind !== ":" ? ui.indicator.querySelector("input").value : "";
+	const pattern = typing || (searchHighlight && !commandLine ? lastSearch?.pattern : "");
+	const editor = commandLine?.editor ?? focusedEditor();
+	if ( !pattern || !editor ) { clearSearchHighlight(); return }
+	const model = textModel(editor);
+	const matches = searchMatches(model.text, pattern);
+	let current = null;
+	if ( typing ) {
+		// the match the search will jump to
+		const from = commandLine.index;
+		current = commandLine.kind === "?"
+			? [...matches].reverse().find(m => m.start < from) ?? matches[matches.length - 1]
+			: matches.find(m => m.start > from) ?? matches[0];
+	} else if ( mode === "normal" ) {
+		const caret = caretIndex(model);
+		current = matches.find(m => m.start === caret);
+	}
+	const all = new Highlight();
+	const active = new Highlight();
+	for ( const match of matches ) {
+		const start = positionAt(model, match.start);
+		const end = positionAt(model, match.end);
+		const range = document.createRange();
+		try {
+			range.setStart(start.node, start.offset);
+			range.setEnd(end.node, end.offset);
+		} catch { continue }
+		(match === current ? active : all).add(range);
+	}
+	CSS.highlights.set("vi-search", all);
+	CSS.highlights.set("vi-search-current", active);
+}
+
+function clearSearchHighlight(){
+	CSS.highlights?.delete("vi-search");
+	CSS.highlights?.delete("vi-search-current");
 }
 
 
@@ -1848,8 +2043,90 @@ function scrollCaret(editor, block="nearest"){
 	if ( delta ) { scroller.scrollTop += delta }
 }
 
-function notify(text, type="warning"){
-	if ( typeof createNotification === "function" ) { createNotification(text, type, notificationTimeoutShort) }
+function showMessage(text, type="info"){
+	// Vim's message line: next to the mode, gone after a moment or with the next key
+	ui.message.textContent = text;
+	ui.message.title = text;
+	ui.message.dataset.type = type;
+	ui.message.hidden = false;
+	clearTimeout(ui.messageTimer);
+	ui.messageTimer = setTimeout(hideMessage, type === "error" ? 4000 : 2500);
+}
+
+function hideMessage(){
+	if ( ui.message ) { ui.message.hidden = true }
+}
+
+
+// :help
+const helpSections = [
+	["Modes", [
+		["i a I A o O", "INSERT before / after the cursor, at the line start / end, on a new line below / above"],
+		["Esc, Ctrl+[", "back to NORMAL (the Esc button on phones, see Settings)"],
+		["v V", "VISUAL, V-LINE"],
+		["R", "REPLACE: typing overwrites"],
+		[": / ?", "command line, search forward / backward"],
+	]],
+	["Moving (with a count: 3j, 2w)", [
+		["h j k l, arrows", "like the arrow keys: j / k follow wrapped lines"],
+		["w b e ge, W B E gE", "words, WORDS (separated by spaces only)"],
+		["0 ^ $ g_", "line start, first character, line end, last character"],
+		["gg G, 5G, :5", "first / last line, line 5"],
+		["{ }", "previous / next empty line"],
+		["f F t T + char, ; ,", "to / before a character on the line, repeat, repeat backward"],
+		["%", "matching bracket"],
+		["Ctrl+d Ctrl+u, zz zt zb", "half a page down / up, scroll the cursor to the middle / top / bottom"],
+	]],
+	["Editing", [
+		["x X, s S", "delete a character after / before, change a character / the line"],
+		["r + char, ~", "replace a character, toggle its case"],
+		["dd cc yy >> <<", "delete, change, yank (copy), indent, outdent lines"],
+		["D C Y", "delete, change, yank to the line end"],
+		["p P", "paste after / before"],
+		["J gJ", "join with the next line, without the space"],
+		["u Ctrl+r", "undo, redo"],
+		[".", "repeat the last change"],
+	]],
+	["Operators", [
+		["d c y > < g~ gu gU", "delete, change, yank, indent, outdent, toggle case, lower case, upper case"],
+		["+ a motion", "dw, c$, y2j, gUiw ..."],
+		["+ a text object", "iw aw (word), i\" a\" i' a' (quotes), i( a( i[ i{ i< (brackets), ip ap (paragraph)"],
+	]],
+	["VISUAL", [
+		["motions, iw ap ...", "grow the selection"],
+		["o", "go to the other end"],
+		["d y c > < ~ u U J r p", "act on the selection"],
+		[":", "command on the selected lines ( :'<,'>s/a/b/ )"],
+	]],
+	["Search", [
+		["/text ?text", "search forward / backward: regular expressions, case-insensitive unless there's a capital letter"],
+		["n N", "next / previous match"],
+		["* #", "the word under the cursor, forward / backward"],
+	]],
+	["Commands", [
+		[":w", "save"],
+		[":q :q!", "close the tab, without asking about unsaved changes"],
+		[":wq :x", "save and close the tab"],
+		[":e name", "open a document"],
+		[":vs :sp", "split the editor"],
+		[":s/a/b/g :%s/a/b/gi", "replace on the line / everywhere (g: all on a line, i: ignore case)"],
+		[":d :y, :2,5d", "delete, yank lines"],
+		[":5", "go to line 5"],
+		[":h0 :h1 :h2 :h3 :h4", "text, heading 1 to 4 (on the selected lines from VISUAL)"],
+		[":h :help", "this help"],
+	]],
+];
+
+function showHelp(){
+	const escape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+	const keys = (s) => s.split(/(, | )/).map(part => /^(, | )$/.test(part) || part === "+" || /^[a-z]+$/.test(part) && part.length > 2 ? escape(part) : `<kbd>${escape(part)}</kbd>`).join("");
+	const html = helpSections.map(([title, rows]) => `
+		<h3>${escape(title)}</h3>
+		<table class="data vi-help"><tbody>
+			${rows.map(([k, description]) => `<tr><td>${keys(k)}</td><td>${escape(description)}</td></tr>`).join("")}
+		</tbody></table>`).join("");
+	closeAllModals();
+	createModal("Vi help", `<p class="muted small">Vi mode works like Neovim. Turn it off in Settings.</p>${html}`);
 }
 
 if ( typeof viModeEnabled !== "function" || viModeEnabled() ) { WriteVi.enable() }

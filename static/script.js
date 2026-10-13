@@ -10,7 +10,7 @@ const syncBaseKey = "__syncBase__"; // {key: hash} of what the cloud held at the
 const themeCookie = "theme";
 const viModeKey = "__viMode__"; // "1" when the vi keybindings are on (Settings), goes with the notebook
 const viEscButtonKey = "__viEscButton__"; // "1" shows the vi Esc button on touch screens, this device only
-const viScriptUrl = "static/vi.js?1";
+const viScriptUrl = "static/vi.js?14";
 
 let autosaveEnabled = 0;
 let documentNames = [];
@@ -82,6 +82,8 @@ window.addEventListener("keydown", handleMobileScrollEvent);
 document.getElementById("editor-grid").addEventListener('keydown', (e) => {performAutoSave();changeTabBehavior(e);handleCheckboxEnter(e);handleHeadingBreakEnter(e)});
 document.getElementById("editor-grid").addEventListener('click', updateCaretPosition);
 document.getElementById("editor-grid").addEventListener('paste', handlePasteLinkOnSelection);
+// formatting shortcuts and undo change the line's style without moving the caret
+document.getElementById("editor-grid").addEventListener('input', updateBlockSelect);
 document.getElementById("editor-grid").addEventListener('beforeinput', handleListItemBackspace);
 document.getElementById("editor-grid").addEventListener('keyup', (e) => {updateCaretPosition();handleWordCounter()});
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
@@ -202,11 +204,17 @@ function initBlockSelect(select){
 }
 
 function updateBlockSelect(){
+	// the text style of the caret's line; with the focus elsewhere, of where the caret was in the focused editor
 	const selection = window.getSelection();
 	const editor = document.getElementById("editor");
-	if ( !selection.rangeCount || !editor.contains(selection.anchorNode) ) { return }
-	const node = selection.anchorNode;
-	const heading = (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement).closest("h1, h2, h3, h4");
+	let node = null;
+	if ( selection.rangeCount && editor.contains(selection.anchorNode) ) {
+		node = selection.anchorNode;
+	} else if ( lastEditorRange && editor.contains(lastEditorRange.startContainer) ) {
+		node = lastEditorRange.startContainer;
+	}
+	const element = node && (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement);
+	const heading = element?.closest("h1, h2, h3, h4");
 	const block = heading && editor.contains(heading) ? heading.tagName.toLowerCase() : "div";
 	for ( const option of document.querySelectorAll("#tb-block-select [data-block]") ) {
 		const selected = option.dataset.block === block;
@@ -297,7 +305,7 @@ function createSettingsModal(){
 	<div class="stack">
 		<label class="check"><input id="setting-vi-mode" type="checkbox"${viModeEnabled() ? " checked" : ""}>Vi keybindings (like Neovim)</label>
 		<label class="check"><input id="setting-vi-esc" type="checkbox"${localStorage.getItem(viEscButtonKey) === "1" ? " checked" : ""}${viModeEnabled() ? "" : " disabled"}>Show Esc on mobiles <span class="muted small">(this device only)</span></label>
-		<p class="muted small">Starts in NORMAL mode: <kbd>i</kbd> to type, <kbd>Esc</kbd> to go back, <kbd>v</kbd> / <kbd>V</kbd> to select, <kbd>:w</kbd> saves, <kbd>:q</kbd> closes the tab. The mode is shown in the top right corner.</p>
+		<p class="muted small">Starts in NORMAL mode: <kbd>i</kbd> to type, <kbd>Esc</kbd> to go back, <kbd>v</kbd> / <kbd>V</kbd> to select, <kbd>:w</kbd> saves, <kbd>:q</kbd> closes the tab, <kbd>:help</kbd> lists all the commands. The mode is shown in the top right corner.</p>
 	</div>`);
 	document.getElementById("setting-vi-mode").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }

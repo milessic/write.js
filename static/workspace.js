@@ -1016,6 +1016,7 @@ function showFocusedDocument(){
 	fillDocName(tab ? tab.name : "");
 	if ( validateUserConsent(false) ) { saveAsLastOpenedDocument(tab?.name || null) }
 	handleWordCounter();
+	updateBlockSelect();
 }
 
 function splitEditor(tab=null){
