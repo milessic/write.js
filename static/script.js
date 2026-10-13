@@ -10,7 +10,7 @@ const syncBaseKey = "__syncBase__"; // {key: hash} of what the cloud held at the
 const themeCookie = "theme";
 const viModeKey = "__viMode__"; // "1" when the vi keybindings are on (Settings), goes with the notebook
 const viEscButtonKey = "__viEscButton__"; // "1" shows the vi Esc button on touch screens, this device only
-const viScriptUrl = "static/vi.js?16";
+const viScriptUrl = "static/vi.js?17";
 
 let autosaveEnabled = 0;
 let documentNames = [];

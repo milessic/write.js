@@ -906,6 +906,7 @@ function runNormal(editor, keys){
 		if ( directions[command] ) { focusEditorTowards(editor, directions[command], count) }
 		else if ( command === "w" || command === "W" ) { focusNextEditor(editor, command === "w" ? count : -count) }
 		else if ( ["s", "S", "v"].includes(command) ) { splitEditor() }
+		else if ( command === "q" || command === "c" ) { closeEditorWindow(editor) }
 		else { return unknown }
 		return;
 	}
@@ -2074,6 +2075,15 @@ function focusNextEditor(editor, step){
 	enterEditor(editors[((i + step) % editors.length + editors.length) % editors.length]);
 }
 
+function closeEditorWindow(editor){
+	// Ctrl+W q: closes the editor, its document stays open in the tab bar
+	const pane = typeof panes !== "undefined" && panes.find(p => p.editor === editor);
+	if ( !pane ) { return }
+	if ( panes.length < 2 ) { showMessage("E444: Cannot close last window", "error"); return }
+	closePane(pane);
+	enterEditor(focusedPane?.editor);
+}
+
 function enterEditor(editor){
 	// focuses an editor with its cursor where it was left
 	if ( !editor || editor === document.activeElement ) { return }
@@ -2315,6 +2325,7 @@ const helpSections = [
 		["Ctrl+w h j k l", "go to the editor on the left / below / above / on the right"],
 		["Ctrl+w w W", "next / previous editor"],
 		["Ctrl+w s v", "split the editor"],
+		["Ctrl+w q c", "close the editor, its document stays in the tab bar"],
 		["gt gT, 3gt", "next / previous tab, tab 3"],
 	]],
 	["Documents (TREE, like NeoTree)", [
