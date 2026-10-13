@@ -10,6 +10,7 @@ const syncBaseKey = "__syncBase__"; // {key: hash} of what the cloud held at the
 const themeCookie = "theme";
 const viModeKey = "__viMode__"; // "1" when the vi keybindings are on (Settings), goes with the notebook
 const autoDetectKey = "__autoDetect__"; // {enabled, rules} for markdown typed into formatting (Settings, autodetect.js), goes with the notebook
+const headingFoldingKey = "__headingFolding__"; // "0" when collapsing sections by their headings is off (Settings, folding.js), goes with the notebook
 const viEscButtonKey = "__viEscButton__"; // "1" shows the vi Esc button on touch screens, this device only
 const viScriptUrl = "static/vi.js?17";
 
@@ -345,7 +346,8 @@ function createSettingsModal(){
 		<label class="check"><input id="setting-vi-mode" type="checkbox"${viModeEnabled() ? " checked" : ""}>Vi keybindings (like Neovim)</label>
 		<label class="check"><input id="setting-vi-esc" type="checkbox"${localStorage.getItem(viEscButtonKey) === "1" ? " checked" : ""}${viModeEnabled() ? "" : " disabled"}>Show Esc on mobiles <span class="muted small">(this device only)</span></label>
 		<p class="muted small">Starts in NORMAL mode: <kbd>i</kbd> to type, <kbd>Esc</kbd> to go back, <kbd>v</kbd> / <kbd>V</kbd> to select, <kbd>:w</kbd> saves, <kbd>:q</kbd> closes the tab, <kbd>:help</kbd> lists all the commands. The mode is shown in the top right corner.</p>
-	</div>` + autoDetectSettingsHtml());
+	</div>` + headingFoldingSettingsHtml() + autoDetectSettingsHtml());
+	initHeadingFoldingSettings();
 	initAutoDetectSettings();
 	document.getElementById("setting-vi-mode").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
@@ -999,6 +1001,7 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 		if ( name !== null ) { reloadDocumentTabs(name) }
 	}
 	if ( fromCloud ) { rememberSynced(synced) }
+	applyHeadingFolding(); // the setting may have come with the notebook
 	refreshFileTree();
 	if (loadLastOpened){
 		loadLastOpenedDocument();

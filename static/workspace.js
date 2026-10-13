@@ -977,6 +977,7 @@ function loadPane(pane){
 	}
 	tab.html = null;
 	pane.editor.innerHTML = html;
+	if ( typeof applyHeadingFolds !== "undefined" ) { applyHeadingFolds(pane.editor) } // folding.js loads after this file
 }
 
 function setPaneTab(pane, tab){

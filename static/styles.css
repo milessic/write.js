@@ -720,6 +720,51 @@ body.app > .topbar {
 :is(.editor, #content) h2 { font-size: 1.6em; }
 :is(.editor, #content) h3 { font-size: 1.3em; }
 :is(.editor, #content) h4 { font-size: 1.1em; }
+/* heading folding (folding.js): an arrow in the margin left of each heading, shown on hover or when collapsed */
+.heading-folding .editor > :is(h1, h2, h3, h4) {
+	position: relative;
+}
+.heading-folding .editor > :is(h1, h2, h3, h4)::before {
+	content: "▾";
+	position: absolute;
+	top: 0;
+	left: -1.2rem;
+	width: 1.2rem;
+	/* as tall as the heading's first line (line-height 1.25), the arrow scaled with the heading */
+	font-size: .7em;
+	line-height: calc(1.25em / .7);
+	text-align: center;
+	color: var(--muted);
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity .15s;
+	user-select: none;
+}
+.heading-folding .editor > :is(h1, h2, h3, h4):hover::before,
+.heading-folding .editor > [data-collapsed="true"]::before {
+	opacity: .4;
+}
+.heading-folding .editor > [data-collapsed="true"]::before {
+	content: "▸";
+}
+.heading-folding .editor > [data-collapsed="true"]::after {
+	content: " …";
+	color: var(--muted);
+	font-weight: 400;
+	opacity: .5;
+}
+.heading-folding .editor > .fold-hidden {
+	display: none;
+}
+/* no hover on touch screens: the arrows are always there, faint */
+@media (hover: none) {
+	.heading-folding .editor > :is(h1, h2, h3, h4)::before {
+		opacity: .25;
+	}
+	.heading-folding .editor > [data-collapsed="true"]::before {
+		opacity: .4;
+	}
+}
 #checkbox-icon-container {
 	display: inline-block;
 	width: .7em;
