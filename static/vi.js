@@ -12,7 +12,7 @@
 (() => {
 if ( window.WriteVi ) { return }
 
-const modeLabels = {normal: "NORMAL", insert: "INSERT", visual: "VISUAL", vline: "V-LINE", replace: "REPLACE", command: "COMMAND"};
+const modeLabels = {normal: "NORMAL", insert: "INSERT", visual: "VISUAL", vline: "V-LINE", replace: "REPLACE", command: "COMMAND", tree: "TREE"};
 const blockTags = new Set(["ADDRESS", "ARTICLE", "ASIDE", "BLOCKQUOTE", "DD", "DIV", "DL", "DT", "FIGURE", "FOOTER", "FORM", "H1", "H2", "H3", "H4", "H5", "H6", "HEADER", "HR", "LI", "MAIN", "NAV", "OL", "P", "PRE", "SECTION", "TABLE", "TBODY", "TD", "TH", "THEAD", "TR", "UL"]);
 const operators = new Set(["d", "c", "y", ">", "<"]);
 const caseOperators = {"g~": "toggle", "gu": "lower", "gU": "upper"};
@@ -43,6 +43,7 @@ let composing = null;                   // IME composition started outside INSER
 let commandLine = null;                 // {input, editor, index, kind, visual}
 let lastEditor = null;                  // the editor the mobile Esc button goes back to
 let lastRange = null;                   // and its selection when it lost the focus
+let treePending = [];                   // keys of a file tree command being typed (g, Ctrl+W)
 const editorRanges = new WeakMap();     // each editor's selection, for going back to it with Ctrl+W h j k l
 let escapeAt = -Infinity;               // when vi got an Esc in an editor
 let pointerAt = -Infinity;              // the last click / tap: a focus change that comes after one is the user's
@@ -132,6 +133,7 @@ function buildUi(){
 		.vi-mode[data-mode="vline"] { --vi-color: #c2410c; }
 		.vi-mode[data-mode="replace"] { --vi-color: #d03b3b; }
 		.vi-mode[data-mode="command"] { --vi-color: #3a3a3a; pointer-events: auto; }
+		.vi-mode[data-mode="tree"] { --vi-color: #0f766e; }
 		.vi-mode-body { display: flex; align-items: center; gap: .4rem; padding: .15rem .55rem; }
 		.vi-mode-keys:empty, .vi-mode-cmd { display: none; }
 		.vi-mode-keys { font-weight: 400; opacity: .85; }
@@ -227,9 +229,10 @@ function setMode(next){
 function render(){
 	if ( !ui.root ) { return }
 	placeIndicator();
-	ui.indicator.dataset.mode = mode;
-	ui.indicator.querySelector(".vi-mode-name").textContent = modeLabels[mode];
-	ui.indicator.querySelector(".vi-mode-keys").textContent = pending.map(displayKey).join("");
+	const shown = inTree() ? "tree" : mode;
+	ui.indicator.dataset.mode = shown;
+	ui.indicator.querySelector(".vi-mode-name").textContent = modeLabels[shown];
+	ui.indicator.querySelector(".vi-mode-keys").textContent = (inTree() ? treePending : pending).map(displayKey).join("");
 	const color = getComputedStyle(ui.indicator).getPropertyValue("--vi-color");
 	ui.root.style.setProperty("--vi-color", color);
 	document.body.classList.toggle("vi-block-caret", mode !== "insert" && mode !== "replace");
@@ -341,6 +344,7 @@ const ctrlKeys = new Set(["<C-r>", "<C-d>", "<C-u>", "<C-w>"]);
 const namedKeys = new Set(["Escape", "Enter", "Backspace", "Delete", "Tab", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"]);
 
 function onKeydown(e){
+	if ( !commandLine && e.target.closest?.("#file-tree") ) { onTreeKeydown(e); return }
 	const editor = editorOf(e.target);
 	if ( !editor || commandLine ) { return }
 	if ( e.isComposing || e.keyCode === 229 ) { return }   // phone keyboard: comes as beforeinput
@@ -470,7 +474,7 @@ function onFocusIn(e){
 	if ( editorOf(e.target) ) { lastEditor = editorOf(e.target) }
 	// editors opened by splitting need the same typing attributes
 	setTypingAttributes(mode === "insert" || mode === "replace");
-	renderCursor();
+	render();
 }
 
 function onFocusOut(e){
@@ -500,7 +504,7 @@ function onFocusOut(e){
 		});
 	}
 	// the focus may go to a toolbar button and come back, so only the cursor goes
-	requestAnimationFrame(renderCursor);
+	requestAnimationFrame(render);
 }
 
 function isExpectedSelection(selection){
@@ -2055,7 +2059,10 @@ function focusEditorTowards(editor, direction, count=1){
 			if ( gap < -1 || overlap <= 0 ) { continue }
 			if ( !best || gap < best.gap - 1 || (Math.abs(gap - best.gap) <= 1 && overlap > best.overlap) ) { best = {pane, gap, overlap} }
 		}
-		if ( !best ) { break }
+		if ( !best ) {
+			if ( horizontal && treeTowards(from, direction) ) { focusTree(); return }
+			break
+		}
 		editor = best.pane.querySelector(".editor");
 	}
 	enterEditor(editor);
@@ -2097,6 +2104,125 @@ function goToTab(step, absolute=false){
 		setCaret(textModel(editor), 0);
 		clampCaret(editor);
 		render();
+	}
+}
+
+
+// the file tree, like Neovim's NeoTree: j k to move, l / Enter to open, h to close, / to filter, Ctrl+W to leave
+function inTree(){
+	return !!document.activeElement?.closest?.("#file-tree");
+}
+
+function treeTowards(from, direction){
+	// the file tree is on that side of the editor (shown, or hidden on that side)
+	const tree = document.getElementById("file-tree");
+	if ( !tree ) { return false }
+	const side = document.body.dataset.treeSide || "left";
+	if ( typeof isFileTreeVisible === "function" && !isFileTreeVisible() ) {
+		if ( side !== direction ) { return false }
+		showFileTree();
+		return true;
+	}
+	const to = tree.getBoundingClientRect();
+	if ( !to.width ) { return false }
+	return direction === "left" ? to.right <= from.left + 1 : to.left >= from.right - 1;
+}
+
+function treeRows(){
+	return [...document.querySelectorAll("#file-tree-list .tree-row")].filter(row => row.offsetParent !== null);
+}
+
+function focusTree(row=null){
+	const rows = treeRows();
+	row = row || rows.find(r => r.classList.contains("active")) || rows[0];
+	if ( !row ) { document.getElementById("file-tree-search")?.focus(); return }
+	row.focus();
+	row.scrollIntoView({block: "nearest"});
+	render();
+}
+
+function leaveTree(){
+	treePending = [];
+	if ( typeof closeTreeDrawer === "function" ) { closeTreeDrawer() }
+	enterEditor((typeof focusedPane !== "undefined" && focusedPane?.editor) || lastEditor || document.getElementById("editor"));
+	render();
+}
+
+function refocusTreeRow(selector){
+	// opening and closing folders rebuilds the tree
+	const row = document.querySelector(`#file-tree-list ${selector}`);
+	focusTree(row);
+}
+
+function openTreeRow(row){
+	if ( row.classList.contains("tree-folder") ) {
+		const folder = row.parentElement.dataset.folder;
+		row.click();
+		refocusTreeRow(`[data-folder="${CSS.escape(folder)}"] > .tree-row`);
+	} else if ( row.dataset.name ) {
+		openDocumentFromTree(row.dataset.name);
+		leaveTree();
+	}
+}
+
+function onTreeKeydown(e){
+	const search = e.target.id === "file-tree-search";
+	const key = keyName(e);
+	if ( !key || e.metaKey || e.altKey ) { return }
+	const take = () => { e.preventDefault(); e.stopPropagation() };
+	if ( treePending[0] === "<C-w>" ) {
+		take();
+		treePending = [];
+		const command = key.replace(/^<C-(.)>$/, "$1");
+		if ( ["h", "l", "w", "W", "p", "ArrowLeft", "ArrowRight"].includes(command) ) { leaveTree() } else { render() }
+		return
+	}
+	if ( key === "<C-w>" ) { take(); treePending = ["<C-w>"]; render(); return }
+	if ( search ) {
+		// the filter: typing filters the tree, Enter opens the first match, Esc / arrows go back to the rows
+		if ( key === "Enter" ) {
+			take();
+			const first = treeRows().find(row => row.dataset.name);
+			if ( first ) { openTreeRow(first) }
+		} else if ( key === "ArrowDown" || key === "<C-n>" || key === "<C-j>" ) {
+			take();
+			focusTree(treeRows()[0]);
+		} else if ( key === "Escape" ) {
+			take();
+			focusTree();
+		}
+		return
+	}
+	if ( !e.target.classList.contains("tree-row") ) { return }
+	const row = e.target;
+	const rows = treeRows();
+	const i = rows.indexOf(row);
+	const pendingG = treePending[0] === "g";
+	treePending = [];
+	switch ( key ) {
+	case "j": case "ArrowDown": take(); focusTree(rows[Math.min(i + 1, rows.length - 1)]); return;
+	case "k": case "ArrowUp": take(); focusTree(rows[Math.max(i - 1, 0)]); return;
+	case "G": take(); focusTree(rows[rows.length - 1]); return;
+	case "g":
+		take();
+		if ( pendingG ) { focusTree(rows[0]) } else { treePending = ["g"]; render() }
+		return;
+	case "l": case "o": case "Enter": case "ArrowRight": {
+		take();
+		const expanded = row.parentElement.getAttribute("aria-expanded") === "true";
+		if ( key !== "Enter" && key !== "o" && row.classList.contains("tree-folder") && expanded ) { focusTree(rows[i + 1]); return }
+		openTreeRow(row);
+		return;
+	}
+	case "h": case "ArrowLeft": {
+		take();
+		if ( row.classList.contains("tree-folder") && row.parentElement.getAttribute("aria-expanded") === "true" ) { openTreeRow(row); return }
+		const parent = row.parentElement.parentElement.closest("[data-folder]");
+		if ( parent ) { focusTree(parent.querySelector(":scope > .tree-row")) }
+		return;
+	}
+	case "/": take(); document.getElementById("file-tree-search").focus(); return;
+	case "Escape": render(); return;   // workspace.js clears the selection
 	}
 }
 
@@ -2190,6 +2316,13 @@ const helpSections = [
 		["Ctrl+w w W", "next / previous editor"],
 		["Ctrl+w s v", "split the editor"],
 		["gt gT, 3gt", "next / previous tab, tab 3"],
+	]],
+	["Documents (TREE, like NeoTree)", [
+		["Ctrl+w h, Ctrl+w l", "from the editor next to it: go to the documents, opened if hidden"],
+		["j k, gg G", "next / previous row, first / last row"],
+		["l Enter o, h", "open the document or folder, close the folder / go to its folder"],
+		["/", "filter the documents: Enter opens the first one, Esc goes back to the rows"],
+		["Ctrl+w h l w", "back to the editor"],
 	]],
 	["Commands", [
 		[":w", "save"],
