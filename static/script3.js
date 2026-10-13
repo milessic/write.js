@@ -188,7 +188,7 @@ async function createAccountModal(){
 
 async function sendNotebook(){
 	// first fetch notebook and open Merge Editor if version of remote is same or higher
-	loadNotebook(true, false);
+	await loadNotebook(true, false);
 	// then send to the remote
 	return await sendNotebookForce()
 

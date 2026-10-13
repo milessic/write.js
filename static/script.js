@@ -992,7 +992,13 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 		if ( key  === lastOpenedKey ) { continue }
 		if ( key === docPrefix + getDocumentName() && excludeCurrentDocument ) { console.log('skipping current doc');continue }
 		if ( isDeviceOnlyKey(key) ) { continue }
-		if ( key === foldersKey ) { mergeFolders(value); continue }
+		if ( key === foldersKey ) {
+			// folders changed only on this device (e.g. a document was moved) stay as they are
+			if ( fromCloud && base[key] === hashText(value) ) { continue }
+			mergeFolders(value);
+			if ( fromCloud ) { synced[key] = value }
+			continue
+		}
 		const name = key.startsWith(docPrefix) ? key.replace(docPrefix, "") : null;
 		const unsaved = name === null ? null : unsavedDocumentHtml(name);
 		const existingDocument = localStorage.getItem(key)
