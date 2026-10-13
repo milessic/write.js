@@ -6,8 +6,10 @@ from pathlib import Path
 
 from utils.auth.utils import verify_access_token
 from utils.themes import theme_context, THEME_COOKIE
+from utils.static_files import static_url
 
 templates = Jinja2Templates(directory="static")
+templates.env.globals["static_url"] = static_url
 
 router = APIRouter()
 STATIC_DIR = Path(__file__).parent.parent / "static"

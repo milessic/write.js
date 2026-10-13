@@ -12,7 +12,7 @@ const viModeKey = "__viMode__"; // "1" when the vi keybindings are on (Settings)
 const autoDetectKey = "__autoDetect__"; // {enabled, rules} for markdown typed into formatting (Settings, autodetect.js), goes with the notebook
 const headingFoldingKey = "__headingFolding__"; // "0" when collapsing sections by their headings is off (Settings, folding.js), goes with the notebook
 const viEscButtonKey = "__viEscButton__"; // "1" shows the vi Esc button on touch screens, this device only
-const viScriptUrl = "static/vi.js?17";
+const viScriptUrl = document.currentScript?.dataset.viSrc || "static/vi.js"; // content-versioned by the server, see utils/static_files.py
 
 let autosaveEnabled = 0;
 let documentNames = [];

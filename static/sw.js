@@ -2,11 +2,11 @@
  * Service worker: lets Write.JS open without network.
  * Served from /sw.js (routers/web.py) so it controls the whole site, not only /static/.
  *  - the page "/" is network-first, the last good render is the offline fallback
- *  - assets are served from cache and refreshed in the background; they are versioned with ?NN,
- *    so a bumped version is a new URL and old versions get pruned
+ *  - assets are served from cache and refreshed in the background; they are versioned by content hash (?v=, utils/static_files.py),
+ *    so a changed file is a new URL and old versions get pruned
  *  - /api is never touched
  */
-const CACHE = "writejs-v1";
+const CACHE = "writejs-v2";
 const PAGE = "/";
 // referenced only from JS or the manifest, so the page scan below doesn't find them
 const EXTRA_ASSETS = ["/static/manifest.webmanifest", "/static/icons/icon-192.png", "/static/icons/icon-512.png"];

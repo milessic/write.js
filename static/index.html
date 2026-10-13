@@ -21,7 +21,7 @@
 	{% if themes_available %}
 	<script src="{{ themes_url }}/js/themes.js?v={{ themes_version }}" data-persist="false" data-restore="false"></script>
 	{% endif %}
-    <link rel="stylesheet" href="static/styles.css?89">
+    <link rel="stylesheet" href="{{ static_url('styles.css') }}">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
@@ -179,16 +179,16 @@
 	<!--
 	<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 	-->
-	<script src="static/showdown.min.js?2.1.0"></script>
-	<script src="static/pako.js?64"></script>
-    <script src="static/script.js?104"></script>
-    <script src="static/workspace.js?84"></script>
-    <script src="static/autodetect.js?6"></script>
-    <script src="static/folding.js?2"></script>
+	<script src="{{ static_url('showdown.min.js') }}"></script>
+	<script src="{{ static_url('pako.js') }}"></script>
+    <script src="{{ static_url('script.js') }}" data-vi-src="{{ static_url('vi.js') }}"></script>
+    <script src="{{ static_url('workspace.js') }}"></script>
+    <script src="{{ static_url('autodetect.js') }}"></script>
+    <script src="{{ static_url('folding.js') }}"></script>
 	{% if is_authenticated %}
-    	<script src="static/script3.js?72"></script>
+    	<script src="{{ static_url('script3.js') }}"></script>
 	{% else %}
-    	<script src="static/script2.js?67"></script>
+    	<script src="{{ static_url('script2.js') }}"></script>
 	{% endif %}
 </body>
 </html>

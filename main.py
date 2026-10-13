@@ -21,6 +21,21 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=True,
 )
+
+@app.middleware("http")
+async def cache_headers(request, call_next):
+    """Without Cache-Control Safari caches files heuristically and keeps serving old versions.
+    Content-versioned static files (?v=, see utils/static_files.py) never change, everything else
+    (pages, unversioned files, API) must be revalidated with the server on every use."""
+    response = await call_next(request)
+    if "cache-control" not in response.headers:
+        if request.url.path.startswith("/static/") and "v" in request.query_params:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 # Templates and static files
 templates = Jinja2Templates(directory="static")
 app.mount("/static", StaticFiles(directory="static"), name="static")
