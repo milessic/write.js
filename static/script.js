@@ -32,8 +32,8 @@ const softReturnText = `
 
 
 // Apple devices (iPadOS says it is a Mac) put window controls top-left: focus mode's x goes there (styles.css)
-document.documentElement.classList.toggle("apple-platform",
-	/Mac|iPhone|iPad|iPod/.test(navigator.userAgentData?.platform || navigator.platform || navigator.userAgent));
+document.body.classList.toggle("apple-platform",
+	/mac|iphone|ipad|ipod/i.test(navigator.userAgentData?.platform || navigator.platform || navigator.userAgent));
 
 let userConsent = localStorage.getItem(userConsentKey);
 

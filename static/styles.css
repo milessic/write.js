@@ -1061,7 +1061,7 @@ body.focus-mode .focus-exit {
 	cursor: pointer;
 	transition: opacity .15s, color .15s, background-color .15s;
 }
-.apple-platform body.focus-mode .focus-exit {
+body.apple-platform.focus-mode .focus-exit {
 	right: auto;
 	left: 6px;
 }
@@ -1071,6 +1071,6 @@ body.focus-mode .focus-exit:is(:hover, :focus-visible) {
 	background: color-mix(in srgb, var(--danger) 12%, transparent);
 }
 /* the vi mode indicator moves left of the x */
-html:not(.apple-platform) body.focus-mode .vi-bar {
+body.focus-mode:not(.apple-platform) .vi-bar {
 	margin-right: 2rem;
 }
