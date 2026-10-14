@@ -1678,12 +1678,18 @@ function removeTab(){
 }
 
 function handleListItemBackspace(e){
-	// mobile: Backspace at the beginning of a list item un-nests it, like Shift+Tab
+	// mobile: Backspace at the beginning of a nested list item un-nests it, like Shift+Tab; at the beginning of
+	// an item of a top-level list it stays the browser's: it merges into the item above (taking it out of the list
+	// would split the list in two), only the first item leaves the list
 	if ( !isLowWidthViewport || e.inputType !== "deleteContentBackward" || !e.cancelable ) { return }
 	const selection = window.getSelection();
 	if ( !selection.rangeCount || !selection.isCollapsed ) { return }
 	const li = getCaretListItem();
 	if ( !li ) { return }
+	const nested = Boolean(li.parentElement.parentElement?.closest("ul, ol, li"));
+	let prev = li.previousElementSibling;
+	while ( prev && prev.nodeName !== "LI" ) { prev = prev.previousElementSibling }
+	if ( !nested && prev ) { return }
 	const beforeCaret = document.createRange();
 	beforeCaret.setStart(li, 0);
 	beforeCaret.setEnd(selection.anchorNode, selection.anchorOffset);
