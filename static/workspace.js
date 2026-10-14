@@ -58,6 +58,7 @@ let draggedDocuments = null;
 let selectedDocuments = new Set();
 let selectionAnchor = null;
 let draggedFolder = null;
+let focusLayout = null; // focus mode with "Opened editors" (focusModeKey): the editors from before, shown again when leaving
 
 const fileTreeList = document.getElementById("file-tree-list");
 const fileTreeSearch = document.getElementById("file-tree-search");
@@ -267,8 +268,11 @@ function saveOpenedTabs(){
 
 function saveOpenedEditors(){
 	if ( !validateUserConsent(false) ) { return }
-	const names = panes.map(p => tabById(p.tabId)?.name || "");
-	localStorage.setItem(openedEditorsKey, JSON.stringify({ names, focused: panes.indexOf(focusedPane) }));
+	// in focus mode the editors from before are kept: the next visit doesn't start with every tab split
+	const shownTabIds = focusLayout ? focusLayout.tabIds : panes.map(p => p.tabId);
+	const names = shownTabIds.map(id => tabById(id)?.name || "");
+	const focused = focusLayout ? Math.max(0, focusLayout.tabIds.indexOf(focusLayout.focused)) : panes.indexOf(focusedPane);
+	localStorage.setItem(openedEditorsKey, JSON.stringify({ names, focused }));
 }
 
 function restoreEditors(){
@@ -664,6 +668,7 @@ function switchToTab(id){
 	const tab = tabById(id);
 	if ( !tab ) { return }
 	const pane = paneOfTab(tab);
+	if ( !pane && focusEditorsLocked() ) { return }
 	pane ? focusPane(pane) : setPaneTab(focusedPane, tab);
 }
 
@@ -679,6 +684,7 @@ function openDocumentInTab(name){
 		focusPane(pane);
 		return true;
 	}
+	if ( !pane && focusEditorsLocked() ) { return false }
 	const active = getActiveTab();
 	if ( !tab && active && !active.name && !active.dirty ) {
 		// an untouched untitled tab is replaced, not kept beside the document
@@ -692,12 +698,13 @@ function openDocumentInTab(name){
 }
 
 function openNewTab(name="", html="", dirty=false){
+	if ( focusEditorsLocked() ) { return }
 	setPaneTab(focusedPane, createTab(name, html, dirty));
 }
 
 function closeTab(id){
 	const tab = tabById(id);
-	if ( !tab ) { return }
+	if ( !tab || focusEditorsLocked() ) { return }
 	if ( tab.dirty && !showConfirm(`'${tab.name || untitledTabLabel}' has unsaved changes. Close it anyway?`) ) { return }
 	const pane = paneOfTab(tab);
 	const i = tabs.indexOf(tab);
@@ -936,7 +943,7 @@ function setupPane(el){
 		el.classList.remove("drop-target");
 		if ( draggedPane ) {
 			swapPanes(draggedPane, pane);
-		} else {
+		} else if ( !focusEditorsLocked() ) {
 			setPaneTab(pane, tabById(draggedTabId));
 			focusPane(pane);
 		}
@@ -1031,6 +1038,7 @@ function showFocusedDocument(){
 
 function splitEditor(tab=null){
 	// opens an editor next to the focused one, with the given tab, the next hidden tab or a new one
+	if ( focusEditorsLocked() ) { return }
 	if ( panes.length >= maxEditors ) {
 		createNotification(`Up to ${maxEditors} editors can be opened side by side.`, "warning");
 		return;
@@ -1043,7 +1051,7 @@ function splitEditor(tab=null){
 }
 
 function closePane(pane){
-	if ( panes.length < 2 ) { return }
+	if ( panes.length < 2 || focusEditorsLocked() ) { return }
 	stashPane(pane);
 	const i = panes.indexOf(pane);
 	panes.splice(i, 1);
@@ -1055,6 +1063,53 @@ function closePane(pane){
 		renderTabs();
 		saveOpenedTabs();
 	}
+}
+
+// focus mode with "Opened editors": every opened tab in its own editor (up to maxEditors), reordered by dragging
+// an editor's name onto another; documents are opened and closed after leaving
+function focusEditorsLocked(){
+	if ( !focusLayout ) { return false }
+	createNotification("Leave focus mode to open or close documents", "warning");
+	return true;
+}
+
+function showTabsInPanes(shown, focusedTab){
+	// the editors show these tabs, in this order; unsaved edits go along (stashPane / loadPane)
+	panes.forEach(stashPane);
+	while ( panes.length < shown.length ) { addPane(panes[panes.length - 1]) }
+	while ( panes.length > shown.length ) { panes.pop().el.remove() }
+	shown.forEach((tab, i) => { panes[i].tabId = tab.id; loadPane(panes[i]) });
+	focusedPane?.editor.removeAttribute("id");
+	focusedPane = null;
+	focusPane(paneOfTab(focusedTab) || panes[0]);
+}
+
+function enterFocusEditors(){
+	if ( focusLayout ) { return true }
+	const active = getActiveTab();
+	// the focused tab, and the others in their order, as many as fit
+	let shown = tabs.slice(0, maxEditors);
+	if ( !shown.includes(active) ) { shown = [...tabs.filter(t => t !== active).slice(0, maxEditors - 1), active] }
+	shown = tabs.filter(t => shown.includes(t));
+	if ( shown.length < 2 ) { return false }
+	if ( tabs.length > shown.length ) {
+		createNotification(`Focus mode shows ${shown.length} of the ${tabs.length} opened documents: up to ${maxEditors} fit side by side.`, "info");
+	}
+	// set first: what is saved for the next visit stays the editors from before
+	focusLayout = { tabIds: panes.map(p => p.tabId), focused: active?.id };
+	showTabsInPanes(shown, active);
+	return true;
+}
+
+function leaveFocusEditors(){
+	if ( !focusLayout ) { return }
+	const { tabIds, focused } = focusLayout;
+	focusLayout = null;
+	// the editors from before; the document focused now stays in front, in the place of the one focused then
+	const active = getActiveTab();
+	const ids = tabIds.includes(active?.id) ? tabIds : tabIds.map(id => id === focused ? active.id : id);
+	showTabsInPanes(ids.map(tabById).filter(Boolean), active);
+	focusedPane.editor.focus({ preventScroll: true });
 }
 
 function renderPanes(){

@@ -1004,24 +1004,49 @@ body.focus-mode .file-tree,
 body.focus-mode .file-tree-scrim,
 body.focus-mode .tab-bar,
 body.focus-mode .format-bar,
-body.focus-mode .pane-head,
-body.focus-mode .editor-pane:not(.focused) {
+body.focus-mode:not(.focus-editors) .pane-head,
+body.focus-mode:not(.focus-editors) .editor-pane:not(.focused) {
 	display: none !important;
 }
-/* a split view shows only the focused editor, laid out like a single one */
-body.focus-mode .editor-grid[data-count] {
+/* Single document (Settings): a split view shows only the focused editor, laid out like a single one */
+body.focus-mode:not(.focus-editors) .editor-grid[data-count] {
 	--columns: 1;
 	padding: 0;
 }
-body.focus-mode .editor-grid .editor-pane {
+body.focus-mode:not(.focus-editors) .editor-grid .editor-pane {
 	outline: none;
 }
-body.focus-mode .editor-grid .container {
+body.focus-mode:not(.focus-editors) .editor-grid .container {
 	max-width: 1280px;
 	padding: 2rem 16px 3rem;
 }
-body.focus-mode .editor-grid .editor-column {
+body.focus-mode:not(.focus-editors) .editor-grid .editor-column {
 	max-width: 960px;
+}
+/* Opened editors (workspace.js): every opened document side by side, under the x; an editor's faint name
+   is the handle for dragging it onto another to swap them, and none can be closed */
+body.focus-editors .editor-grid {
+	padding-top: 2.5rem;
+}
+body.focus-editors .editor-grid .editor-pane {
+	outline-color: transparent;
+}
+body.focus-editors .editor-grid .editor-pane.focused {
+	outline: 1px solid var(--line);
+}
+body.focus-editors .editor-grid .editor-pane.drop-target {
+	outline: 2px dashed var(--accent);
+}
+body.focus-editors .pane-head {
+	opacity: .35;
+	transition: opacity .15s;
+}
+body.focus-editors .pane-head:hover,
+body.focus-editors .editor-pane.dragging .pane-head {
+	opacity: 1;
+}
+body.focus-editors .pane-close {
+	display: none;
 }
 body.focus-mode .editor-card {
 	background: transparent;

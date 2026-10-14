@@ -4,6 +4,7 @@ const userConsentKey = "__userConsent__";
 const lastOpenedKey= "__lastOpened__";
 const docPrefix = "__doc__";
 const autosaveKey = "__autosave__";
+const focusModeKey = "__focusMode__"; // "editors" when focus mode shows every opened tab, else only the focused document (Settings), goes with the notebook
 const headingBreaksKey = "__headingBreaks__"; // "1" when an <hr> is auto-inserted under each heading (Settings), goes with the notebook
 const syncPendingKey = "__syncPending__"; // set while there are changes that couldn't reach the cloud (offline)
 const syncBaseKey = "__syncBase__"; // {key: hash} of what the cloud held at the last sync, tells which side changed a document
@@ -359,6 +360,12 @@ function createSettingsModal(){
 		<label class="check"><input id="setting-vi-esc" type="checkbox"${localStorage.getItem(viEscButtonKey) === "1" ? " checked" : ""}${viModeEnabled() ? "" : " disabled"}>Show Esc on mobiles <span class="muted small">(this device only)</span></label>
 		<p class="muted small">Starts in NORMAL mode: <kbd>i</kbd> to type, <kbd>Esc</kbd> to go back, <kbd>v</kbd> / <kbd>V</kbd> to select, <kbd>:w</kbd> saves, <kbd>:q</kbd> closes the tab, <kbd>:help</kbd> lists all the commands. The mode is shown in the top right corner.</p>
 	</div>
+	<h3>Focus mode</h3>
+	<div class="stack">
+		<label class="check"><input type="radio" name="setting-focus-mode" value="single"${focusModeShowsEditors() ? "" : " checked"}>Single document</label>
+		<label class="check"><input type="radio" name="setting-focus-mode" value="editors"${focusModeShowsEditors() ? " checked" : ""}>Opened editors</label>
+		<p class="muted small">Single document shows only the document you are in. Opened editors shows every opened document side by side (up to 4); drag an editor's name onto another to swap them. Documents are opened and closed after leaving focus mode.</p>
+	</div>
 	<h3>Headings</h3>
 	<div class="stack">
 		<label class="check"><input id="setting-heading-breaks" type="checkbox"${headingBreaksEnabled() ? " checked" : ""}>Auto-insert break lines under headings</label>
@@ -366,6 +373,13 @@ function createSettingsModal(){
 	</div>` + autoDetectSettingsHtml());
 	initHeadingFoldingSettings();
 	initAutoDetectSettings();
+	document.querySelectorAll('input[name="setting-focus-mode"]').forEach((input) => input.addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = false; return }
+		localStorage.setItem(focusModeKey, e.target.value);
+		// already in focus mode: it shows the new way
+		if ( document.body.classList.contains("focus-mode") ) { toggleFocusMode(false); toggleFocusMode(true) }
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	}));
 	document.getElementById("setting-heading-breaks").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
 		localStorage.setItem(headingBreaksKey, e.target.checked ? "1" : "0");
@@ -820,10 +834,24 @@ function handleWordCounter(){
 	}
 }
 
+function focusModeShowsEditors(){
+	return localStorage.getItem(focusModeKey) === "editors";
+}
+
 function toggleFocusMode(force){
 	// Focus mode: only the text, the word count (if enabled) and a faint x to leave it (top-left on Apple devices);
-	// left with Esc, or with Esc Esc in vi NORMAL (vi.js), or with :focus
-	const on = document.body.classList.toggle("focus-mode", force);
+	// left with Esc, or with Esc Esc in vi NORMAL (vi.js), or with :focus.
+	// Settings > Focus mode: the focused document only, or every opened tab in its own editor (workspace.js)
+	const was = document.body.classList.contains("focus-mode");
+	const on = force ?? !was;
+	if ( on === was ) { return }
+	if ( on ) {
+		document.body.classList.toggle("focus-editors", focusModeShowsEditors() && enterFocusEditors());
+	} else {
+		leaveFocusEditors();
+		document.body.classList.remove("focus-editors");
+	}
+	document.body.classList.toggle("focus-mode", on);
 	closeContextMenu();
 	// the CSS hides the documents; the phone drawer closes so it isn't open when leaving
 	if ( on ) { document.body.classList.remove("tree-drawer-open"); handleWordCounter() }
