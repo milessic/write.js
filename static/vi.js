@@ -144,6 +144,14 @@ function buildUi(){
 		.vi-message { max-width: min(28rem, 55vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: .15rem .55rem; border-radius: calc(var(--radius, 10px) / 3);
 			background: #3a3a3a; color: #fff; font: 400 .72rem/1.5 var(--font-mono, monospace); box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
 		.vi-message[hidden] { display: none; }
+		.vi-complete { position: fixed; z-index: 4; margin: 0; padding: .2rem 0; list-style: none; min-width: 12rem; max-width: min(28rem, 80vw); max-height: 50vh; overflow-y: auto;
+			border-radius: calc(var(--radius, 10px) / 3); background: #3a3a3a; color: #fff; font: 400 .78rem/1.5 var(--font-mono, monospace); box-shadow: 0 2px 8px rgba(0, 0, 0, .3); }
+		.vi-complete[hidden] { display: none; }
+		.vi-complete li { padding: .1rem .6rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+		.vi-complete li:hover { background: rgba(255, 255, 255, .1); }
+		.vi-complete li[aria-selected="true"] { background: #2f7de1; }
+		.vi-complete li.vi-complete-empty { opacity: .65; cursor: default; background: none; }
+		.vi-complete mark { background: none; color: inherit; font-weight: 700; text-decoration: underline; }
 		.vi-message[data-type="error"] { background: #d03b3b; }
 		.vi-message[data-type="warning"] { background: #b45309; }
 		::highlight(vi-search) { background-color: rgba(245, 196, 0, .35); }
@@ -193,6 +201,14 @@ function buildUi(){
 	ui.esc.addEventListener("click", pressEsc);
 	const input = ui.indicator.querySelector("input");
 	input.addEventListener("keydown", onCommandLineKeydown);
+	input.addEventListener("input", updateCompletions);
+	ui.completions = document.createElement("ul");
+	ui.completions.className = "vi-complete";
+	ui.completions.setAttribute("role", "listbox");
+	ui.completions.hidden = true;
+	// keeps the focus in the command line, a blur would close it
+	ui.completions.addEventListener("mousedown", (e) => e.preventDefault());
+	ui.completions.addEventListener("click", onCompletionClick);
 	input.addEventListener("blur", () => { if ( commandLine ) { closeCommandLine(false) } });
 	ui.bar = document.createElement("div");
 	ui.bar.className = "vi-bar";
@@ -202,7 +218,7 @@ function buildUi(){
 	ui.message.setAttribute("role", "status");
 	ui.indicator.prepend(ui.esc);
 	ui.bar.append(ui.message, ui.indicator);
-	ui.root.append(style, ui.bar, ui.cursor);
+	ui.root.append(style, ui.bar, ui.completions, ui.cursor);
 	document.body.appendChild(ui.root);
 	document.body.classList.add("vi-enabled");
 	placeIndicator();
@@ -1787,6 +1803,7 @@ function closeCommandLine(restoreCaret=true){
 	if ( !commandLine ) { return }
 	const {editor, index} = commandLine;
 	commandLine = null;
+	hideCompletions();
 	setMode("normal");
 	if ( !enabled ) { return }
 	editor.focus({preventScroll: true});
@@ -1803,6 +1820,12 @@ function onCommandLineKeydown(e){
 	if ( e.key === "Escape" || (e.ctrlKey && e.key === "[") || (e.key === "Backspace" && !input.value) ) {
 		e.preventDefault();
 		closeCommandLine(true);
+		return
+	}
+	// Tab would move the focus out and close the command line
+	if ( e.key === "Tab" || (completions && (e.key === "ArrowDown" || e.key === "ArrowUp")) ) {
+		e.preventDefault();
+		if ( completions ) { selectCompletion(e.key === "ArrowUp" || (e.key === "Tab" && e.shiftKey) ? -1 : 1) }
 		return
 	}
 	if ( e.key !== "Enter" ) { return }
@@ -1822,6 +1845,89 @@ function onCommandLineKeydown(e){
 		searchMove(editor, model, caretIndex(model) ?? 0, lastSearch.pattern, lastSearch.backward, 1);
 	}
 	render();
+}
+
+// :e name completion: after the first character of the name, the documents with it in their name
+let completions = null;                 // {command, names, selected}
+
+function updateCompletions(){
+	const match = commandLine?.kind === ":" && ui.indicator.querySelector("input").value.match(/^\s*(e|edit|tabe|tabedit|tabnew)\s+(.*\S)\s*$/);
+	if ( !match ) { hideCompletions(); return }
+	const query = match[2].toLowerCase();
+	const names = (getDocumentNamesFromLocalStorage() || []).filter(name => name.toLowerCase().includes(query));
+	const starts = (name) => name.toLowerCase().startsWith(query);
+	names.sort((a, b) => starts(b) - starts(a) || a.localeCompare(b));
+	completions = {command: match[1], names, selected: -1};
+	renderCompletions(query);
+}
+
+function renderCompletions(query){
+	const list = ui.completions;
+	list.replaceChildren();
+	if ( !completions.names.length ) {
+		const empty = document.createElement("li");
+		empty.className = "vi-complete-empty";
+		empty.textContent = "No matching documents";
+		list.append(empty);
+	}
+	for ( const [i, name] of completions.names.entries() ) {
+		const item = document.createElement("li");
+		item.setAttribute("role", "option");
+		item.dataset.index = i;
+		item.title = name;
+		const at = name.toLowerCase().indexOf(query);
+		const mark = document.createElement("mark");
+		mark.textContent = name.slice(at, at + query.length);
+		item.append(name.slice(0, at), mark, name.slice(at + query.length));
+		list.append(item);
+	}
+	list.hidden = false;
+	const bar = ui.bar.getBoundingClientRect();
+	list.style.top = `${Math.round(bar.bottom + 4)}px`;
+	list.style.right = ui.bar.style.right;
+	markSelectedCompletion();
+}
+
+function hideCompletions(){
+	completions = null;
+	if ( ui.completions ) { ui.completions.hidden = true }
+}
+
+function selectCompletion(step){
+	// like the wildmenu: Tab / Down next, Shift+Tab / Up previous, the name goes into the command line
+	const count = completions.names.length;
+	if ( !count ) { return }
+	completions.selected = completions.selected === -1 && step < 0 ? count - 1 : (completions.selected + step + count) % count;
+	ui.indicator.querySelector("input").value = `${completions.command} ${completions.names[completions.selected]}`;
+	markSelectedCompletion();
+}
+
+function markSelectedCompletion(){
+	for ( const item of ui.completions.querySelectorAll("li[role=option]") ) {
+		const selected = Number(item.dataset.index) === completions.selected;
+		item.setAttribute("aria-selected", selected);
+		if ( selected ) { item.scrollIntoView({block: "nearest"}) }
+	}
+}
+
+function onCompletionClick(e){
+	const item = e.target.closest("li[role=option]");
+	if ( !item || !commandLine ) { return }
+	const {editor, visual} = commandLine;
+	const value = `${completions.command} ${completions.names[Number(item.dataset.index)]}`;
+	closeCommandLine(true);
+	runExCommand(editor, value, visual);
+	render();
+}
+
+function closeAllTabs(force){
+	// :qa closes the tabs without unsaved changes, :qa! all of them
+	const kept = tabs.filter(t => t.dirty && !force);
+	for ( const tab of tabs.filter(t => !kept.includes(t)) ) {
+		tab.dirty = false;
+		closeTab(tab.id);
+	}
+	if ( kept.length ) { showMessage(`${kept.length} tab${kept.length > 1 ? "s" : ""} with unsaved changes kept (:qa! closes them)`, "warning") }
 }
 
 function runExCommand(editor, value, visual){
@@ -1873,6 +1979,9 @@ function runExCommand(editor, value, visual){
 	case "q": case "quit": case "q!": case "quit!": case "close":
 		closeActiveTab(name.endsWith("!"));
 		return;
+	case "qa": case "qall": case "qa!": case "qall!": case "quitall": case "quitall!":
+		closeAllTabs(name.endsWith("!"));
+		return;
 	case "wq": case "x": case "xit": case "exit": case "wq!": case "x!":
 		saveDocumentToLocalStorage();
 		closeActiveTab(false);
@@ -1883,6 +1992,11 @@ function runExCommand(editor, value, visual){
 		return;
 	case "sp": case "split": case "vs": case "vsp": case "vsplit": case "new": case "vnew":
 		splitEditor();
+		return;
+	case "tree": case "FileExplorer":
+		// shows the file tree and goes to it, like Ctrl+w h
+		if ( !isFileTreeVisible() ) { showFileTree() }
+		focusTree();
 		return;
 	case "f": case "focus":
 		toggleFocusMode();
@@ -1927,7 +2041,9 @@ function setHeading(editor, model, [first, last], level, cursor){
 function closeActiveTab(force){
 	const tab = getActiveTab();
 	if ( !tab ) { return }
-	if ( force ) { tab.dirty = false }
+	// like Vim: :q leaves a tab with unsaved changes open, :q! closes it
+	if ( tab.dirty && !force ) { showMessage("E37: No write since last change (add ! to override)", "error"); return }
+	tab.dirty = false;
 	closeTab(tab.id);
 }
 
@@ -2377,14 +2493,16 @@ const helpSections = [
 	]],
 	["Commands", [
 		[":w", "save"],
-		[":q :q!", "close the tab, without asking about unsaved changes"],
+		[":q :q!", "close the tab (not with unsaved changes), close it anyway"],
+		[":qa :qa!", "close all tabs but the unsaved ones, close all tabs"],
 		[":wq :x", "save and close the tab"],
-		[":e name", "open a document"],
+		[":e name", "open a document: the matching documents are listed, Tab / Shift+Tab or arrows pick one"],
 		[":vs :sp", "split the editor"],
 		[":s/a/b/g :%s/a/b/gi", "replace on the line / everywhere (g: all on a line, i: ignore case)"],
 		[":d :y, :2,5d", "delete, yank lines"],
 		[":5", "go to line 5"],
 		[":h0 :h1 :h2 :h3 :h4", "text, heading 1 to 4 (on the selected lines from VISUAL)"],
+		[":tree :FileExplorer", "show the documents and go to them (TREE)"],
 		[":f :focus", "focus mode on / off: only the text; Esc Esc in NORMAL or the faint x leaves it"],
 		[":h :help", "this help"],
 		["q, Esc", "close pop-ups (this help, Settings, menus); Esc in any mode"],
