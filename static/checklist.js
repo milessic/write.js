@@ -86,18 +86,61 @@ function taskItemsToBullets(){
 	return items.length > 0;
 }
 
+function autoCheckParentsEnabled(){
+	// on until turned off
+	return !validateUserConsent(false) || localStorage.getItem(autoCheckParentsKey) !== "0";
+}
+
+function childTaskItems(li){
+	// the checklist items of the lists nested under li (not the ones nested deeper)
+	return nestedListsOf(li).flatMap((list) => [...list.children].filter(isTaskItem));
+}
+
+function parentItem(li){
+	return isListElement(li.parentElement) ? listOwner(li.parentElement) : null;
+}
+
+function updateParentTaskItems(items){
+	// a checklist item with checklist items nested in it is checked when all of them are, unchecked when one isn't;
+	// the items it is nested in follow. Checked by hand, it stays so until one of its items changes
+	for ( const item of items ) {
+		for ( let parent = parentItem(item); isTaskItem(parent); parent = parentItem(parent) ) {
+			const children = childTaskItems(parent);
+			const checked = String(children.length > 0 && children.every(isChecked));
+			if ( !children.length || parent.dataset.checked === checked ) { break }
+			parent.dataset.checked = checked;
+		}
+	}
+}
+
 function setTaskItemsChecked(items, checked){
 	const editors = new Set();
 	for ( const li of items ) {
 		li.dataset.checked = String(checked);
 		editors.add(li.closest(".editor"));
 	}
+	if ( autoCheckParentsEnabled() ) { updateParentTaskItems(items) }
 	// the state is part of the document: it changed like after an edit (unsaved tab, autosave)
 	for ( const editor of editors ) {
 		if ( !editor ) { continue }
 		editor.dispatchEvent(new Event("input", { bubbles: true }));
 		if ( editor.id === "editor" ) { performAutoSave() }
 	}
+}
+
+function autoCheckParentsSettingsHtml(){
+	// goes in the Lists section of Settings (createSettingsModal, script.js)
+	return `
+		<label class="check"><input id="setting-auto-check-parents" type="checkbox"${autoCheckParentsEnabled() ? " checked" : ""}>Check a checklist item when all the items nested in it are checked</label>
+		<p class="muted small">Unchecking one of them unchecks it again.</p>`;
+}
+
+function initAutoCheckParentsSettings(){
+	document.getElementById("setting-auto-check-parents").addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
+		localStorage.setItem(autoCheckParentsKey, e.target.checked ? "1" : "0");
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
 }
 
 function taskItemAtCheckbox(e){

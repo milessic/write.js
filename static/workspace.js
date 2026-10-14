@@ -992,6 +992,7 @@ function loadPane(pane){
 	}
 	tab.html = null;
 	pane.editor.innerHTML = html;
+	moveListsOutOfItems(pane.editor);
 	if ( typeof normalizeChecklists !== "undefined" ) { normalizeChecklists(pane.editor) } // checklist.js loads after this file
 	if ( typeof applyHeadingFolds !== "undefined" ) { applyHeadingFolds(pane.editor); normalizeListFolds(pane.editor) } // folding.js loads after this file
 }

@@ -13,6 +13,7 @@ const viModeKey = "__viMode__"; // "1" when the vi keybindings are on (Settings)
 const autoDetectKey = "__autoDetect__"; // {enabled, rules} for markdown typed into formatting (Settings, autodetect.js), goes with the notebook
 const headingFoldingKey = "__headingFolding__"; // "0" when collapsing sections by their headings is off (Settings, folding.js), goes with the notebook
 const listFoldingKey = "__listFolding__"; // "0" when collapsing list items with nested items is off (Settings, folding.js), goes with the notebook
+const autoCheckParentsKey = "__autoCheckParents__"; // "0" when a checklist item isn't checked with all its nested items (Settings, checklist.js), goes with the notebook
 const viEscButtonKey = "__viEscButton__"; // "1" shows the vi Esc button on touch screens, this device only
 const viScriptUrl = document.currentScript?.dataset.viSrc || "static/vi.js"; // content-versioned by the server, see utils/static_files.py
 
@@ -92,6 +93,7 @@ document.getElementById("editor-grid").addEventListener('keydown', (e) => {perfo
 document.getElementById("editor-grid").addEventListener('keydown', handleListItemMove, true);
 document.getElementById("editor-grid").addEventListener('click', updateCaretPosition);
 document.getElementById("editor-grid").addEventListener('paste', handlePasteLinkOnSelection);
+document.getElementById("editor-grid").addEventListener('paste', handlePasteListIntoList);
 // formatting shortcuts and undo change the line's style without moving the caret
 document.getElementById("editor-grid").addEventListener('input', updateBlockSelect);
 document.getElementById("editor-grid").addEventListener('beforeinput', handleListItemBackspace);
@@ -373,9 +375,15 @@ function createSettingsModal(){
 	<div class="stack">
 		<label class="check"><input id="setting-heading-breaks" type="checkbox"${headingBreaksEnabled() ? " checked" : ""}>Auto-insert break lines under headings</label>
 		${headingFoldingSettingsHtml()}
-	</div>` + listFoldingSettingsHtml() + autoDetectSettingsHtml());
+	</div>
+	<h3>Lists</h3>
+	<div class="stack">
+		${listFoldingSettingsHtml()}
+		${autoCheckParentsSettingsHtml()}
+	</div>` + autoDetectSettingsHtml());
 	initHeadingFoldingSettings();
 	initListFoldingSettings();
+	initAutoCheckParentsSettings();
 	initAutoDetectSettings();
 	document.querySelectorAll('input[name="setting-focus-mode"]').forEach((input) => input.addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
@@ -510,6 +518,7 @@ function fillEditorWithHTML(html, append=false){
 		return
 	}
     document.getElementById("editor").innerHTML = html;
+	moveListsOutOfItems(document.getElementById("editor"));
 	normalizeChecklists(document.getElementById("editor"));
 	document.getElementById("editor").closest(".pane-scroll").scrollTo(0, 1000);
 }
@@ -1578,6 +1587,131 @@ function listItemUnit(li){
 	return unit;
 }
 
+function isListElement(el){
+	return el?.nodeName === "UL" || el?.nodeName === "OL";
+}
+
+function nestedListsOf(li){
+	// the lists nested under an item, inside it or right after it (listItemUnit)
+	return [...[...li.children].filter(isListElement), ...listItemUnit(li).slice(1)];
+}
+
+function listOwner(list){
+	// the item a nested list is under: the one it is in, or the one right before it (and its other nested lists)
+	if ( list.parentElement?.nodeName === "LI" ) { return list.parentElement }
+	let prev = list.previousElementSibling;
+	while ( isListElement(prev) ) { prev = prev.previousElementSibling }
+	return prev?.nodeName === "LI" && isListElement(list.parentElement) ? prev : null;
+}
+
+function moveListsOutOfItems(editor){
+	// a list nested inside an item goes right after it, as Tab nests them: Chrome's Enter at the end of an item
+	// moves a list inside it into the new item, and Shift+Tab breaks one. Only for a loaded document, before any
+	// edit: nodes moved by hand would break the browser's undo
+	for ( const li of editor.querySelectorAll("li") ) {
+		const first = [...li.childNodes].findIndex(isListElement);
+		if ( first === -1 ) { continue }
+		const rest = [...li.childNodes].slice(first);
+		if ( !rest.every((node) => isListElement(node) || (node.nodeType === Node.TEXT_NODE && node.textContent.trim() === "")) ) { continue }
+		// an item that is only its lists (left by Enter or undo) shows as checkboxes or bullets side by side: it goes
+		if ( [...li.childNodes].slice(0, first).every((node) => node.nodeName === "BR" || node.textContent.trim() === "") ) {
+			li.replaceWith(...rest);
+			continue
+		}
+		li.after(...rest);
+	}
+}
+
+// pasting a list into a list: its items become items of that list, where the caret is (before, after, or splitting
+// its item), nested ones nested as Tab nests them; into a checklist, items without a checkbox get one
+const pastedListLine = /^([ \t]*)([-*+]|\d+[.)])[ \t]+(?:\[([ xX])\][ \t]+)?(.*)$/;
+const pastedInlineTags = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "CODE", "A"]);
+
+function pastedItemsFromText(text){
+	// "- a", "* a", "1. a", "- [ ] a", "- [x] a" lines, nested by their indent; null if any line isn't one
+	const lines = text.replace(/\r\n?/g, "\n").split("\n").filter((line) => line.trim() !== "");
+	if ( !lines.length || !lines.every((line) => pastedListLine.test(line)) ) { return null }
+	const root = { children: [], indent: -1 };
+	const stack = [root];
+	for ( const line of lines ) {
+		const [, space, marker, box, content] = line.match(pastedListLine);
+		const indent = space.replace(/\t/g, " ".repeat(indentSize)).length;
+		while ( stack.length > 1 && stack.at(-1).indent >= indent ) { stack.pop() }
+		const parent = stack.at(-1);
+		const item = { html: escapeHtmlText(content), checked: box === undefined ? null : box !== " ", children: [], indent, ordered: /\d/.test(marker) };
+		parent.children.push(item);
+		stack.push(item);
+	}
+	return root.children;
+}
+
+function pastedItemsFromHtml(html){
+	// the clipboard's HTML when it is a list (and nothing else but whitespace); parsed inert, only text and simple
+	// formatting are kept
+	const doc = new DOMParser().parseFromString(html, "text/html");
+	const blocks = [...doc.body.childNodes].filter((node) => node.nodeType === Node.ELEMENT_NODE || node.textContent.trim() !== "");
+	if ( !blocks.length || !blocks.every(isListElement) ) { return null }
+	return blocks.flatMap(pastedListItems);
+}
+
+function pastedListItems(list){
+	// items of a pasted list, with the lists nested in them or right after them
+	const items = [];
+	for ( const child of list.children ) {
+		if ( child.nodeName === "LI" ) {
+			const checkbox = child.querySelector(':scope > input[type="checkbox"]');
+			const checked = child.hasAttribute("data-checked") ? child.dataset.checked === "true" : checkbox ? checkbox.checked : null;
+			const own = [...child.childNodes].filter((node) => !isListElement(node) && node !== checkbox);
+			items.push({ html: own.map(safeInlineHtml).join("").trim(), checked, children: [], ordered: list.nodeName === "OL" });
+			for ( const nested of [...child.children].filter(isListElement) ) { items.at(-1).children.push(...pastedListItems(nested)) }
+		} else if ( isListElement(child) ) {
+			const nested = pastedListItems(child);
+			items.length ? items.at(-1).children.push(...nested) : items.push(...nested);
+		}
+	}
+	return items;
+}
+
+function safeInlineHtml(node){
+	if ( node.nodeType === Node.TEXT_NODE ) { return escapeHtmlText(node.textContent.replace(/\s+/g, " ")) }
+	if ( node.nodeType !== Node.ELEMENT_NODE ) { return "" }
+	const inner = [...node.childNodes].map(safeInlineHtml).join("");
+	if ( !pastedInlineTags.has(node.nodeName) ) { return inner }
+	const tag = node.nodeName.toLowerCase();
+	if ( tag !== "a" ) { return `<${tag}>${inner}</${tag}>` }
+	const href = node.getAttribute("href") || "";
+	return /^(https?:|mailto:)/i.test(href) ? `<a href="${escapeHtmlText(href)}" target="about:blank">${inner}</a>` : inner;
+}
+
+function escapeHtmlText(text){
+	return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function pastedItemsHtml(items, asTask){
+	return items.map((item) => {
+		const checked = item.checked !== null ? item.checked : asTask ? false : null;
+		const nested = item.children.length ? item.children[0].ordered ? "ol" : "ul" : "";
+		return `<li${checked === null ? "" : ` data-checked="${checked}"`}>${item.html || "<br>"}</li>`
+			+ (nested ? `<${nested}>${pastedItemsHtml(item.children, asTask)}</${nested}>` : "");
+	}).join("");
+}
+
+function handlePasteListIntoList(e){
+	if ( e.defaultPrevented ) { return }
+	const editor = e.target.closest?.(".editor");
+	const selection = window.getSelection();
+	if ( !editor || !selection.rangeCount ) { return }
+	const range = selection.getRangeAt(0);
+	const itemOf = (node) => (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)?.closest("li");
+	const li = itemOf(range.startContainer);
+	if ( !li || !editor.contains(li) || itemOf(range.endContainer)?.parentElement !== li.parentElement ) { return }
+	const html = e.clipboardData?.getData("text/html");
+	const items = (html && pastedItemsFromHtml(html)) || pastedItemsFromText(e.clipboardData?.getData("text/plain") || "");
+	if ( !items?.length ) { return }
+	e.preventDefault();
+	document.execCommand("insertHTML", false, pastedItemsHtml(items, li.hasAttribute("data-checked")));
+}
+
 function moveListItems(editor, li, up){
 	const selection = window.getSelection();
 	const range = selection.getRangeAt(0);
@@ -1660,10 +1794,7 @@ function removeTab(){
 	restoreEditorSelection();
 	// in a list, Shift+Tab un-nests the item (moves the bullet left)
 	if ( getCaretListItem() ) {
-		keepTaskItemState(() => {
-			unnestCaretList(document.getElementById("editor")); // folding.js
-			document.execCommand("outdent", false, null);
-		});
+		keepTaskItemState(() => document.execCommand("outdent", false, null));
 		updateCaretPosition();
 		return
 	}

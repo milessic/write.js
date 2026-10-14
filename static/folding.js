@@ -191,33 +191,39 @@ function initListFoldingSettings(){
 }
 
 
-// list folding
+// list folding: an item's nested lists are inside it, or right after it as Tab (execCommand("indent")) makes them
+// (nestedListsOf, listOwner in script.js); nothing is moved while editing, the browser's undo goes on working
 function elementOf(node){
 	return node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
 }
 
-function nestedLists(li){
-	return [...li.children].filter((el) => (el.nodeName === "UL" || el.nodeName === "OL") && el.querySelector(":scope > li"));
+function foldedLists(li){
+	return nestedListsOf(li).filter((list) => list.querySelector(":scope > li"));
 }
 
 function isFoldableItem(el){
-	return el?.nodeName === "LI" && Boolean(el.closest(".editor")) && nestedLists(el).length > 0;
+	return el?.nodeName === "LI" && Boolean(el.closest(".editor")) && foldedLists(el).length > 0;
 }
 
 function isCollapsedItem(el){
 	return el?.nodeName === "LI" && el.dataset.collapsed === "true";
 }
 
+function hasListInside(li){
+	return [...li.children].some((el) => isListElement(el) && el.querySelector(":scope > li"));
+}
+
 function onFoldArrow(li, e){
-	// the arrow is left of the item's bullet or checkbox (styles.css), on its first line; the checkbox's gutter
-	// (checklist.js) starts at 1.9em left of the item, the arrow's ends there
+	// the arrow is left of the item's bullet or checkbox (styles.css): on its first line when the list is in the item,
+	// on its last one (right above the list) when the list comes after it; the checkbox's gutter (checklist.js)
+	// starts at 1.9em left of the item, the arrow's ends there
 	const rect = li.getBoundingClientRect();
 	const style = getComputedStyle(li);
 	const fontSize = parseFloat(style.fontSize) || 16;
 	const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.5;
 	const inGutter = e.clientX < rect.left - fontSize * 1.9 && e.clientX >= rect.left - fontSize * 3;
-	const onFirstLine = e.clientY >= rect.top && e.clientY <= rect.top + lineHeight;
-	return inGutter && onFirstLine;
+	const top = hasListInside(li) ? rect.top : rect.bottom - lineHeight;
+	return inGutter && e.clientY >= top && e.clientY <= top + lineHeight;
 }
 
 function listItemAtFoldArrow(e){
@@ -227,9 +233,34 @@ function listItemAtFoldArrow(e){
 	const candidates = new Set();
 	for ( let el = target; el && !el.classList.contains("editor"); el = el.parentElement ) {
 		if ( el.nodeName === "LI" ) { candidates.add(el) }
-		if ( el.nodeName === "UL" || el.nodeName === "OL" ) { [...el.children].forEach((li) => candidates.add(li)) }
+		if ( isListElement(el) ) {
+			[...el.children].forEach((li) => candidates.add(li));
+			if ( listOwner(el) ) { candidates.add(listOwner(el)) }
+		}
 	}
 	return [...candidates].find((li) => isFoldableItem(li) && onFoldArrow(li, e)) || null;
+}
+
+function hidingItems(node){
+	// the items whose nested lists node is in, nearest first
+	const items = [];
+	for ( let el = elementOf(node); el && !el.classList.contains("editor"); el = el.parentElement ) {
+		const owner = isListElement(el) && listOwner(el);
+		if ( owner ) { items.push(owner) }
+	}
+	return items;
+}
+
+function unfoldListsAround(node){
+	// expands the collapsed items that hide node
+	let changed = false;
+	for ( const li of hidingItems(node) ) {
+		if ( isCollapsedItem(li) ) {
+			li.removeAttribute("data-collapsed");
+			changed = true;
+		}
+	}
+	return changed;
 }
 
 function toggleListFold(li){
@@ -241,10 +272,10 @@ function toggleListFold(li){
 	}
 	// the caret doesn't stay in a hidden item, it goes to the end of the item's own text
 	const selection = window.getSelection();
-	const anchor = selection.rangeCount ? elementOf(selection.anchorNode) : null;
-	if ( isCollapsedItem(li) && anchor && anchor !== li && li.contains(anchor) && anchor.closest("li") !== li ) {
+	if ( isCollapsedItem(li) && selection.rangeCount && hidingItems(selection.anchorNode).includes(li) ) {
 		const caret = document.createRange();
-		caret.setStartBefore(nestedLists(li)[0]);
+		const inside = [...li.children].find(isListElement);
+		inside ? caret.setStartBefore(inside) : caret.setStart(li, li.childNodes.length);
 		caret.collapse(true);
 		selection.removeAllRanges();
 		selection.addRange(caret);
@@ -254,80 +285,7 @@ function toggleListFold(li){
 	if ( editor.id === "editor" ) { performAutoSave() }
 }
 
-function unfoldListsAround(node){
-	// expands the collapsed items that hide node
-	const own = elementOf(node)?.closest("li");
-	let changed = false;
-	for ( let li = own?.parentElement?.closest("li"); li && li.closest(".editor"); li = li.parentElement?.closest("li") ) {
-		if ( isCollapsedItem(li) ) {
-			li.removeAttribute("data-collapsed");
-			changed = true;
-		}
-	}
-	return changed;
-}
-
-function unfoldLastItems(li){
-	// expands the collapsed items down to the last line shown under li, which is hidden when li is collapsed
-	for ( ; li?.nodeName === "LI"; li = nestedLists(li).at(-1)?.lastElementChild ) {
-		if ( isCollapsedItem(li) ) { li.removeAttribute("data-collapsed") }
-	}
-}
-
-function keepingSelection(fn){
-	// moving nodes takes a selection inside them out to where they were: it is put back
-	const selection = window.getSelection();
-	const range = selection.rangeCount ? selection.getRangeAt(0) : null;
-	const ends = range && [range.startContainer, range.startOffset, range.endContainer, range.endOffset];
-	if ( !fn() || !ends ) { return }
-	const restored = document.createRange();
-	restored.setStart(ends[0], ends[1]);
-	restored.setEnd(ends[2], ends[3]);
-	selection.removeAllRanges();
-	selection.addRange(restored);
-}
-
-function nestListsInItems(editor){
-	// Tab (execCommand("indent")) nests an item in a list right after the item above, not in it: the list goes into
-	// that item (into its own nested list when it has one), so it is the item's to fold; a collapsed one opens up,
-	// the nested item is where the caret is
-	keepingSelection(() => {
-		const lists = [...editor.querySelectorAll("li + ul, li + ol")];
-		for ( const list of lists ) {
-			const li = list.previousElementSibling;
-			li.removeAttribute("data-collapsed");
-			const last = li.lastElementChild;
-			if ( last?.nodeName === list.nodeName ) {
-				last.append(...list.childNodes);
-				list.remove();
-			} else {
-				li.appendChild(list);
-			}
-		}
-		return lists.length > 0;
-	});
-}
-
-function unnestCaretList(editor){
-	// Shift+Tab (execCommand("outdent")) breaks an item nested in a list inside the item above (Chrome puts it as an
-	// <li> in that <li>): before it, the list goes right after the item above, as Tab makes it; nestListsInItems
-	// takes what is left of it back in after the edit
-	const selection = window.getSelection();
-	if ( !selection.rangeCount ) { return }
-	const li = elementOf(selection.getRangeAt(0).startContainer)?.closest("li");
-	const list = li?.parentElement;
-	const parent = list?.parentElement;
-	if ( parent?.nodeName !== "LI" || !editor.contains(parent) ) { return }
-	keepingSelection(() => {
-		const after = [];
-		for ( let node = list; node; node = node.nextSibling ) { after.push(node) }
-		parent.after(...after);
-		return true;
-	});
-}
-
 function normalizeListFolds(editor){
-	nestListsInItems(editor);
 	// an item whose nested list is gone isn't collapsed
 	for ( const li of editor.querySelectorAll("li[data-collapsed]") ) {
 		if ( !isFoldableItem(li) ) { li.removeAttribute("data-collapsed") }
@@ -347,9 +305,34 @@ function caretItem(editor){
 	before.setEnd(range.startContainer, range.startOffset);
 	const after = document.createRange();
 	after.setStart(range.startContainer, range.startOffset);
-	const nested = nestedLists(li)[0];
-	nested ? after.setEndBefore(nested) : after.setEnd(li, li.childNodes.length);
+	const inside = [...li.children].find(isListElement);
+	inside ? after.setEndBefore(inside) : after.setEnd(li, li.childNodes.length);
 	return { li, atStart: before.toString() === "", atEnd: after.toString() === "" };
+}
+
+function lineAbove(editor){
+	// the element of the line Backspace at the start of the caret's line goes into: an item, or a block of the editor
+	const item = caretItem(editor);
+	if ( item ) { return item.atStart ? item.li.previousElementSibling : null }
+	const line = caretLine(editor);
+	return line?.atStart ? line.line.previousElementSibling : null;
+}
+
+function unfoldBeforeIndent(editor){
+	// Tab (or vi's >>) nests the caret's item under the item above: when that one is collapsed, the item would go
+	// into its hidden items and the browser would take the caret away, so it opens up first
+	const li = elementOf(window.getSelection().anchorNode)?.closest("li");
+	if ( !li || !editor.contains(li) ) { return }
+	const above = li.previousElementSibling;
+	const owner = isListElement(above) ? listOwner(above) : above;
+	if ( isCollapsedItem(owner) ) { owner.removeAttribute("data-collapsed") }
+}
+
+function handleListFoldTab(e){
+	if ( e.key !== "Tab" || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.defaultPrevented ) { return }
+	if ( document.body.classList.contains("vi-block-caret") ) { return } // vi's NORMAL: Tab checks the item, >> nests it
+	const editor = e.target.closest?.(".editor");
+	if ( editor && window.getSelection().rangeCount ) { unfoldBeforeIndent(editor) }
 }
 
 function handleListFoldMouseDown(e){
@@ -375,19 +358,17 @@ function handleListFoldDelete(e){
 	if ( !document.body.classList.contains("list-folding") ) { return }
 	const editor = e.target.closest?.(".editor");
 	if ( !editor ) { return }
-	const item = caretItem(editor);
 	if ( e.inputType === "deleteContentForward" ) {
+		const item = caretItem(editor);
 		if ( item?.atEnd && isCollapsedItem(item.li) ) { item.li.removeAttribute("data-collapsed") }
 		return
 	}
-	// Backspace at the start of a line goes into the last line shown above it
-	if ( item ) {
-		if ( item.atStart && item.li.previousElementSibling?.nodeName === "LI" ) { unfoldLastItems(item.li.previousElementSibling) }
-		return
-	}
-	const line = caretLine(editor);
-	const above = line?.atStart && line.line.previousElementSibling;
-	if ( above?.nodeName === "UL" || above?.nodeName === "OL" ) { unfoldLastItems(above.lastElementChild) }
+	// Backspace at the start of a line goes into the last line above it, maybe a hidden one
+	const above = lineAbove(editor);
+	if ( !above ) { return }
+	const last = [...above.querySelectorAll("li")].at(-1) || above;
+	unfoldListsAround(last);
+	if ( isCollapsedItem(above) ) { above.removeAttribute("data-collapsed") }
 }
 
 function handleListFoldSelectionChange(){
@@ -400,18 +381,16 @@ function handleListFoldSelectionChange(){
 }
 
 function listFoldingSettingsHtml(){
-	// the Lists section of Settings (createSettingsModal, script.js)
+	// goes in the Lists section of Settings (createSettingsModal, script.js)
 	return `
-	<h3>Lists</h3>
-	<div class="stack">
 		<label class="check"><input id="setting-list-folding" type="checkbox"${listFoldingEnabled() ? " checked" : ""}>Collapse and expand list items with nested items</label>
-		<p class="muted small">Click the arrow left of an item's bullet or checkbox. Collapsed items are saved with the document; turned off, everything shows.</p>
-	</div>`;
+		<p class="muted small">Click the arrow left of an item's bullet or checkbox. Collapsed items are saved with the document; turned off, everything shows.</p>`;
 }
 
 // capture: opens the section before script.js handles the Enter (handleHeadingBreakEnter)
 document.getElementById("editor-grid").addEventListener("keydown", handleFoldEnter, true);
 document.getElementById("editor-grid").addEventListener("keydown", handleListFoldEnter, true);
+document.getElementById("editor-grid").addEventListener("keydown", handleListFoldTab, true);
 document.getElementById("editor-grid").addEventListener("mousedown", handleFoldMouseDown);
 document.getElementById("editor-grid").addEventListener("mousedown", handleListFoldMouseDown);
 document.getElementById("editor-grid").addEventListener("beforeinput", handleFoldDelete, true);
@@ -424,4 +403,7 @@ document.getElementById("editor-grid").addEventListener("input", (e) => {
 	normalizeListFolds(editor);
 });
 applyFoldingSettings();
-document.querySelectorAll("#editor-grid .editor").forEach(normalizeListFolds);
+document.querySelectorAll("#editor-grid .editor").forEach((editor) => {
+	moveListsOutOfItems(editor);
+	normalizeListFolds(editor);
+});
