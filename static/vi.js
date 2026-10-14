@@ -1104,7 +1104,10 @@ function indentLines(editor, model, from, to, indent){
 		const li = elementOf(position.node).closest("li");
 		if ( li && editor.contains(li) ) {
 			setCaret(current, s);
-			const move = () => exec(indent ? "indent" : "outdent");
+			const move = () => {
+				if ( !indent && typeof unnestCaretList === "function" ) { unnestCaretList(editor) } // folding.js
+				exec(indent ? "indent" : "outdent");
+			};
 			typeof keepTaskItemState === "function" ? keepTaskItemState(move) : move(); // checklist.js
 			continue
 		}

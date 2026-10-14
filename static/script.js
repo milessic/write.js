@@ -12,6 +12,7 @@ const themeCookie = "theme";
 const viModeKey = "__viMode__"; // "1" when the vi keybindings are on (Settings), goes with the notebook
 const autoDetectKey = "__autoDetect__"; // {enabled, rules} for markdown typed into formatting (Settings, autodetect.js), goes with the notebook
 const headingFoldingKey = "__headingFolding__"; // "0" when collapsing sections by their headings is off (Settings, folding.js), goes with the notebook
+const listFoldingKey = "__listFolding__"; // "0" when collapsing list items with nested items is off (Settings, folding.js), goes with the notebook
 const viEscButtonKey = "__viEscButton__"; // "1" shows the vi Esc button on touch screens, this device only
 const viScriptUrl = document.currentScript?.dataset.viSrc || "static/vi.js"; // content-versioned by the server, see utils/static_files.py
 
@@ -372,8 +373,9 @@ function createSettingsModal(){
 	<div class="stack">
 		<label class="check"><input id="setting-heading-breaks" type="checkbox"${headingBreaksEnabled() ? " checked" : ""}>Auto-insert break lines under headings</label>
 		${headingFoldingSettingsHtml()}
-	</div>` + autoDetectSettingsHtml());
+	</div>` + listFoldingSettingsHtml() + autoDetectSettingsHtml());
 	initHeadingFoldingSettings();
+	initListFoldingSettings();
 	initAutoDetectSettings();
 	document.querySelectorAll('input[name="setting-focus-mode"]').forEach((input) => input.addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
@@ -1113,7 +1115,7 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 		if ( name !== null ) { reloadDocumentTabs(name) }
 	}
 	if ( fromCloud ) { rememberSynced(synced) }
-	applyHeadingFolding(); // the setting may have come with the notebook
+	applyFoldingSettings(); // the settings may have come with the notebook
 	refreshFileTree();
 	if (loadLastOpened){
 		loadLastOpenedDocument();
@@ -1658,7 +1660,10 @@ function removeTab(){
 	restoreEditorSelection();
 	// in a list, Shift+Tab un-nests the item (moves the bullet left)
 	if ( getCaretListItem() ) {
-		keepTaskItemState(() => document.execCommand("outdent", false, null));
+		keepTaskItemState(() => {
+			unnestCaretList(document.getElementById("editor")); // folding.js
+			document.execCommand("outdent", false, null);
+		});
 		updateCaretPosition();
 		return
 	}

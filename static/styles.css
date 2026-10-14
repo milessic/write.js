@@ -768,6 +768,56 @@ body.app > .topbar {
 		opacity: .4;
 	}
 }
+/* list folding (folding.js): an item with a nested list gets an arrow left of its bullet or checkbox, shown on hover
+   or when collapsed. It is the nested list's ::before (a checklist item's own are its checkbox), placed on the item */
+.list-folding .editor li:has(> :is(ul, ol) > li) {
+	position: relative;
+}
+.list-folding .editor li > :is(ul, ol):has(> li)::before {
+	content: "▾";
+	position: absolute;
+	top: 0;
+	left: -2.85em;
+	width: 1em;
+	text-align: center;
+	font-weight: 400;
+	font-style: normal;
+	color: var(--muted);
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity .15s;
+	user-select: none;
+}
+/* only the hovered item's arrow, not the ones of the items it is nested in */
+.list-folding .editor li:hover:not(:has(li:hover)) > :is(ul, ol)::before,
+.list-folding .editor li[data-collapsed="true"] > :is(ul, ol)::before {
+	opacity: .4;
+}
+.list-folding .editor li[data-collapsed="true"] > :is(ul, ol)::before {
+	content: "▸";
+}
+/* collapsed: the nested list stays (for its arrow) inline after the item's text, with only a " …" in it */
+.list-folding .editor li[data-collapsed="true"] > :is(ul, ol) {
+	display: inline;
+	margin: 0;
+	padding: 0;
+}
+.list-folding .editor li[data-collapsed="true"] > :is(ul, ol)::after {
+	content: " …";
+	color: var(--muted);
+	opacity: .5;
+}
+.list-folding .editor li[data-collapsed="true"] > :is(ul, ol) > li {
+	display: none;
+}
+@media (hover: none) {
+	.list-folding .editor li > :is(ul, ol):has(> li)::before {
+		opacity: .25;
+	}
+	.list-folding .editor li[data-collapsed="true"] > :is(ul, ol)::before {
+		opacity: .4;
+	}
+}
 #checkbox-icon-container {
 	display: inline-block;
 	width: .7em;
