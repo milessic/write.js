@@ -905,6 +905,12 @@ function runNormal(editor, keys){
 	case "u": for ( let n = 0; n < count; n++ ) { exec("undo") } clampCaret(editor); changed(); return;
 	case "<C-r>": for ( let n = 0; n < count; n++ ) { exec("redo") } changed(); return;
 	case ".": repeatLastChange(editor, count1); return;
+	case "Tab": {
+		// checks / unchecks the checklist item of the cursor's line, like Ctrl+Enter (checklist.js)
+		const item = selectedListItems(editor).find(isTaskItem);
+		if ( item ) { setTaskItemsChecked([item], !isChecked(item)) }
+		return;
+	}
 	// VISUAL
 	case "v":
 	case "V":
@@ -2460,6 +2466,7 @@ const helpSections = [
 		["J gJ", "join with the next line, without the space"],
 		["u Ctrl+r", "undo, redo"],
 		[".", "repeat the last change"],
+		["Tab", "check / uncheck the checklist item"],
 	]],
 	["Operators", [
 		["d c y > < g~ gu gU", "delete, change, yank, indent, outdent, toggle case, lower case, upper case"],
