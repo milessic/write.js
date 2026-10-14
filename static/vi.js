@@ -31,7 +31,7 @@ let register = {text: "", linewise: false};
 let lastFind = null;                    // {key: "f", char} for ; and ,
 let lastSearch = null;                  // {pattern, backward}
 let searchHighlight = false;            // hlsearch: matches of lastSearch stay highlighted until :noh
-let lastChange = null;                  // {count, keys, text} for .
+let lastChange = null;                  // {count, keys, text, visual} for .
 let recording = null;                  // the change being recorded while in INSERT
 let replaying = false;
 let visualAnchor = 0;                   // VISUAL: text indexes, both ends inclusive
@@ -71,6 +71,7 @@ window.WriteVi = {
 		document.addEventListener("keydown", onKeydown, true);
 		document.addEventListener("keyup", onKeyup, true);
 		document.addEventListener("pointerdown", onPointerDown, true);
+		document.addEventListener("click", onTreeClick);
 		document.addEventListener("beforeinput", onBeforeInput, true);
 		document.addEventListener("compositionstart", onCompositionStart, true);
 		document.addEventListener("compositionend", onCompositionEnd, true);
@@ -89,6 +90,7 @@ window.WriteVi = {
 		document.removeEventListener("keydown", onKeydown, true);
 		document.removeEventListener("keyup", onKeyup, true);
 		document.removeEventListener("pointerdown", onPointerDown, true);
+		document.removeEventListener("click", onTreeClick);
 		document.removeEventListener("beforeinput", onBeforeInput, true);
 		document.removeEventListener("compositionstart", onCompositionStart, true);
 		document.removeEventListener("compositionend", onCompositionEnd, true);
@@ -788,7 +790,7 @@ function handleKey(key, editor){
 	if ( result === unknown ) { showMessage(`Unknown command: ${pending.map(displayKey).join("")} (:help lists the commands)`, "error") }
 	pending = [];
 	if ( result?.change && !replaying ) {
-		lastChange = {count: result.count, keys: result.keys, text: null};
+		lastChange = {count: result.count, keys: result.keys, text: null, visual: result.visual};
 		if ( mode === "insert" || mode === "replace" ) { recording = lastChange }
 	}
 	render();
@@ -908,8 +910,9 @@ function runNormal(editor, keys){
 	case "Tab": {
 		// checks / unchecks the checklist item of the cursor's line, like Ctrl+Enter (checklist.js)
 		const item = selectedListItems(editor).find(isTaskItem);
-		if ( item ) { setTaskItemsChecked([item], !isChecked(item)) }
-		return;
+		if ( !item ) { return }
+		setTaskItemsChecked([item], !isChecked(item));
+		return {change: true, count: null, keys: ["Tab"]};
 	}
 	// VISUAL
 	case "v":
@@ -1250,6 +1253,11 @@ function enterInsert(model, index){
 }
 
 function leaveInsert(editor){
+	// 3iab<Esc> inserts ab three times
+	if ( recording && !replaying && recording.count > 1 && insertRepeats(recording) && recording.text ) {
+		insertAgain(editor, recording, recording.count - 1);
+		changed();
+	}
 	// like Vim, the cursor steps back onto the last typed character
 	if ( recording ) { recording = null }
 	setMode("normal");
@@ -1257,6 +1265,22 @@ function leaveInsert(editor){
 	const i = caretIndex(model);
 	if ( i !== null && i > lineStart(model.text, i) ) { setCaret(model, i - 1) }
 	render();
+}
+
+function insertRepeats(change){
+	// the commands where a count repeats the inserted text (3ihi, 3ohi), not 3s or 3cw
+	return change.keys.length === 1 && ["i", "a", "I", "A", "o", "O"].includes(change.keys[0]);
+}
+
+function insertAgain(editor, change, times){
+	// after the text inserted once: o / O add it as new lines (checklist items unchecked, checklist.js)
+	const newLine = change.keys[0] === "o" || change.keys[0] === "O";
+	for ( let n = 0; n < times; n++ ) {
+		if ( newLine ) {
+			typeof withNewTaskItemsUnchecked === "function" ? withNewTaskItemsUnchecked(editor, () => exec("insertParagraph")) : exec("insertParagraph");
+		}
+		insertLines(change.text.split("\n"));
+	}
 }
 
 function clampCaret(editor){
@@ -1275,6 +1299,12 @@ function recordInput(e){
 		recording.text = (recording.text || "") + "\n";
 	} else if ( e.inputType === "deleteContentBackward" ) {
 		recording.text = (recording.text || "").slice(0, -1);
+	} else if ( e.inputType === "deleteWordBackward" ) {
+		recording.text = (recording.text || "").replace(/\S*\s*$/, "");
+	} else if ( ["insertFromPaste", "insertFromDrop", "insertReplacementText"].includes(e.inputType) ) {
+		// contenteditable has the text in dataTransfer, not in data
+		const text = e.data ?? e.dataTransfer?.getData("text/plain") ?? "";
+		recording.text = (recording.text || "") + text.replace(/\r\n?/g, "\n");
 	} else if ( e.inputType === "insertCompositionText" ) {
 		// recorded on compositionend
 	}
@@ -1288,17 +1318,32 @@ document.addEventListener("compositionend", (e) => {
 function repeatLastChange(editor, count){
 	if ( !lastChange ) { return }
 	const change = lastChange;
+	const digits = (n) => n ? String(n).split("") : [];
 	replaying = true;
 	try {
-		const keys = [...(count ? String(count).split("") : change.count ? String(change.count).split("") : []), ...change.keys];
 		pending = [];
-		for ( const key of keys ) { handleKey(key, editor) }
+		if ( change.visual ) {
+			// a VISUAL change: as many lines or characters from the cursor, the count stays the change's
+			const model = textModel(editor);
+			const text = model.text;
+			const i = caretIndex(model) ?? 0;
+			visualAnchor = i;
+			visualHead = change.visual.lines
+				? lineStartOfNumber(text, Math.min(lineNumber(text, i) + change.visual.lines - 1, lineCount(text) - 1))
+				: Math.min(i + change.visual.chars - 1, Math.max(text.length - 1, 0));
+			setMode(change.visual.lines ? "vline" : "visual");
+			for ( const key of [...digits(change.count), ...change.keys] ) { handleKey(key, editor) }
+		} else {
+			for ( const key of [...digits(count || change.count), ...change.keys] ) { handleKey(key, editor) }
+		}
 		if ( mode === "insert" || mode === "replace" ) {
 			if ( change.text ) {
 				if ( mode === "replace" ) {
 					for ( const char of change.text ) { replaceChar(editor, char) }
 				} else {
 					insertLines(change.text.split("\n"));
+					const times = insertRepeats(change) ? count || change.count || 1 : 1;
+					if ( times > 1 ) { insertAgain(editor, change, times - 1) }
 				}
 			}
 			leaveInsert(editor);
@@ -1655,11 +1700,15 @@ function renderVisual(editor){
 function runVisual(editor, keys){
 	const r = reader(keys);
 	const count1 = r.count();
+	const start = r.position;
 	let key = r.next();
 	const count = count1 || 1;
 	const model = textModel(editor);
 	const text = model.text;
 	const [from, to, linewise] = visualRange(text);
+	// "." repeats it on as much text from its cursor: as many lines, or characters
+	const change = () => ({change: true, count: count1, keys: keys.slice(start),
+		visual: linewise ? {lines: lineNumber(text, to) - lineNumber(text, from) + 1} : {chars: to - from}});
 	const leave = (index) => {
 		setMode("normal");
 		setCaret(textModel(editor), index);
@@ -1708,31 +1757,31 @@ function runVisual(editor, keys){
 	case "d": case "x": case "Delete":
 		setMode("normal");
 		applyOperator(editor, model, "d", from, to, linewise, from);
-		return;
+		return change();
 	case "D": case "X":
 		setMode("normal");
 		applyOperator(editor, model, "d", lineStart(text, from), lineEnd(text, to - (linewise ? 0 : 1)), true, from);
-		return;
+		return change();
 	case "c": case "s":
 		applyOperator(editor, model, "c", from, to, linewise, from);
-		return;
+		return change();
 	case "C": case "S": case "R":
 		applyOperator(editor, model, "c", lineStart(text, from), lineEnd(text, Math.max(from, to - 1)), true, from);
-		return;
+		return change();
 	case ">": case "<":
 		setMode("normal");
 		for ( let n = 0; n < count; n++ ) { indentLines(editor, textModel(editor), from, to, key === ">") }
 		changed();
-		return;
+		return change();
 	case "~": case "u": case "U": case "g~": case "gu": case "gU":
 		setMode("normal");
 		applyOperator(editor, model, {"~": "g~", u: "gu", U: "gU"}[key] || key, from, to, false, from);
-		return;
+		return change();
 	case "J": case "gJ":
 		setMode("normal");
 		joinLines(editor, model, from, Math.max(2, lineNumber(text, to) - lineNumber(text, from) + 1), key === "J");
 		changed();
-		return;
+		return change();
 	case "r": {
 		const char = r.next();
 		setMode("normal");
@@ -1740,7 +1789,7 @@ function runVisual(editor, keys){
 		replacePerLine(editor, from, to, (s) => char.repeat([...s].length));
 		setCaret(textModel(editor), from);
 		changed();
-		return;
+		return change();
 	}
 	case "p": case "P": {
 		const replaced = {text: text.slice(from, to), linewise};
@@ -1767,16 +1816,16 @@ function runVisual(editor, keys){
 		}
 		if ( key === "p" ) { register = replaced }
 		changed();
-		return;
+		return change();
 	}
 	case "I":
 		setMode("normal");
 		enterInsert(textModel(editor), linewise ? firstNonBlank(text, from) : from);
-		return;
+		return change();
 	case "A":
 		setMode("normal");
 		enterInsert(textModel(editor), linewise ? lineEnd(text, to) : to);
-		return;
+		return change();
 	case ":":
 		openCommandLine(editor, ":", "'<,'>", [lineStart(text, from), lineEnd(text, Math.max(from, to - 1))]);
 		return;
@@ -2324,6 +2373,15 @@ function refocusTreeRow(selector){
 	// opening and closing folders rebuilds the tree
 	const row = document.querySelector(`#file-tree-list ${selector}`);
 	focusTree(row);
+}
+
+function onTreeClick(e){
+	// a document opened with a click goes to the editor, like l / Enter: the clicked row is rebuilt and the
+	// focus would fall to the page, where vi gets no keys (Ctrl / Shift+click only select)
+	// the path still has the row after the click rebuilt the tree
+	const row = e.composedPath().find(el => el.classList?.contains("tree-document"));
+	if ( e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || !row?.dataset.name ) { return }
+	leaveTree();
 }
 
 function openTreeRow(row){

@@ -73,6 +73,13 @@ MILESSIC-THEMES= milessic-themes server url, e.g. http://mbs.local:9312/ (option
 ### Unit tests
 You can run tests with [pytest](https://docs.pytest.org/en/stable/) - ``python3 -m pytest -v``
 
+### Browser tests
+``tests/e2e`` drive the app in Chromium with [Playwright](https://playwright.dev/python/) (vi mode), they start the server themselves:
+```
+pip install -r requirements-dev.txt && playwright install chromium
+python3 -m pytest tests/e2e -v
+```
+
 ### Web app
 There is a register/login/logout/token fetching interface ready to go, setup to work with ``/`` endpoint. Just go to ``http://localhost:8990`` after following steps described under __Environment setup__ and you will be able to test all functionalities.
 
