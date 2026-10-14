@@ -1,6 +1,6 @@
 /*
  * Auto detect: markdown typed into the editor turns into formatting.
- *  - at the start of a line: "* " bullets, "1. " numbers, "- [ ]" / "-[]" a checkbox, "---" a rule, "# " .. "#### " headings
+ *  - at the start of a line: "* " bullets, "1. " numbers, "- [ ]" / "-[]" / "- [x]" a checklist item, "---" a rule, "# " .. "#### " headings
  *  - inline: **bold**, *italic* / _italic_, __underline__, `code` / ``code`` / ```code``` (on the space after it)
  *  - "```" + Enter starts a code block, "```" + Enter on its last line ends it
  * Settings are in Settings > Auto detect and go to the cloud with the notebook (autoDetectKey, script.js).
@@ -9,7 +9,7 @@
 const autoDetectRules = [
 	{ id: "bullet", label: "<kbd>*</kbd> + space starts a bulleted list" },
 	{ id: "numbered", label: "<kbd>1.</kbd> + space starts a numbered list" },
-	{ id: "checkbox", label: "<kbd>- [ ]</kbd> or <kbd>-[]</kbd> inserts a checkbox" },
+	{ id: "checkbox", label: "<kbd>- [ ]</kbd> or <kbd>-[]</kbd> starts a checklist item, <kbd>- [x]</kbd> a checked one" },
 	{ id: "hr", label: "<kbd>---</kbd> inserts a horizontal rule" },
 	{ id: "heading", label: "<kbd>#</kbd> to <kbd>####</kbd> + space makes a heading" },
 	{ id: "bold", label: "<kbd>**text**</kbd> makes bold" },
@@ -158,6 +158,7 @@ function autoDetectBlock(editor, node, before){
 	const inList = !!node.parentElement.closest("li");
 	const inHeading = !!node.parentElement.closest("h1, h2, h3, h4, h5, h6");
 	let ordered = null;
+	let task = null;
 	let action = null;
 	if ( before === "* " && !inList && autoDetectRuleOn("bullet") ) {
 		action = () => document.execCommand("insertUnorderedList", false, null);
@@ -168,11 +169,8 @@ function autoDetectBlock(editor, node, before){
 			const list = getCaretListItem()?.closest("ol");
 			if ( list && start !== 1 ) { list.setAttribute("start", start) }
 		};
-	} else if ( /^- ?\[ ?\]$/.test(before) && !inHeading && autoDetectRuleOn("checkbox") ) {
-		action = () => {
-			updateCaretPosition();
-			insertCheckbox();
-		};
+	} else if ( (task = before.match(/^- ?\[([ xX]?)\]$/)) && !inHeading && autoDetectRuleOn("checkbox") ) {
+		action = () => makeTaskItemFromMarker(task[1].toLowerCase() === "x"); // checklist.js
 	} else if ( before === "---" && !inList && !inHeading && lineIsEmptyAfter(node, before.length) && autoDetectRuleOn("hr") ) {
 		action = () => {
 			// the rule takes the line, typing goes on in a new line under it

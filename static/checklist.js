@@ -1,0 +1,371 @@
+/*
+ * Checklists: an item of a bulleted list (<ul><li>) with data-checked="false" / "true" is a checklist item, so a list
+ * can mix bullets and checkboxes and every list behaviour (Enter, Backspace, Tab nesting, Shift+Tab) stays the browser's.
+ * The checkbox is the item's ::before (styles.css): a click on it, or Ctrl/Cmd+Enter in the item, toggles it.
+ * The state is the attribute, so it is saved with the document, goes to the cloud, and to Markdown as "- [ ]" / "- [x]".
+ * Documents from before keep working: their <input type="checkbox"> + span lines are turned into items when loaded.
+ */
+const taskItemSelector = "li[data-checked]";
+let paragraphSnapshot = null; // the editor's items before an Enter, to tell which item the browser just made
+let markerItem = null; // the item just made from a typed "- [ ]": the space typed after the marker isn't its text
+
+function isTaskItem(el){
+	return el?.nodeName === "LI" && el.hasAttribute("data-checked");
+}
+
+function isChecked(li){
+	return li.dataset.checked === "true";
+}
+
+function selectedListItems(editor){
+	// the <li>s of the caret's or the selection's lines; a parent item only if the selection is in its own text
+	const selection = window.getSelection();
+	if ( !selection.rangeCount ) { return [] }
+	const range = selection.getRangeAt(0);
+	if ( !editor.contains(range.commonAncestorContainer) ) { return [] }
+	const itemOf = (node) => (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)?.closest("li");
+	const start = itemOf(range.startContainer);
+	if ( range.collapsed ) { return start && editor.contains(start) ? [start] : [] }
+	const items = [...editor.querySelectorAll("li")].filter((li) => range.intersectsNode(li));
+	return items.filter((li) => li === start || !items.some((other) => other !== li && li.contains(other)));
+}
+
+function selectionInBulletList(editor){
+	// both ends of the selection are in items of bulleted lists
+	const selection = window.getSelection();
+	if ( !selection.rangeCount ) { return false }
+	const range = selection.getRangeAt(0);
+	const inBullet = (node) => (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)?.closest("li")?.parentElement?.nodeName === "UL";
+	return editor.contains(range.commonAncestorContainer) && inBullet(range.startContainer) && inBullet(range.endContainer);
+}
+
+function makeTaskItems(checked=null){
+	// the selected lines become checklist items: lines are put in a list first, bullets get a checkbox;
+	// items that already have one keep their state, unless checked is given
+	restoreEditorSelection();
+	const editor = document.getElementById("editor");
+	if ( !selectionInBulletList(editor) ) { document.execCommand("insertUnorderedList", false, null) }
+	const items = selectedListItems(editor).filter((li) => li.parentElement?.nodeName === "UL");
+	for ( const li of items ) {
+		if ( checked !== null || !isTaskItem(li) ) { li.dataset.checked = String(Boolean(checked)) }
+	}
+	normalizeChecklists(editor);
+	return items;
+}
+
+function makeTaskItemFromMarker(checked){
+	// autodetect.js: "- [ ]" or "- [x]" typed at the start of a line
+	markerItem = makeTaskItems(checked)[0] || null;
+}
+
+function toggleChecklist(){
+	// the toolbar's Checklist: on checklist items it takes the lines out of the list, like Bulleted list does
+	restoreEditorSelection();
+	const editor = document.getElementById("editor");
+	const items = selectionInBulletList(editor) ? selectedListItems(editor) : [];
+	if ( items.length && items.every(isTaskItem) ) {
+		items.forEach((li) => li.removeAttribute("data-checked"));
+		document.execCommand("insertUnorderedList", false, null);
+		normalizeChecklists(editor);
+		return
+	}
+	makeTaskItems();
+}
+
+function taskItemsToBullets(){
+	// the toolbar's Bulleted list on checklist items turns them into bullets (instead of taking them out of the list)
+	restoreEditorSelection();
+	const editor = document.getElementById("editor");
+	if ( !selectionInBulletList(editor) ) { return false }
+	const items = selectedListItems(editor).filter(isTaskItem);
+	items.forEach((li) => li.removeAttribute("data-checked"));
+	return items.length > 0;
+}
+
+function setTaskItemsChecked(items, checked){
+	const editors = new Set();
+	for ( const li of items ) {
+		li.dataset.checked = String(checked);
+		editors.add(li.closest(".editor"));
+	}
+	// the state is part of the document: it changed like after an edit (unsaved tab, autosave)
+	for ( const editor of editors ) {
+		if ( !editor ) { continue }
+		editor.dispatchEvent(new Event("input", { bubbles: true }));
+		if ( editor.id === "editor" ) { performAutoSave() }
+	}
+}
+
+function taskItemAtCheckbox(e){
+	// the checkbox is the item's ::before, in the list's gutter left of its first line; a click next to the box
+	// lands on the list itself
+	const target = e.target.nodeType === Node.ELEMENT_NODE ? e.target : e.target.parentElement;
+	if ( !target?.closest(".editor") ) { return null }
+	const candidates = target.nodeName === "UL" ? [...target.children].filter(isTaskItem) : [target.closest(taskItemSelector)];
+	return candidates.find((li) => li && onCheckbox(li, e)) || null;
+}
+
+function onCheckbox(li, e){
+	const rect = li.getBoundingClientRect();
+	const style = getComputedStyle(li);
+	const fontSize = parseFloat(style.fontSize) || 16;
+	const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.5;
+	const inGutter = e.clientX < rect.left + 2 && e.clientX >= rect.left - fontSize * 1.9;
+	const onFirstLine = e.clientY >= rect.top && e.clientY <= rect.top + lineHeight;
+	return inGutter && onFirstLine;
+}
+
+function handleChecklistMouseDown(e){
+	if ( e.button !== 0 ) { return }
+	const li = taskItemAtCheckbox(e);
+	if ( !li ) { return }
+	// the caret (and the phone keyboard) stays where it was
+	e.preventDefault();
+	setTaskItemsChecked([li], !isChecked(li));
+}
+
+function handleChecklistKeydown(e){
+	// Ctrl/Cmd+Enter toggles the selected checklist items: all checked when any isn't, else all unchecked
+	if ( e.key !== "Enter" || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.isComposing ) { return }
+	const editor = e.target.closest?.(".editor");
+	const items = editor ? selectedListItems(editor).filter(isTaskItem) : [];
+	if ( !items.length ) { return }
+	e.preventDefault();
+	e.stopPropagation();
+	setTaskItemsChecked(items, !items.every(isChecked));
+}
+
+function takeChecklistSnapshot(editor){
+	const selection = window.getSelection();
+	const node = selection.rangeCount ? selection.getRangeAt(0).startContainer : null;
+	const item = node && (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)?.closest("li");
+	if ( !isTaskItem(item) ) { return { editor, item: null } }
+	return { editor, item, text: item.textContent, checked: item.dataset.checked, items: new Set(editor.querySelectorAll("li")) };
+}
+
+function fixNewTaskItems(snapshot){
+	// Enter in a checklist item splits it: both parts are checklist items (the browser copies the attribute, or not),
+	// the part with the item's text keeps its state and the new one starts unchecked
+	if ( !snapshot?.item ) { return }
+	const created = [...snapshot.editor.querySelectorAll("li")].filter((li) => !snapshot.items.has(li));
+	const parts = [snapshot.item, ...created].filter((li) => li.isConnected && li.parentElement?.nodeName === "UL");
+	if ( !created.length || !parts.length ) { return }
+	const keeper = parts.find((li) => li.textContent !== "" && snapshot.text.startsWith(li.textContent))
+		|| (parts.includes(snapshot.item) ? snapshot.item : null);
+	for ( const li of parts ) {
+		li.dataset.checked = li === keeper ? snapshot.checked : "false";
+	}
+}
+
+function withNewTaskItemsUnchecked(editor, fn){
+	// for edits made with execCommand (vi's o / O), which the beforeinput below doesn't see
+	const snapshot = takeChecklistSnapshot(editor);
+	fn();
+	fixNewTaskItems(snapshot);
+}
+
+function keepTaskItemState(fn){
+	// Tab / Shift+Tab move the caret's item in or out of a nested list; it stays a checklist item if it is still an item
+	const editor = document.getElementById("editor");
+	const before = selectedListItems(editor).filter(isTaskItem).map((li) => [li.textContent, li.dataset.checked]);
+	fn();
+	const after = selectedListItems(editor);
+	if ( before.length !== 1 || after.length !== 1 ) { return }
+	const [text, checked] = before[0];
+	const li = after[0];
+	if ( !isTaskItem(li) && li.parentElement?.nodeName === "UL" && li.textContent === text ) { li.dataset.checked = checked }
+}
+
+function emptyItemMerge(editor, inputType){
+	// Backspace at the start of an item under an empty one (or Delete in an empty item above one): the browser keeps
+	// the empty item and moves the text into it; the text's state goes with it
+	const selection = window.getSelection();
+	if ( !selection.rangeCount || !selection.isCollapsed ) { return null }
+	const range = selection.getRangeAt(0);
+	const li = (range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement)?.closest("li");
+	if ( !li || !editor.contains(li) ) { return null }
+	const edge = document.createRange();
+	edge.selectNodeContents(li);
+	inputType === "deleteContentBackward" ? edge.setEnd(range.startContainer, range.startOffset) : edge.setStart(range.startContainer, range.startOffset);
+	if ( edge.toString() !== "" ) { return null }
+	const [empty, item] = inputType === "deleteContentBackward" ? [li.previousElementSibling, li] : [li, li.nextElementSibling];
+	if ( empty?.nodeName !== "LI" || empty.textContent !== "" || !isTaskItem(item) || item.textContent === "" ) { return null }
+	return { editor, text: item.textContent, checked: item.dataset.checked };
+}
+
+function handleChecklistBeforeInput(e){
+	const editor = e.target.closest?.(".editor");
+	paragraphSnapshot = null;
+	const marker = markerItem;
+	markerItem = null;
+	if ( !editor || e.defaultPrevented ) { return }
+	if ( e.inputType === "insertText" && e.data === " " && marker?.textContent === "" && selectedListItems(editor)[0] === marker ) {
+		e.preventDefault();
+		return
+	}
+	if ( e.inputType === "insertParagraph" ) {
+		paragraphSnapshot = takeChecklistSnapshot(editor);
+	} else if ( e.inputType === "deleteContentBackward" || e.inputType === "deleteContentForward" ) {
+		paragraphSnapshot = emptyItemMerge(editor, e.inputType);
+		if ( paragraphSnapshot ) { paragraphSnapshot.merge = true }
+	}
+}
+
+function handleChecklistInput(e){
+	const editor = e.target.closest?.(".editor");
+	if ( !editor ) { return }
+	if ( paragraphSnapshot?.editor === editor ) {
+		if ( paragraphSnapshot.merge ) {
+			const li = selectedListItems(editor)[0];
+			if ( li?.parentElement?.nodeName === "UL" && li.textContent === paragraphSnapshot.text ) { li.dataset.checked = paragraphSnapshot.checked }
+		} else if ( e.inputType === "insertParagraph" ) {
+			fixNewTaskItems(paragraphSnapshot);
+		}
+	}
+	paragraphSnapshot = null;
+	normalizeChecklists(editor);
+}
+
+function normalizeChecklists(editor){
+	// only items of bulleted lists can be checklist items: a list turned numbered, or an item taken out of its list, loses it
+	migrateLegacyCheckboxes(editor);
+	for ( const el of editor.querySelectorAll("[data-checked]") ) {
+		if ( el.nodeName !== "LI" || el.parentElement?.nodeName !== "UL" ) {
+			el.removeAttribute("data-checked");
+		} else if ( el.dataset.checked !== "true" && el.dataset.checked !== "false" ) {
+			el.dataset.checked = "false";
+		}
+	}
+}
+
+
+// documents from before: <input type="checkbox" onclick=...> followed by a <span contenteditable> with the item's text,
+// one per line, sometimes inside a wrapper <span>
+function hasContent(node){
+	return node.textContent.trim() !== "" || Boolean(node.querySelector?.("img, hr, iframe, video, input"));
+}
+
+function takeLegacyItemContent(box, li){
+	// what follows the checkbox up to the end of its line: a <br>, a new line in the text, a block or the next checkbox
+	let node = box.nextSibling;
+	let parent = box.parentNode;
+	while ( true ) {
+		if ( !node ) {
+			// the end of a wrapper span: the line goes on after it
+			if ( parent.nodeType !== Node.ELEMENT_NODE || parent.classList?.contains("editor") || isBlockNode(parent) ) { return }
+			node = parent.nextSibling;
+			parent = parent.parentNode;
+			continue
+		}
+		const next = node.nextSibling;
+		if ( node.nodeName === "BR" ) { node.remove(); return }
+		if ( isBlockNode(node) || node.nodeName === "INPUT" || node.querySelector?.('input[type="checkbox"]') ) { return }
+		if ( node.nodeType === Node.TEXT_NODE && node.textContent.includes("\n") ) {
+			const at = node.textContent.indexOf("\n");
+			const rest = node.splitText(at);
+			rest.textContent = rest.textContent.slice(1);
+			if ( !rest.textContent ) { rest.remove() }
+			li.appendChild(node);
+			return
+		}
+		li.appendChild(node);
+		node = next;
+	}
+}
+
+function liftToEditor(editor, li){
+	// puts the item in its own list under the editor; what was before and after it on its line stays as lines around it
+	let top = li;
+	while ( top.parentNode !== editor ) { top = top.parentNode }
+	const ul = document.createElement("ul");
+	if ( top === li ) {
+		li.before(ul);
+		ul.appendChild(li);
+		return ul
+	}
+	const after = document.createRange();
+	after.setStartAfter(li);
+	after.setEnd(top, top.childNodes.length);
+	const rest = after.extractContents();
+	li.remove();
+	top.after(ul);
+	ul.appendChild(li);
+	if ( hasContent(rest) ) {
+		const line = isBlockNode(top) ? top.cloneNode(false) : document.createElement("div");
+		line.appendChild(rest);
+		ul.after(line);
+	}
+	if ( !hasContent(top) ) { top.remove() }
+	return ul
+}
+
+function migrateLegacyCheckboxes(editor){
+	const boxes = [...editor.querySelectorAll('input[type="checkbox"]')];
+	if ( !boxes.length ) { return }
+	const lists = new Set();
+	for ( const box of boxes ) {
+		if ( !editor.contains(box) ) { continue }
+		const checked = String(box.checked || box.hasAttribute("checked"));
+		const owner = box.parentElement.closest("li");
+		let li;
+		if ( owner && editor.contains(owner) ) {
+			// already in a list item (from a Markdown import): the item becomes the checklist item
+			li = owner;
+			box.remove();
+		} else {
+			li = document.createElement("li");
+			takeLegacyItemContent(box, li);
+			box.replaceWith(li);
+			lists.add(liftToEditor(editor, li));
+		}
+		li.dataset.checked = checked;
+		li.querySelectorAll("[contenteditable]").forEach((el) => el.removeAttribute("contenteditable"));
+		li.querySelectorAll('span[id^="editor-checkbox"]').forEach((span) => span.replaceWith(...span.childNodes));
+		li.removeAttribute("class");
+		li.removeAttribute("style");
+		// the spaces the old checkbox put before its text
+		const first = li.firstChild;
+		if ( first?.nodeType === Node.TEXT_NODE ) {
+			first.textContent = first.textContent.replace(/^[  ]+/, "");
+			if ( !first.textContent ) { first.remove() }
+		}
+		if ( !li.firstChild ) { li.appendChild(document.createElement("br")) }
+	}
+	// the lines of one checklist make one list
+	for ( const ul of lists ) {
+		let prev = ul.previousSibling;
+		while ( prev?.nodeType === Node.TEXT_NODE && prev.textContent.trim() === "" ) {
+			const blank = prev;
+			prev = prev.previousSibling;
+			blank.remove();
+		}
+		if ( prev?.nodeName === "UL" && lists.has(prev) ) {
+			prev.append(...ul.childNodes);
+			ul.remove();
+			lists.delete(ul);
+		}
+	}
+}
+
+function markdownTaskItemsToChecklist(html){
+	// showdown's task list items: <li class="task-list-item"><input type="checkbox" disabled [checked]> text</li>
+	const template = document.createElement("template");
+	template.innerHTML = html;
+	for ( const li of template.content.querySelectorAll("li.task-list-item") ) {
+		const box = li.querySelector(':scope > input[type="checkbox"]');
+		li.dataset.checked = String(Boolean(box?.hasAttribute("checked")));
+		box?.remove();
+		li.removeAttribute("class");
+		li.removeAttribute("style");
+		const first = li.firstChild;
+		if ( first?.nodeType === Node.TEXT_NODE ) { first.textContent = first.textContent.replace(/^\s+/, "") }
+	}
+	return template.innerHTML;
+}
+
+// capture: Ctrl/Cmd+Enter is the toggle before any Enter handling
+document.getElementById("editor-grid").addEventListener("keydown", handleChecklistKeydown, true);
+document.getElementById("editor-grid").addEventListener("mousedown", handleChecklistMouseDown);
+document.getElementById("editor-grid").addEventListener("beforeinput", handleChecklistBeforeInput);
+document.getElementById("editor-grid").addEventListener("input", handleChecklistInput);
+document.querySelectorAll("#editor-grid .editor").forEach(normalizeChecklists);

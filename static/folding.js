@@ -152,7 +152,7 @@ function handleFoldDelete(e){
 	const neighbour = e.inputType === "deleteContentBackward"
 		? caret.atStart && caret.line.previousElementSibling
 		: caret.atEnd && caret.line.nextElementSibling;
-	if ( neighbour?.classList.contains("fold-hidden") ) { unfoldAround(neighbour) }
+	if ( neighbour?.classList?.contains("fold-hidden") ) { unfoldAround(neighbour) }
 }
 
 function headingFoldingSettingsHtml(){

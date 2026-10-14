@@ -805,8 +805,55 @@ body.app > .topbar {
 :where(.editor, #content) :is(ul, ol) {
 	padding-left: 2rem;
 }
-:where(.editor, #content) input[type="checkbox"] {
-	margin-right: .6rem;
+/* checklist items (checklist.js): the checkbox is the ::before in the list's gutter, its tick the ::after */
+:where(.editor, #content) ul > li[data-checked] {
+	position: relative;
+	list-style: none;
+}
+:where(.editor, #content) ul > li[data-checked]::before,
+:where(.editor, #content) ul > li[data-checked]::after {
+	content: "";
+	position: absolute;
+	box-sizing: border-box;
+}
+:where(.editor, #content) ul > li[data-checked]::after {
+	pointer-events: none;
+}
+.editor ul > li[data-checked]::before {
+	cursor: pointer;
+}
+:where(.editor, #content) ul > li[data-checked]::before {
+	left: -1.45em;
+	top: .25em;
+	top: calc((1lh - 1em) / 2);
+	width: 1em;
+	height: 1em;
+	border: 1.5px solid var(--line-strong);
+	border-radius: calc(var(--radius) / 4);
+	background: var(--surface);
+	transition: background-color .12s, border-color .12s;
+}
+.editor ul > li[data-checked]:hover::before {
+	border-color: var(--accent);
+}
+:where(.editor, #content) ul > li[data-checked="true"]::before {
+	background: var(--accent);
+	border-color: var(--accent);
+}
+:where(.editor, #content) ul > li[data-checked="true"]::after {
+	left: calc(-1.45em + .34em);
+	top: calc(.25em + .14em);
+	top: calc((1lh - 1em) / 2 + .14em);
+	width: .32em;
+	height: .58em;
+	border: solid var(--accent-ink);
+	border-width: 0 .14em .14em 0;
+	transform: rotate(45deg);
+}
+/* checked: the item fades (not the items nested in it). Not a color or a line-through: Chrome copies those into
+   <span style> when text moves between items (Enter, Backspace), and the text would keep them when unchecked */
+:where(.editor, #content) ul > li[data-checked="true"]:not(:has(> ul, > ol)) {
+	opacity: .6;
 }
 /* zero specificity, so a theme's own pre style wins */
 :where(.editor, #content) pre {
@@ -945,4 +992,85 @@ input:is(.error, .field-error) {
 }
 .usage-bar-fill.danger {
 	background: var(--danger);
+}
+
+/* Focus mode (script.js): only the text, the word count and a faint x to leave it */
+.focus-word-counter,
+.focus-exit {
+	display: none;
+}
+body.focus-mode > .topbar,
+body.focus-mode .file-tree,
+body.focus-mode .file-tree-scrim,
+body.focus-mode .tab-bar,
+body.focus-mode .format-bar,
+body.focus-mode .pane-head,
+body.focus-mode .editor-pane:not(.focused) {
+	display: none !important;
+}
+/* a split view shows only the focused editor, laid out like a single one */
+body.focus-mode .editor-grid[data-count] {
+	--columns: 1;
+	padding: 0;
+}
+body.focus-mode .editor-grid .editor-pane {
+	outline: none;
+}
+body.focus-mode .editor-grid .container {
+	max-width: 1280px;
+	padding: 2rem 16px 3rem;
+}
+body.focus-mode .editor-grid .editor-column {
+	max-width: 960px;
+}
+body.focus-mode .editor-card {
+	background: transparent;
+	border-color: transparent;
+	box-shadow: none;
+}
+body.focus-mode .focus-word-counter:not(:empty) {
+	display: block;
+	position: fixed;
+	right: 16px;
+	bottom: 12px;
+	z-index: 4;
+	pointer-events: none;
+	opacity: .7;
+}
+/* the x that leaves focus mode: top-left on Apple devices (where windows close), top-right elsewhere;
+   barely there until hovered, then a mild red */
+body.focus-mode .focus-exit {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	position: fixed;
+	top: 6px;
+	right: 6px;
+	z-index: 4;
+	width: 2rem;
+	height: 2rem;
+	padding: 0;
+	font: inherit;
+	font-size: 1rem;
+	line-height: 1;
+	color: var(--muted);
+	background: none;
+	border: 0;
+	border-radius: 50%;
+	opacity: .2;
+	cursor: pointer;
+	transition: opacity .15s, color .15s, background-color .15s;
+}
+.apple-platform body.focus-mode .focus-exit {
+	right: auto;
+	left: 6px;
+}
+body.focus-mode .focus-exit:is(:hover, :focus-visible) {
+	opacity: .85;
+	color: color-mix(in srgb, var(--danger) 80%, var(--muted));
+	background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+/* the vi mode indicator moves left of the x */
+html:not(.apple-platform) body.focus-mode .vi-bar {
+	margin-right: 2rem;
 }

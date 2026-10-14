@@ -46,6 +46,7 @@ let lastRange = null;                   // and its selection when it lost the fo
 let treePending = [];                   // keys of a file tree command being typed (g, Ctrl+W)
 const editorRanges = new WeakMap();     // each editor's selection, for going back to it with Ctrl+W h j k l
 let escapeAt = -Infinity;               // when vi got an Esc in an editor
+let normalEscapeAt = -Infinity;         // the last Esc in NORMAL with nothing pending: Esc Esc leaves focus mode
 let pointerAt = -Infinity;              // the last click / tap: a focus change that comes after one is the user's
 
 const ui = {};
@@ -160,6 +161,10 @@ function buildUi(){
 			.vi-esc-enabled .vi-esc { display: flex; align-items: center; }
 		}
 		.vi-block-caret #editor-grid .editor { caret-color: transparent; }
+		/* focus mode: only the command line shows, and the phone Esc in gray */
+		.focus-mode .vi-mode:not([data-mode="command"]) { background: none; box-shadow: none; }
+		.focus-mode .vi-mode:not([data-mode="command"]) .vi-mode-body { display: none; }
+		.focus-mode .vi-mode:not([data-mode="command"]) .vi-esc { border-right: 0; color: var(--muted, #888); opacity: .6; }
 	`;
 	ui.root = document.createElement("div");
 	ui.root.id = "vi-root";
@@ -344,6 +349,7 @@ const ctrlKeys = new Set(["<C-r>", "<C-d>", "<C-u>", "<C-w>"]);
 const namedKeys = new Set(["Escape", "Enter", "Backspace", "Delete", "Tab", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"]);
 
 function onKeydown(e){
+	if ( closePopupsWithQ(e) ) { return }
 	if ( !commandLine && e.target.closest?.("#file-tree") ) { onTreeKeydown(e); return }
 	const editor = editorOf(e.target);
 	if ( !editor || commandLine ) { return }
@@ -370,6 +376,21 @@ function onKeydown(e){
 	e.preventDefault();
 	e.stopPropagation();
 	handleKey(key, editor);
+}
+
+function closePopupsWithQ(e){
+	// q closes every open pop-up (script.js), unless it is typed: in INSERT, in a field, after a pending key
+	if ( e.key !== "q" || e.ctrlKey || e.metaKey || e.altKey || e.isComposing || commandLine ) { return false }
+	if ( typeof openPopups !== "function" || !openPopups().length ) { return false }
+	const editor = editorOf(e.target);
+	const typing = editor ? mode === "insert" || mode === "replace" || pending.length > 0
+		: e.target.closest?.('input:not([type=checkbox], [type=radio], [type=button], [type=submit], [type=reset], [type=range], [type=color], [type=file]), textarea, select, [contenteditable]:not([contenteditable="false"])');
+	if ( typing ) { return false }
+	e.preventDefault();
+	e.stopPropagation();
+	closeAllPopups();
+	render();
+	return true
 }
 
 function onKeyup(e){
@@ -725,6 +746,17 @@ function handleKey(key, editor){
 		if ( key === "Escape" ) { leaveInsert(editor) }
 		return
 	}
+	if ( key === "Escape" && mode === "normal" && !pending.length && document.body.classList.contains("focus-mode") ) {
+		if ( performance.now() - normalEscapeAt < 500 ) {
+			normalEscapeAt = -Infinity;
+			toggleFocusMode(false);
+			render();
+			return
+		}
+		normalEscapeAt = performance.now();
+	} else {
+		normalEscapeAt = -Infinity;
+	}
 	pending.push(key);
 	let result;
 	try {
@@ -1047,7 +1079,8 @@ function indentLines(editor, model, from, to, indent){
 		const li = elementOf(position.node).closest("li");
 		if ( li && editor.contains(li) ) {
 			setCaret(current, s);
-			exec(indent ? "indent" : "outdent");
+			const move = () => exec(indent ? "indent" : "outdent");
+			typeof keepTaskItemState === "function" ? keepTaskItemState(move) : move(); // checklist.js
 			continue
 		}
 		if ( indent ) {
@@ -1081,14 +1114,18 @@ function joinLines(editor, model, i, count, withSpace=true){
 
 function openLine(editor, model, i, above){
 	const text = model.text;
+	// a new line next to a checklist item is an unchecked checklist item (checklist.js)
+	const insertParagraph = () => typeof withNewTaskItemsUnchecked === "function"
+		? withNewTaskItemsUnchecked(editor, () => exec("insertParagraph"))
+		: exec("insertParagraph");
 	if ( above && lineStart(text, i) === 0 ) {
 		setCaret(model, 0);
-		exec("insertParagraph");
+		insertParagraph();
 		window.getSelection().modify("move", "backward", "character");
 		rememberSelection();
 	} else {
 		setCaret(model, above ? lineStart(text, i) - 1 : lineEnd(text, i));
-		exec("insertParagraph");
+		insertParagraph();
 		rememberSelection();
 	}
 	setMode("insert");
@@ -1847,6 +1884,9 @@ function runExCommand(editor, value, visual){
 	case "sp": case "split": case "vs": case "vsp": case "vsplit": case "new": case "vnew":
 		splitEditor();
 		return;
+	case "f": case "focus":
+		toggleFocusMode();
+		return;
 	case "noh": case "nohlsearch":
 		searchHighlight = false;
 		renderSearch();
@@ -2345,7 +2385,9 @@ const helpSections = [
 		[":d :y, :2,5d", "delete, yank lines"],
 		[":5", "go to line 5"],
 		[":h0 :h1 :h2 :h3 :h4", "text, heading 1 to 4 (on the selected lines from VISUAL)"],
+		[":f :focus", "focus mode on / off: only the text; Esc Esc in NORMAL or the faint x leaves it"],
 		[":h :help", "this help"],
+		["q, Esc", "close pop-ups (this help, Settings, menus); Esc in any mode"],
 	]],
 ];
 

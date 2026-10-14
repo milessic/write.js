@@ -31,6 +31,10 @@ const softReturnText = `
 `
 
 
+// Apple devices (iPadOS says it is a Mac) put window controls top-left: focus mode's x goes there (styles.css)
+document.documentElement.classList.toggle("apple-platform",
+	/Mac|iPhone|iPad|iPod/.test(navigator.userAgentData?.platform || navigator.platform || navigator.userAgent));
+
 let userConsent = localStorage.getItem(userConsentKey);
 
 document.querySelector("body").classList.add("transitions-enabled");
@@ -81,7 +85,9 @@ window.addEventListener("load", function() {
 // Setup Events
 window.addEventListener("resize", handleWidth);
 window.addEventListener("keydown", handleMobileScrollEvent);
-document.getElementById("editor-grid").addEventListener('keydown', (e) => {performAutoSave();changeTabBehavior(e);handleCheckboxEnter(e);handleHeadingBreakEnter(e);handleCodeBlockArrowDown(e)});
+document.getElementById("editor-grid").addEventListener('keydown', (e) => {performAutoSave();changeTabBehavior(e);handleHeadingBreakEnter(e);handleCodeBlockArrowDown(e)});
+// capture: before the caret moves with the arrow
+document.getElementById("editor-grid").addEventListener('keydown', handleListItemMove, true);
 document.getElementById("editor-grid").addEventListener('click', updateCaretPosition);
 document.getElementById("editor-grid").addEventListener('paste', handlePasteLinkOnSelection);
 // formatting shortcuts and undo change the line's style without moving the caret
@@ -108,6 +114,11 @@ document.getElementById("open-btn").addEventListener("click", () => toggleFileTr
 document.getElementById("open-doc-btn").addEventListener("click", () => showFileTree());
 document.getElementById("import-doc-btn").addEventListener("click", importDocument);
 document.getElementById("toggle-format-btn").addEventListener("click", toggleFormattingBar);
+document.getElementById("focus-mode-btn").addEventListener("click", () => toggleFocusMode(true));
+document.getElementById("focus-exit-btn").addEventListener("click", () => toggleFocusMode(false));
+document.addEventListener("keydown", handleFocusModeEscape);
+// capture, and registered before vi.js loads: Esc closes the pop-ups before vi or anything else reads it
+document.addEventListener("keydown", handlePopupEscape, true);
 document.getElementById("spellcheck-btn").addEventListener("click", toggleSpellCheck);
 document.getElementById("toggle-autosave-btn").addEventListener("click", toggleAutosave);
 document.getElementById("insert-or-append-html").addEventListener("click", createInsertHtmlModal);
@@ -139,7 +150,8 @@ function formatText(command) {
     } else if (["h1", "h2", "h3", "h4", "div"].includes(command)) {
 		formatBlockWithHeadingBreaks(command);
 	} else if (command === "ul") {
-        document.execCommand("insertUnorderedList", false, null);
+		// on checklist items it only takes the checkboxes away (checklist.js)
+		if ( !taskItemsToBullets() ) { document.execCommand("insertUnorderedList", false, null) }
     } else if (command === "ol") {
         document.execCommand("insertOrderedList", false, null);
     } else if (command === "hr") {
@@ -157,7 +169,7 @@ function formatText(command) {
 	} else if (command === "inserttab") {
 		insertTab();
 	} else if ( command === "checkbox" ) {
-		insertCheckbox();
+		toggleChecklist();
 	} else {
 		console.error("Not supported command - ", command);
 	}
@@ -480,6 +492,7 @@ function fillEditorWithHTML(html, append=false){
 		return
 	}
     document.getElementById("editor").innerHTML = html;
+	normalizeChecklists(document.getElementById("editor"));
 	document.getElementById("editor").closest(".pane-scroll").scrollTo(0, 1000);
 }
 function insertHTMLAtLastCaret(html){
@@ -690,6 +703,35 @@ function closeAllModals(...excludeTitles){
 	deleteOverlay();
 }
 
+function openPopups(){
+	// modals, the hamburger menu, the toolbar dropdowns and the context menu (workspace.js) that are open
+	return [...document.querySelectorAll(".modal-container, .menu.menu-opened, .block-select-menu.menu-opened")];
+}
+
+function closeAllPopups(){
+	const popups = openPopups();
+	if ( !popups.length ) { return false }
+	const focusWasInPopup = popups.some((el) => el.contains(document.activeElement)) || document.activeElement === document.body;
+	closeAllModals();
+	if ( document.getElementById("menu").classList.contains("menu-opened") ) { toggleMenu() } // also brings back the word counter
+	document.querySelectorAll(".block-select-menu.menu-opened").forEach((menu) => {
+		menu.classList.remove("menu-opened");
+		menu.closest(".block-select")?.querySelector(".block-select-btn")?.setAttribute("aria-expanded", "false");
+	});
+	if ( typeof closeContextMenu !== "undefined" ) { closeContextMenu() }
+	// typing goes on where it was
+	if ( focusWasInPopup ) { restoreEditorSelection() }
+	return true
+}
+
+function handlePopupEscape(e){
+	// Esc closes every open pop-up, in any vi mode; vi's own command line handles its Esc
+	if ( e.key !== "Escape" || e.isComposing || e.target.closest?.("#vi-root") || !openPopups().length ) { return }
+	e.preventDefault();
+	e.stopImmediatePropagation(); // one Esc: vi doesn't change mode and focus mode stays on
+	closeAllPopups();
+}
+
 function saveAsLastOpenedDocument(name=null){
 	if ( !validateUserConsent() ) { return }
 	if ( name === null ) {
@@ -711,8 +753,8 @@ function loadLastOpenedDocument(){
 }
 
 function markdownToHtml(markdown) {
-	const converter = new showdown.Converter();
-	return converter.makeHtml(markdown);
+	const converter = new showdown.Converter({ tasklists: true });
+	return markdownTaskItemsToChecklist(converter.makeHtml(markdown));
 }
 
 
@@ -761,10 +803,12 @@ function stripImportToOnlyContent(html){
 
 function handleWordCounter(){
 	const counterEl = document.getElementById("word-counter-container")
+	const focusCounterEl = document.getElementById("focus-word-counter")
 	if ( wordCounterEnabled ){
 		try {
 			const wordCount = countWords();
 			counterEl.innerText = `${wordCount} word` + (!wordCount || wordCount > 1 ? 's' : '');
+			focusCounterEl.innerText = counterEl.innerText;
 			counterEl.classList.remove("hidden");
 		} catch ( err ) {
 			informError("Word Counter error occured!", err)
@@ -772,7 +816,28 @@ function handleWordCounter(){
 
 	} else {
 		counterEl.classList.add("hidden");
+		focusCounterEl.innerText = "";
 	}
+}
+
+function toggleFocusMode(force){
+	// Focus mode: only the text, the word count (if enabled) and a faint x to leave it (top-left on Apple devices);
+	// left with Esc, or with Esc Esc in vi NORMAL (vi.js), or with :focus
+	const on = document.body.classList.toggle("focus-mode", force);
+	closeContextMenu();
+	// the CSS hides the documents; the phone drawer closes so it isn't open when leaving
+	if ( on ) { document.body.classList.remove("tree-drawer-open"); handleWordCounter() }
+	// vi places its mode indicator from the editors' position
+	window.dispatchEvent(new Event("resize"));
+	document.getElementById("editor").focus({preventScroll: true});
+}
+
+function handleFocusModeEscape(e){
+	// with vi on, Esc changes the vi mode: Esc Esc in NORMAL leaves focus mode instead (vi.js)
+	if ( e.key !== "Escape" || !document.body.classList.contains("focus-mode") ) { return }
+	if ( document.body.classList.contains("vi-enabled") || document.querySelector(".modal-container") ) { return }
+	e.preventDefault();
+	toggleFocusMode(false);
 }
 
 function updateWordCounter(){
@@ -917,7 +982,8 @@ function getContentAsMarkdown(){
                 const sublists = [...child.children].filter(c => ["ul", "ol"].includes(c.tagName.toLowerCase()));
                 const item = child.cloneNode(true);
                 item.querySelectorAll(":scope > ul, :scope > ol").forEach(c => c.remove());
-                markdown += `${"    ".repeat(depth)}${isOrdered ? `${i++}.` : "-"} ${traverse(item).trim()}\n`;
+                const checkbox = child.hasAttribute("data-checked") ? (child.dataset.checked === "true" ? "[x] " : "[ ] ") : "";
+                markdown += `${"    ".repeat(depth)}${isOrdered ? `${i++}.` : "-"} ${checkbox}${traverse(item).trim()}\n`;
                 for (const sublist of sublists) {
                     markdown += listToMarkdown(sublist, depth + 1);
                 }
@@ -1367,39 +1433,18 @@ function injectHtml(html){
 	injectIntoDocument(html, true);
 }
 
-function injectIntoDocument(content, isHtml, injectCheckbox=false){
+function injectIntoDocument(content, isHtml){
 	if ( caretPosition ) {
 		try { 
 			let newNode = null;
-			let additionalNode = null;
 			if ( isHtml ){
 				newNode = document.createElement("span");
 				newNode.innerHTML = content;
-				if ( injectCheckbox ) {
-					newNode = document.createElement("input");
-					let checkboxId = assignUniqueId('checkbox');
-					newNode.id = checkboxId;
-					newNode.setAttribute("onclick",`assignCheckboxValue('${checkboxId}')`);
-					newNode.setAttribute("type", "checkbox");
-					const additionalNodeId = assignUniqueId('span', "checkbox");
-					additionalNode = document.createElement('span');
-					additionalNode.innerText = "  ";
-					additionalNode.setAttribute("contenteditable","true");
-					additionalNode.setAttribute("id", additionalNodeId);
-				}
 				caretPosition.deleteContents(); // delete selected text if it's selected
 			} else {
 				newNode = document.createTextNode(content);
 			}
-			// if injecting with Enter
-			if ( injectCheckbox ){
-				caretPosition.commonAncestorContainer.parentNode.appendChild(newNode);
-				// this way it works better on mobiles
-				caretPosition.commonAncestorContainer.parentNode.appendChild(additionalNode);
-				return caretPosition.commonAncestorContainer.parentNode
-			} else {
-				caretPosition.insertNode(newNode);
-			}
+			caretPosition.insertNode(newNode);
 		} catch ( err ) {
 			informError("Cannot perform action!", err)
 		}
@@ -1479,6 +1524,71 @@ function getCaretListItem(){
 	return li && editor.contains(li) ? li : null;
 }
 
+function handleListItemMove(e){
+	// Cmd+Ctrl+ArrowUp/ArrowDown (or k/j) moves the caret's list item, or the selected ones, above / below its neighbour
+	if ( !e.metaKey || !e.ctrlKey || e.altKey || e.shiftKey ) { return }
+	const up = e.key === "ArrowUp" || e.key.toLowerCase() === "k";
+	if ( !up && e.key !== "ArrowDown" && e.key.toLowerCase() !== "j" ) { return }
+	const editor = e.target.closest?.(".editor");
+	const li = editor && getCaretListItem();
+	if ( !li || !editor.contains(li) ) { return }
+	e.preventDefault();
+	e.stopPropagation();
+	moveListItems(editor, li, up);
+}
+
+function listItemUnit(li){
+	// an item with the lists nested under it: inside it, or right after it (execCommand("indent") nests them so)
+	const unit = [li];
+	for ( let next = li.nextElementSibling; next && (next.nodeName === "UL" || next.nodeName === "OL"); next = next.nextElementSibling ) {
+		unit.push(next);
+	}
+	return unit;
+}
+
+function moveListItems(editor, li, up){
+	const selection = window.getSelection();
+	const range = selection.getRangeAt(0);
+	const [startNode, startOffset, endNode, endOffset] = [range.startContainer, range.startOffset, range.endContainer, range.endOffset];
+	const list = li.parentElement;
+	// the selected items of the caret's list, first to last; an end in a nested item counts as its parent item
+	const itemIn = (node) => {
+		let el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+		while ( el && el.parentElement !== list ) { el = el.parentElement }
+		while ( el && el.nodeName !== "LI" ) { el = el.previousElementSibling } // a nested list right after its item
+		return el;
+	};
+	const first = itemIn(range.startContainer) || li;
+	const last = itemIn(range.endContainer) || li;
+	const items = [];
+	for ( let el = first; el; el = el.nextElementSibling ) {
+		if ( el.nodeName === "LI" ) { items.push(...listItemUnit(el)) }
+		if ( el === last ) { break }
+	}
+	if ( !items.length ) { return }
+	if ( up ) {
+		let prev = items[0].previousElementSibling;
+		while ( prev && prev.nodeName !== "LI" ) { prev = prev.previousElementSibling }
+		if ( !prev ) { return }
+		prev.before(...items);
+	} else {
+		let next = items.at(-1).nextElementSibling;
+		if ( next?.nodeName !== "LI" ) { return }
+		listItemUnit(next).at(-1).after(...items);
+	}
+	// moving the nodes drops the selection: it comes back on the same text
+	const moved = document.createRange();
+	moved.setStart(startNode, startOffset);
+	moved.setEnd(endNode, endOffset);
+	selection.removeAllRanges();
+	selection.addRange(moved);
+	updateCaretPosition();
+	items[0].scrollIntoView({ block: "nearest" });
+	// a change like after an edit (unsaved tab, autosave)
+	editor.dispatchEvent(new Event("input", { bubbles: true }));
+	if ( editor.id === "editor" ) { performAutoSave() }
+}
+
 function restoreEditorSelection(){
 	// toolbar buttons may take the focus: bring the caret back into the editor
 	const editor = document.getElementById("editor");
@@ -1495,7 +1605,7 @@ function insertTab(){
 	restoreEditorSelection();
 	// in a list, Tab nests the item (moves the bullet right)
 	if ( getCaretListItem() ) {
-		document.execCommand("indent", false, null);
+		keepTaskItemState(() => document.execCommand("indent", false, null));
 		updateCaretPosition();
 		return
 	}
@@ -1518,7 +1628,7 @@ function removeTab(){
 	restoreEditorSelection();
 	// in a list, Shift+Tab un-nests the item (moves the bullet left)
 	if ( getCaretListItem() ) {
-		document.execCommand("outdent", false, null);
+		keepTaskItemState(() => document.execCommand("outdent", false, null));
 		updateCaretPosition();
 		return
 	}
@@ -1672,74 +1782,6 @@ function saveBackup(){
 
 }
 
-function assignUniqueId(elementType, prefix=null){
-	// unique in the whole page, as split view shows several documents at once
-	let base, n;
-	if ( elementType === "checkbox" ){
-		base = "editor-checkbox";
-		n = document.querySelectorAll('#editor input[type="checkbox"]').length + 1;
-	} else if ( prefix ) {
-		base = `editor-${prefix}${elementType}`;
-		n = document.querySelectorAll(`#editor ${elementType}`).length + 1;
-	} else {
-		return
-	}
-	while ( document.getElementById(`${base}-${n}`) ) { n++ }
-	return `${base}-${n}`
-}
-
-
-function assignCheckboxValue(checkboxId){
-	// documents shown side by side can share checkbox ids: prefer the clicked one
-	const clicked = window.event?.target;
-	const element = clicked?.id === checkboxId ? clicked : document.getElementById(checkboxId)
-	element.checked ? element.setAttribute("checked", "") : element.removeAttribute("checked");
-	performAutoSave();
-}
-function insertCheckbox(fromEnter=false){
-	// notify user that it is in development phase for mobiles
-	if ( isLowWidthViewport && !fromEnter ){ createNotification("Checkboxes are not working well on mobiles", "warning") }
-	const checkboxID = assignUniqueId("checkbox");
-	const spanId = assignUniqueId("span", "checkbox");
-	//updateCaretPosition();
-	requestAnimationFrame(() => {
-		if ( isLowWidthViewport ) { injectIntoDocument(softReturnText, false);}
-	})
-	nodeElement = injectIntoDocument(`<input id="${checkboxID}" onclick="assignCheckboxValue('${checkboxID}')" type="checkbox"><span id="${spanId}" contenteditable="true">  </span>`, true, fromEnter) // this span with 2 spaces is for mobile purposes 
-	//updateCaretPosition();
-	requestAnimationFrame(() => {
-		if ( isLowWidthViewport){
-			setTimeout( () => {
-				moveCaretToEndById(spanId)
-				focusEditor();
-			
-			}, 1
-			)
-		} else {
-			moveCaretToEndById(spanId)
-			focusEditor()
-		}
-	})
-
-	return nodeElement
-}
-function handleCheckboxEnter(e){
-	if ( e.key === "Enter"){
-		// handle actions with caret:
-		const parentElement = caretPosition.commonAncestorContainer.parentElement;
-		if ( parentElement.id.startsWith("editor-checkboxspan") ) {
-			if ( parentElement.innerText.trim() ){
-				const nodeEl = insertCheckbox(true)
-				const idToFocus = nodeEl.childNodes[2].id
-				requestAnimationFrame(() => {
-					moveCaretToEndById(idToFocus)
-				})
-			} else if ( false && !isLowWidthViewport ) { // due to other issues, it is disabled on mobile, apparently it may remove whole document for dekstops as well xD
-				caretPosition.commonAncestorContainer.parentNode.parentNode.parentNode.parentNode.parentNode.remove() // if you remove one parentNode, then there will be more space
-			} 
-		}
-	}
-}
 function simulateKeyPress(key, code, keyCode, which, howManyTimes=1) {
 	console.warn("doenst work in contenteditable")
 	for ( let i=0; i < howManyTimes; i++){

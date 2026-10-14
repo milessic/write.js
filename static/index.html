@@ -59,6 +59,7 @@
 					<button role="menuitem" id="theme-btn">Theme</button>
 					<button role="menuitem" id="settings-btn">Settings</button>
 					<button role="menuitem" id="spellcheck-btn">Toggle Spell Check (It's off)</button>
+					<button role="menuitem" id="focus-mode-btn">Focus Mode</button>
 					<button role="menuitem" id="toggle-format-btn">Toggle Formatting</button>
 					<button role="menuitem" id="toggle-autosave-btn">Toggle Autosave</button>
 					<hr>
@@ -174,6 +175,9 @@
 		<div class="dock-zone" data-side="top" data-for="tabs"><span>Dock opened documents at the top</span></div>
 		<div class="dock-zone" data-side="bottom" data-for="tabs"><span>Dock opened documents at the bottom</span></div>
 	</div>
+	<!-- focus mode (script.js): only the text, the word count and a faint x to leave it -->
+	<span class="focus-word-counter muted small" id="focus-word-counter" aria-hidden="true"></span>
+	<button class="focus-exit" id="focus-exit-btn" title="Leave focus mode (Esc)" aria-label="Leave focus mode">✕</button>
 	<div class="menu context-menu" id="context-menu" role="menu"></div>
 	<div id="notifications-container"></div>
 	<!--
@@ -185,6 +189,7 @@
     <script src="{{ static_url('workspace.js') }}"></script>
     <script src="{{ static_url('autodetect.js') }}"></script>
     <script src="{{ static_url('folding.js') }}"></script>
+    <script src="{{ static_url('checklist.js') }}"></script>
 	{% if is_authenticated %}
     	<script src="{{ static_url('script3.js') }}"></script>
 	{% else %}
