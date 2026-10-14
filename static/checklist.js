@@ -39,6 +39,10 @@ function selectionInBulletList(editor){
 	return editor.contains(range.commonAncestorContainer) && inBullet(range.startContainer) && inBullet(range.endContainer);
 }
 
+function selectionHasTaskItems(editor){
+	return selectedListItems(editor).some((li) => isTaskItem(li) || li.querySelector(taskItemSelector));
+}
+
 function makeTaskItems(checked=null){
 	// the selected lines become checklist items: lines are put in a list first, bullets get a checkbox;
 	// items that already have one keep their state, unless checked is given
@@ -235,6 +239,13 @@ function normalizeChecklists(editor){
 		} else if ( el.dataset.checked !== "true" && el.dataset.checked !== "false" ) {
 			el.dataset.checked = "false";
 		}
+	}
+	// checklist items are only ever Text: a heading in one, or around its list (pasted, or from before), goes away
+	for ( const heading of editor.querySelectorAll("h1, h2, h3, h4, h5, h6") ) {
+		if ( !heading.closest(taskItemSelector) && !heading.querySelector(taskItemSelector) ) { continue }
+		const hr = heading.nextElementSibling;
+		if ( typeof isHeadingBreak !== "undefined" && isHeadingBreak(hr) ) { hr.remove() }
+		heading.replaceWith(...heading.childNodes);
 	}
 }
 

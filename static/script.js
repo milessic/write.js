@@ -257,6 +257,8 @@ function formatBlockWithHeadingBreaks(tag){
 	// the auto-inserted <hr> (.heading-break) goes away with its heading; a manually inserted one stays
 	restoreEditorSelection();
 	const editor = document.getElementById("editor");
+	// checklist items are only ever Text (checklist.js)
+	if ( tag !== "div" && selectionHasTaskItems(editor) ) { return }
 	const breaks = headingsInSelection(editor).map(h => h.nextElementSibling).filter(isHeadingBreak);
 	document.execCommand("formatBlock", false, tag);
 	for ( const hr of breaks ) {
