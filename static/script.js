@@ -866,8 +866,9 @@ function toggleFocusMode(force){
 	}
 	document.body.classList.toggle("focus-mode", on);
 	closeContextMenu();
-	// the CSS hides the documents; the phone drawer closes so it isn't open when leaving
+	// the CSS hides the documents; the phone drawer closes so it isn't open when leaving, unless it is pinned (workspace.js)
 	if ( on ) { document.body.classList.remove("tree-drawer-open"); handleWordCounter() }
+	else if ( treePinned ) { document.body.classList.add("tree-drawer-open") }
 	// vi places its mode indicator from the editors' position
 	window.dispatchEvent(new Event("resize"));
 	document.getElementById("editor").focus({preventScroll: true});
@@ -1124,7 +1125,9 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 		if ( name !== null ) { reloadDocumentTabs(name) }
 	}
 	if ( fromCloud ) { rememberSynced(synced) }
-	applyFoldingSettings(); // the settings may have come with the notebook
+	// the settings may have come with the notebook
+	applyFoldingSettings();
+	applyViMode();
 	refreshFileTree();
 	if (loadLastOpened){
 		loadLastOpenedDocument();
