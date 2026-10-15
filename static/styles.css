@@ -771,7 +771,8 @@ body.app > .topbar {
 /* list folding (folding.js): an item with nested items gets an arrow left of its bullet or checkbox, shown on hover
    or when collapsed. It is the nested list's ::before (a checklist item's own are its checkbox): for a list inside
    the item, placed on the item's first line; for a list right after it (as Tab nests items), right above the list,
-   on the item's last line (the list's margin-top is .3rem, above) */
+   on the item's last line (the list's margin-top is .3rem, above). Collapsed, everything in the nested list goes
+   (its items and the deeper lists nested after them), the list stays for its arrow */
 .list-folding .editor li:has(> :is(ul, ol) > li),
 .list-folding .editor :is(ul, ol) > li + :is(ul, ol):has(> li) {
 	position: relative;
@@ -808,8 +809,8 @@ body.app > .topbar {
 .list-folding .editor li[data-collapsed="true"] + :is(ul, ol)::before {
 	content: "▸";
 }
-.list-folding .editor li[data-collapsed="true"] > :is(ul, ol) > li,
-.list-folding .editor li[data-collapsed="true"] + :is(ul, ol) > li,
+.list-folding .editor li[data-collapsed="true"] > :is(ul, ol) > *,
+.list-folding .editor li[data-collapsed="true"] + :is(ul, ol) > *,
 .list-folding .editor li[data-collapsed="true"] + :is(ul, ol) + :is(ul, ol) {
 	display: none;
 }

@@ -91,6 +91,18 @@ def test_arrow_collapses_and_expands(editor, item, hidden):
 	assert visible(editor, hidden)
 
 
+@pytest.mark.parametrize("html", [
+	'<ul><li>a</li><ul><li>a1</li><ul><li>a2</li><ul><li>a3</li></ul></ul></ul><li>b</li></ul>',
+	'<ul><li>a<ul><li>a1<ul><li>a2<ul><li>a3</li></ul></li></ul></li></ul></li><li>b</li></ul>',
+])
+def test_collapsing_hides_all_nested_levels(vi_insert, html):
+	load(vi_insert, html)
+	click_arrow(vi_insert, "a")
+	assert [visible(vi_insert, text) for text in ("a", "a1", "a2", "a3", "b")] == [True, False, False, False, True]
+	click_arrow(vi_insert, "a")
+	assert all(visible(vi_insert, text) for text in ("a1", "a2", "a3"))
+
+
 def test_arrow_shows_on_hover(editor):
 	opacity = f"""(text) => {{
 		const li = ({FIND})(text);
