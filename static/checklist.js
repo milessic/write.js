@@ -171,6 +171,27 @@ function handleChecklistMouseDown(e){
 	setTaskItemsChecked([li], !isChecked(li));
 }
 
+// iOS Safari ignores a cancelled mousedown (it comes after the tap): the caret still moves to the tap and the editor
+// scrolls to it. A tap on the checkbox is handled at touchend instead; cancelling it stops the mouse events, the focus
+// and the caret move. A touch that moved is a scroll and is left alone
+let checkboxTouch = null;
+
+function handleChecklistTouchStart(e){
+	const touch = e.touches.length === 1 ? e.touches[0] : null;
+	checkboxTouch = touch && { x: touch.clientX, y: touch.clientY };
+}
+
+function handleChecklistTouchEnd(e){
+	const start = checkboxTouch;
+	checkboxTouch = null;
+	const touch = e.changedTouches[0];
+	if ( !start || !touch || e.touches.length || Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > 10 ) { return }
+	const li = taskItemAtCheckbox({ target: touch.target, clientX: touch.clientX, clientY: touch.clientY });
+	if ( !li ) { return }
+	e.preventDefault();
+	setTaskItemsChecked([li], !isChecked(li));
+}
+
 function handleChecklistKeydown(e){
 	// Ctrl/Cmd+Enter toggles the selected checklist items: all checked when any isn't, else all unchecked
 	if ( e.key !== "Enter" || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.isComposing ) { return }
@@ -420,6 +441,8 @@ function markdownTaskItemsToChecklist(html){
 // capture: Ctrl/Cmd+Enter is the toggle before any Enter handling
 document.getElementById("editor-grid").addEventListener("keydown", handleChecklistKeydown, true);
 document.getElementById("editor-grid").addEventListener("mousedown", handleChecklistMouseDown);
+document.getElementById("editor-grid").addEventListener("touchstart", handleChecklistTouchStart, {passive: true});
+document.getElementById("editor-grid").addEventListener("touchend", handleChecklistTouchEnd, {passive: false});
 document.getElementById("editor-grid").addEventListener("beforeinput", handleChecklistBeforeInput);
 document.getElementById("editor-grid").addEventListener("input", handleChecklistInput);
 document.querySelectorAll("#editor-grid .editor").forEach(normalizeChecklists);
