@@ -81,6 +81,8 @@ window.WriteVi = {
 		document.addEventListener("scroll", renderCursor, true);
 		document.addEventListener("input", renderSearch, true);
 		window.addEventListener("resize", onResize);
+		// the editors change size without the window: a side panel opened, closed or resized
+		layoutObserver.observe(document.getElementById("editor-grid") || document.body);
 		setMode("normal");
 		WriteVi.setEscButton(localStorage.getItem(viEscButtonKey) === "1");
 	},
@@ -100,6 +102,7 @@ window.WriteVi = {
 		document.removeEventListener("scroll", renderCursor, true);
 		document.removeEventListener("input", renderSearch, true);
 		window.removeEventListener("resize", onResize);
+		layoutObserver.disconnect();
 		clearSearchHighlight();
 		document.execCommand = nativeExecCommand;
 		mode = "insert";
@@ -107,6 +110,10 @@ window.WriteVi = {
 		document.body.classList.remove("vi-enabled", "vi-block-caret", "vi-esc-enabled");
 		ui.root?.remove();
 		enabled = false;
+	},
+	relayout(){
+		// the editors moved (a side panel docked on the other side, workspace.js): the cursor and the mode follow
+		onResize();
 	},
 	setEscButton(show){
 		document.body.classList.toggle("vi-esc-enabled", show);
@@ -236,9 +243,11 @@ function placeIndicator(){
 }
 
 function onResize(){
+	if ( !enabled ) { return }
 	placeIndicator();
 	renderCursor();
 }
+const layoutObserver = new ResizeObserver(onResize);
 
 function setMode(next){
 	const wasInsert = mode === "insert" || mode === "replace";
@@ -368,7 +377,8 @@ const namedKeys = new Set(["Escape", "Enter", "Backspace", "Delete", "Tab", "Arr
 
 function onKeydown(e){
 	if ( closePopupsWithQ(e) ) { return }
-	if ( !commandLine && e.target.closest?.("#file-tree") ) { onTreeKeydown(e); return }
+	// the table of contents in the tree (toc.js) has keys of its own
+	if ( !commandLine && e.target.closest?.("#file-tree") && !e.target.closest(".toc-body") ) { onTreeKeydown(e); return }
 	const editor = editorOf(e.target);
 	if ( !editor || commandLine ) { return }
 	if ( e.isComposing || e.keyCode === 229 ) { return }   // phone keyboard: comes as beforeinput
@@ -2076,9 +2086,13 @@ function runExCommand(editor, value, visual){
 		splitEditor();
 		return;
 	case "tree": case "FileExplorer":
-		// shows the file tree and goes to it, like Ctrl+w h
-		if ( !isFileTreeVisible() ) { showFileTree() }
+		// shows the file tree and goes to it, like Ctrl+w h (its documents, not the table of contents)
+		showFileTree();
 		focusTree();
+		return;
+	case "toc": case "TableOfContents":
+		// shows the table of contents and goes to it (toc.js): j / k, Enter goes to the heading, Esc back
+		openTableOfContents(true);
 		return;
 	case "f": case "focus":
 		toggleFocusMode();
@@ -2358,7 +2372,8 @@ function goToTab(step, absolute=false){
 
 // the file tree, like Neovim's NeoTree: j k to move, l / Enter to open, h to close, / to filter, Ctrl+W to leave
 function inTree(){
-	return !!document.activeElement?.closest?.("#file-tree");
+	// not the table of contents in it (toc.js)
+	return !!document.activeElement?.closest?.("#file-tree") && !document.activeElement.closest(".toc-body");
 }
 
 function treeTowards(from, direction){
@@ -2381,6 +2396,8 @@ function treeRows(){
 }
 
 function focusTree(row=null){
+	// the tree showing the table of contents (toc.js): Ctrl+w goes to it
+	if ( !row && typeof tocShownInTree === "function" && tocShownInTree() ) { focusTableOfContents(); return }
 	const rows = treeRows();
 	row = row || rows.find(r => r.classList.contains("active")) || rows[0];
 	if ( !row ) { document.getElementById("file-tree-search")?.focus(); return }
@@ -2595,6 +2612,7 @@ const helpSections = [
 		[":5", "go to line 5"],
 		[":h0 :h1 :h2 :h3 :h4", "text, heading 1 to 4 (on the selected lines from VISUAL)"],
 		[":tree :FileExplorer", "show the documents and go to them (TREE)"],
+		[":toc :TableOfContents", "show the table of contents and go to it: j / k, Enter goes to the heading, Esc back"],
 		[":f :focus", "focus mode on / off: only the text; Esc Esc in NORMAL or the faint x leaves it"],
 		[":h :help", "this help"],
 		["q, Esc", "close pop-ups (this help, Settings, menus); Esc in any mode"],

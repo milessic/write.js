@@ -41,9 +41,11 @@ body.app > .topbar {
 	min-height: 0;
 	display: flex;
 }
-[data-tree-side="right"] .app-body {
-	flex-direction: row-reverse;
-}
+/* the side panels are put in place by order: the documents outermost, the table of contents (toc.js) next to the editors */
+.file-tree { order: -2; }
+[data-tree-side="right"] .file-tree { order: 2; }
+.toc-panel { order: 1; }
+[data-toc-side="left"] .toc-panel { order: -1; }
 .editor-area {
 	flex: 1;
 	min-width: 0;
@@ -75,6 +77,171 @@ body.app > .topbar {
 .tree-hidden .file-tree,
 .file-tree-scrim {
 	display: none;
+}
+/* the table of contents on its own (toc.js): like the documents tree, left or right of the editors */
+.toc-panel {
+	display: none;
+	flex: none;
+	position: relative;
+	width: var(--toc-width, 15rem);
+	flex-direction: column;
+	gap: .4rem;
+	padding: .5rem;
+	background: var(--surface);
+	color: var(--ink);
+	border-left: 1px solid var(--line);
+}
+[data-toc-side="left"] .toc-panel {
+	border-left: 0;
+	border-right: 1px solid var(--line);
+}
+.toc-separate .toc-panel {
+	display: flex;
+}
+.toc-panel .file-tree-head {
+	min-height: 1.9rem;
+}
+.toc-panel .file-tree-resizer {
+	right: auto;
+	left: -3px;
+}
+[data-toc-side="left"] .toc-panel .file-tree-resizer {
+	left: auto;
+	right: -3px;
+}
+/* the tree's tabs: only "Documents" (looking like a title) until the table of contents is a tab next to it */
+.side-tabs {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	gap: .15rem;
+	overflow: hidden;
+}
+/* the tabs give way to the buttons in a narrow tree, cut short */
+.side-tabs .side-tab {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	padding: .2rem .1rem;
+	font-family: inherit;
+	background: none;
+	border: 0;
+	border-bottom: 2px solid transparent;
+	cursor: inherit;
+}
+.toc-tab {
+	display: none;
+}
+.toc-in-tree .toc-tab {
+	display: inline-block;
+}
+.toc-in-tree .side-tab {
+	padding: .2rem .3rem;
+	letter-spacing: .02em;
+	cursor: pointer;
+	color: var(--muted);
+}
+.toc-in-tree .side-tab[aria-selected="true"] {
+	color: var(--ink);
+	border-bottom-color: var(--accent);
+}
+.toc-in-tree .side-tab:hover {
+	color: var(--ink);
+}
+.side-tab-close {
+	flex: none;
+	padding: 0 .25rem;
+	font: inherit;
+	line-height: 1;
+	color: var(--muted);
+	background: none;
+	border: 0;
+	border-radius: calc(var(--radius) / 3);
+	cursor: pointer;
+	opacity: .7;
+}
+.side-tab-close:hover {
+	color: var(--ink);
+	background: var(--line);
+	opacity: 1;
+}
+/* with the tabs, the tree's head takes two rows: the tabs and the panel's buttons, then the documents' buttons */
+.side-tabs-break {
+	display: none;
+}
+.toc-in-tree .file-tree-head {
+	flex-wrap: wrap;
+	row-gap: .3rem;
+}
+.toc-in-tree .file-tree-head > * {
+	order: 1;
+}
+.toc-in-tree .file-tree-head > .side-tabs {
+	order: 0;
+}
+.toc-in-tree .side-tabs-break {
+	display: block;
+	order: 2;
+	flex-basis: 100%;
+	height: 0;
+}
+.toc-in-tree :is(#file-tree-new, #file-tree-new-folder) {
+	order: 3;
+}
+.toc-in-tree #file-tree-new {
+	margin-left: auto;
+}
+[data-tree-tab="toc"] .side-tabs-break {
+	display: none;
+}
+/* the tree showing the table of contents: the documents' parts step aside */
+.toc-body {
+	display: none;
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	outline: none;
+}
+.toc-panel .toc-body,
+[data-tree-tab="toc"] .file-tree .toc-body {
+	display: block;
+}
+[data-tree-tab="toc"] .file-tree :is(#file-tree-search, #file-tree-list, #file-tree-new, #file-tree-new-folder) {
+	display: none;
+}
+.toc-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+/* a row per heading (styled as the tree's rows), indented by its level */
+.toc-row .tree-label {
+	white-space: nowrap;
+}
+.toc-row[data-level="1"] {
+	color: var(--ink);
+	font-weight: 600;
+}
+.toc-row.folded {
+	opacity: .55;
+}
+.toc-row.active {
+	background: color-mix(in srgb, var(--accent) 14%, transparent);
+	box-shadow: inset 2px 0 0 var(--accent);
+	color: var(--ink);
+}
+.toc-message {
+	color: var(--muted);
+	font-size: .85rem;
+	--depth: 0;
+	padding-left: .4rem;
+}
+.toc-levels {
+	flex-wrap: wrap;
+	gap: .25rem 1rem;
 }
 /* pinning only matters where the tree is a drawer (phones and tablets) */
 @media (min-width: 1000px) {
@@ -528,6 +695,9 @@ body.app > .topbar {
 .dock-zones[data-panel="tabs"] {
 	grid-template-rows: 1fr 1fr;
 }
+.dock-zones[data-panel="toc"] {
+	grid-template-columns: 1fr 1fr 1fr;
+}
 .dock-zone {
 	display: none;
 	place-items: center;
@@ -541,7 +711,8 @@ body.app > .topbar {
 	pointer-events: none;
 }
 .dock-zones[data-panel="tree"] .dock-zone[data-for="tree"],
-.dock-zones[data-panel="tabs"] .dock-zone[data-for="tabs"] {
+.dock-zones[data-panel="tabs"] .dock-zone[data-for="tabs"],
+.dock-zones[data-panel="toc"] .dock-zone[data-for="toc"] {
 	display: grid;
 }
 .dock-zone.over {
@@ -1094,6 +1265,7 @@ input:is(.error, .field-error) {
 }
 body.focus-mode > .topbar,
 body.focus-mode .file-tree,
+body.focus-mode .toc-panel,
 body.focus-mode .file-tree-scrim,
 body.focus-mode .tab-bar,
 body.focus-mode .format-bar,

@@ -37,8 +37,10 @@ const documentDragType = "application/x-writejs-document";
 const folderDragType = "application/x-writejs-folder";
 
 let treePinned = localStorage.getItem(treePinnedKey) === "true";
+// the table of contents (toc.js): tocSide "left" / "right" on its own or "tree" as a tab next to the documents,
+// treeTab is the tab the tree shows then
 const layout = Object.assign(
-	{ treeSide: "left", tabsSide: "top", treeHidden: false, collapsedFolders: [] },
+	{ treeSide: "left", tabsSide: "top", treeHidden: false, collapsedFolders: [], tocSide: "right", tocHidden: true, treeTab: "documents" },
 	readJsonSetting(layoutKey)
 );
 // {id, name, html, dirty}; html is only kept while a tab that isn't shown has unsaved changes
@@ -180,6 +182,8 @@ function applyLayout(){
 	document.body.dataset.treeSide = layout.treeSide;
 	document.body.dataset.tabsSide = layout.tabsSide;
 	document.body.classList.toggle("tree-hidden", layout.treeHidden);
+	if ( typeof applyTocLayout === "function" ) { applyTocLayout() } // toc.js loads after this file
+	requestAnimationFrame(() => window.WriteVi?.relayout());
 }
 
 function setupTreeResizing(){
@@ -312,6 +316,7 @@ function isFileTreeVisible(){
 }
 
 function showFileTree(){
+	layout.treeTab = "documents";
 	if ( isLowWidthViewport ) {
 		document.body.classList.add("tree-drawer-open");
 	} else {
@@ -337,6 +342,8 @@ function closeTreeDrawer(){
 }
 
 function toggleFileTree(){
+	// the tree showing the table of contents (toc.js) switches to the documents
+	if ( isFileTreeVisible() && document.body.classList.contains("toc-in-tree") && layout.treeTab === "toc" ) { showFileTree(); return }
 	isFileTreeVisible() ? hideFileTree() : showFileTree();
 }
 
@@ -1491,6 +1498,8 @@ document.querySelectorAll("#dock-zones .dock-zone").forEach((zone) => {
 	zone.addEventListener("drop", (e) => {
 		e.preventDefault();
 		const side = zone.dataset.side;
-		if ( zones.dataset.panel === "tree" ) { setTreeSide(side) } else { setTabsSide(side) }
+		if ( zones.dataset.panel === "tree" ) { setTreeSide(side) }
+		else if ( zones.dataset.panel === "toc" ) { setTocSide(side) } // toc.js
+		else { setTabsSide(side) }
 	});
 });

@@ -51,6 +51,8 @@ def test_number_is_on_its_line(numbered):
 
 def test_caret_line_is_current(numbered):
 	numbered.load(["one", "two", "three"], at=(1, 0))
+	# drawn on the next frame
+	numbered.page.wait_for_function("document.querySelector('.line-numbers .current')?.textContent === '2'", timeout=2000)
 	current = numbered.page.evaluate("[...document.querySelectorAll('.line-numbers .current')].map(el => el.textContent)")
 	assert current == ["2"]
 
