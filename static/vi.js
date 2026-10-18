@@ -1144,18 +1144,30 @@ function openLine(editor, model, i, above){
 	const insertParagraph = () => typeof withNewTaskItemsUnchecked === "function"
 		? withNewTaskItemsUnchecked(editor, () => exec("insertParagraph"))
 		: exec("insertParagraph");
-	if ( above && lineStart(text, i) === 0 ) {
-		setCaret(model, 0);
+	const start = lineStart(text, i);
+	// a rule isn't a line: above a line right under one, the new line goes between them, not over the rule
+	if ( above && (start === 0 || ruleBetween(model, start - 1, start)) ) {
+		setCaret(model, start);
 		insertParagraph();
 		window.getSelection().modify("move", "backward", "character");
 		rememberSelection();
 	} else {
-		setCaret(model, above ? lineStart(text, i) - 1 : lineEnd(text, i));
+		setCaret(model, above ? start - 1 : lineEnd(text, i));
 		insertParagraph();
 		rememberSelection();
 	}
 	setMode("insert");
 	changed();
+}
+
+function ruleBetween(model, from, to){
+	// an <hr> between two text positions
+	const a = positionAt(model, from);
+	const b = positionAt(model, to);
+	const range = document.createRange();
+	range.setStart(a.node, a.offset);
+	range.setEnd(b.node, b.offset);
+	return [...model.editor.querySelectorAll("hr")].some(hr => range.intersectsNode(hr));
 }
 
 function put(editor, model, i, before, count){
@@ -1390,7 +1402,7 @@ function moveCaret(editor, model, i, motion, count){
 		// exactly like the arrow keys: wrapped lines, the remembered column, crossing to the next line
 		const selection = window.getSelection();
 		if ( !selection.isCollapsed ) { selection.collapseToEnd() }
-		for ( let n = 0; n < (count || 1); n++ ) { selection.modify("move", ...browser) }
+		for ( let n = 0; n < (count || 1); n++ ) { browserMove(selection, ...browser) }
 		if ( motion.key === "g$" || motion.key === "End" ) { clampCaret(editor) } else { rememberSelection() }
 		scrollCaret(editor);
 		return
@@ -1487,8 +1499,22 @@ function browserTarget(model, i, [direction, granularity], count){
 	// runs a browser motion from index i on a collapsed selection and reads where it lands
 	setCaret(model, i);
 	const selection = window.getSelection();
-	for ( let n = 0; n < count; n++ ) { selection.modify("move", direction, granularity) }
+	for ( let n = 0; n < count; n++ ) { browserMove(selection, direction, granularity) }
 	return indexAt(model, selection.focusNode, selection.focusOffset) ?? i;
+}
+
+function browserMove(selection, direction, granularity){
+	selection.modify("move", direction, granularity);
+	// a line move can stop next to an <hr>, which isn't a line: it goes on to the line past it
+	if ( granularity === "line" && atRule(selection) ) { selection.modify("move", direction, granularity) }
+}
+
+function atRule(selection){
+	const node = selection.focusNode;
+	if ( !node || node.nodeType !== Node.ELEMENT_NODE ) { return false }
+	const isRule = (n) => n?.nodeType === Node.ELEMENT_NODE && n.tagName === "HR";
+	const offset = selection.focusOffset;
+	return isRule(node) || isRule(node.childNodes[offset]) || isRule(node.childNodes[offset - 1]);
 }
 
 function findInLine(text, i, key, char, count, repeat){
