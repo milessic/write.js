@@ -405,5 +405,7 @@ document.getElementById("editor-grid").addEventListener("input", (e) => {
 applyFoldingSettings();
 document.querySelectorAll("#editor-grid .editor").forEach((editor) => {
 	moveListsOutOfItems(editor);
+	moveHeadingsOutOfLines(editor);
+	applyHeadingFolds(editor);
 	normalizeListFolds(editor);
 });

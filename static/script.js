@@ -264,6 +264,7 @@ function formatBlockWithHeadingBreaks(tag){
 	if ( tag !== "div" && selectionHasTaskItems(editor) ) { return }
 	const breaks = headingsInSelection(editor).map(h => h.nextElementSibling).filter(isHeadingBreak);
 	document.execCommand("formatBlock", false, tag);
+	moveHeadingsOutOfLines(editor);
 	for ( const hr of breaks ) {
 		if ( !hr.previousElementSibling?.matches("h1, h2, h3, h4") ) { hr.remove() }
 	}
@@ -519,6 +520,7 @@ function fillEditorWithHTML(html, append=false){
 	}
     document.getElementById("editor").innerHTML = html;
 	moveListsOutOfItems(document.getElementById("editor"));
+	moveHeadingsOutOfLines(document.getElementById("editor"));
 	normalizeChecklists(document.getElementById("editor"));
 	document.getElementById("editor").closest(".pane-scroll").scrollTo(0, 1000);
 }
@@ -1635,6 +1637,29 @@ function moveListsOutOfItems(editor){
 			continue
 		}
 		li.after(...rest);
+	}
+}
+
+function moveHeadingsOutOfLines(editor){
+	// a heading inside a line <div> (formatBlock on a line nested in another one makes them) goes up to the editor,
+	// splitting the lines around it, so it folds (folding.js) and counts as a heading; not out of lists, quotes or tables
+	const blank = (nodes) => nodes.every((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim() === "");
+	for ( const heading of editor.querySelectorAll("h1, h2, h3, h4") ) {
+		const lines = [];
+		for ( let el = heading.parentElement; el && el !== editor; el = el.parentElement ) { lines.push(el) }
+		if ( !lines.length || !lines.every((el) => el.nodeName === "DIV") ) { continue }
+		while ( heading.parentElement !== editor ) {
+			const line = heading.parentElement;
+			const after = line.cloneNode(false);
+			while ( heading.nextSibling ) { after.appendChild(heading.nextSibling) }
+			// the heading's break line stays right under it
+			const hr = [...after.childNodes].find((node) => !blank([node]));
+			const headingBreak = isHeadingBreak(hr) ? hr : null;
+			line.after(heading);
+			if ( headingBreak ) { heading.after(headingBreak) }
+			if ( !blank([...after.childNodes]) ) { (headingBreak || heading).after(after) }
+			if ( blank([...line.childNodes]) ) { line.remove() }
+		}
 	}
 }
 
