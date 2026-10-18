@@ -718,11 +718,11 @@ body.app > .topbar {
 .block-select-menu > .block-option-h3 { font-size: 1.1rem; font-weight: 700; }
 .block-select-menu > .block-option-h4 { font-size: .95rem; font-weight: 700; }
 /* the theme sizes h2/h3 for the app's UI (h3 is below the editor's text): a document gets its own scale */
-:is(.editor, #content) :is(h1, h2, h3, h4) { color: inherit; font-weight: 700; line-height: 1.25; margin-bottom: .3rem; }
-:is(.editor, #content) h1 { font-size: 2em; }
-:is(.editor, #content) h2 { font-size: 1.6em; }
-:is(.editor, #content) h3 { font-size: 1.3em; }
-:is(.editor, #content) h4 { font-size: 1.1em; }
+:is(.editor, #content, .compare-view) :is(h1, h2, h3, h4) { color: inherit; font-weight: 700; line-height: 1.25; margin-bottom: .3rem; }
+:is(.editor, #content, .compare-view) h1 { font-size: 2em; }
+:is(.editor, #content, .compare-view) h2 { font-size: 1.6em; }
+:is(.editor, #content, .compare-view) h3 { font-size: 1.3em; }
+:is(.editor, #content, .compare-view) h4 { font-size: 1.1em; }
 /* heading folding (folding.js): an arrow in the margin left of each heading, shown on hover or when collapsed */
 .heading-folding .editor > :is(h1, h2, h3, h4) {
 	position: relative;
@@ -758,6 +758,39 @@ body.app > .topbar {
 }
 .heading-folding .editor > .fold-hidden {
 	display: none;
+}
+/* line numbers (linenumbers.js): faint, in a margin of their own left of the folding arrows; the caret's line brighter */
+body.show-line-numbers .editor-card {
+	position: relative;
+	padding-left: calc(1.25rem + var(--line-number-digits, 2) * .5rem + .5rem);
+}
+.line-numbers {
+	display: none;
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	width: calc(var(--line-number-digits, 2) * .5rem + .5rem);
+	overflow: hidden;
+	pointer-events: none;
+	user-select: none;
+}
+body.show-line-numbers .line-numbers {
+	display: block;
+}
+.line-numbers > span {
+	position: absolute;
+	right: 0;
+	font-size: .72rem;
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+	color: var(--muted);
+	opacity: .45;
+	transition: opacity .15s;
+}
+.line-numbers > span.current {
+	color: var(--ink);
+	opacity: .75;
 }
 /* no hover on touch screens: the arrows are always there, faint */
 @media (hover: none) {
@@ -843,7 +876,7 @@ body.app > .topbar {
 	}
 }
 
-/* the editor and exported documents (#content) */
+/* the editor, exported documents (#content) and the versions compared in a sync conflict (.compare-view) */
 .editor {
 	min-height: 60vh;
 	outline: none;
@@ -855,30 +888,30 @@ body.app > .topbar {
 #content > :last-child {
 	margin-bottom: 55vh;
 }
-:where(.editor, #content) :is(h1, h2, h3, h4, p, div, ul, ol, pre, hr) {
+:where(.editor, #content, .compare-view) :is(h1, h2, h3, h4, p, div, ul, ol, pre, hr) {
 	margin-top: .3rem;
 }
-:where(.editor, #content) :is(ul, ol) {
+:where(.editor, #content, .compare-view) :is(ul, ol) {
 	padding-left: 2rem;
 }
 /* checklist items (checklist.js): the checkbox is the ::before in the list's gutter, its tick the ::after */
-:where(.editor, #content) ul > li[data-checked] {
+:where(.editor, #content, .compare-view) ul > li[data-checked] {
 	position: relative;
 	list-style: none;
 }
-:where(.editor, #content) ul > li[data-checked]::before,
-:where(.editor, #content) ul > li[data-checked]::after {
+:where(.editor, #content, .compare-view) ul > li[data-checked]::before,
+:where(.editor, #content, .compare-view) ul > li[data-checked]::after {
 	content: "";
 	position: absolute;
 	box-sizing: border-box;
 }
-:where(.editor, #content) ul > li[data-checked]::after {
+:where(.editor, #content, .compare-view) ul > li[data-checked]::after {
 	pointer-events: none;
 }
 .editor ul > li[data-checked]::before {
 	cursor: pointer;
 }
-:where(.editor, #content) ul > li[data-checked]::before {
+:where(.editor, #content, .compare-view) ul > li[data-checked]::before {
 	left: -1.45em;
 	top: .25em;
 	top: calc((1lh - 1em) / 2);
@@ -892,11 +925,11 @@ body.app > .topbar {
 .editor ul > li[data-checked]:hover::before {
 	border-color: var(--accent);
 }
-:where(.editor, #content) ul > li[data-checked="true"]::before {
+:where(.editor, #content, .compare-view) ul > li[data-checked="true"]::before {
 	background: var(--accent);
 	border-color: var(--accent);
 }
-:where(.editor, #content) ul > li[data-checked="true"]::after {
+:where(.editor, #content, .compare-view) ul > li[data-checked="true"]::after {
 	left: calc(-1.45em + .34em);
 	top: calc(.25em + .14em);
 	top: calc((1lh - 1em) / 2 + .14em);
@@ -908,11 +941,11 @@ body.app > .topbar {
 }
 /* checked: the item fades (not the items nested in it). Not a color or a line-through: Chrome copies those into
    <span style> when text moves between items (Enter, Backspace), and the text would keep them when unchecked */
-:where(.editor, #content) ul > li[data-checked="true"]:not(:has(> ul, > ol)) {
+:where(.editor, #content, .compare-view) ul > li[data-checked="true"]:not(:has(> ul, > ol)) {
 	opacity: .6;
 }
 /* zero specificity, so a theme's own pre style wins */
-:where(.editor, #content) pre {
+:where(.editor, #content, .compare-view) pre {
 	font-family: var(--font-mono);
 	background: var(--surface-2);
 	color: var(--ink-2);
@@ -983,6 +1016,10 @@ body.app > .topbar {
 .compare-view .diff-added {
 	margin: 0 -.8rem;
 	padding: 0 .8rem 0 calc(.8rem - 3px);
+}
+/* a changed list keeps its indent: the bullets and checkboxes are in it */
+.compare-view :is(ul, ol):is(.diff-removed, .diff-added) {
+	padding-left: calc(.8rem - 3px + 2rem);
 }
 .compare-view .diff-removed {
 	background: color-mix(in srgb, var(--tone-fail) 16%, transparent);

@@ -14,6 +14,7 @@ const autoDetectKey = "__autoDetect__"; // {enabled, rules} for markdown typed i
 const headingFoldingKey = "__headingFolding__"; // "0" when collapsing sections by their headings is off (Settings, folding.js), goes with the notebook
 const listFoldingKey = "__listFolding__"; // "0" when collapsing list items with nested items is off (Settings, folding.js), goes with the notebook
 const autoCheckParentsKey = "__autoCheckParents__"; // "0" when a checklist item isn't checked with all its nested items (Settings, checklist.js), goes with the notebook
+const lineNumbersKey = "__lineNumbers__"; // "1" when the line numbers show left of the text (Settings, linenumbers.js), goes with the notebook
 const viEscButtonKey = "__viEscButton__"; // "1" shows the vi Esc button on touch screens, this device only
 const viScriptUrl = document.currentScript?.dataset.viSrc || "static/vi.js"; // content-versioned by the server, see utils/static_files.py
 
@@ -360,6 +361,10 @@ function createThemeModal(){
 
 function createSettingsModal(){
 	createModal("Settings", `
+	<h3>Editor</h3>
+	<div class="stack">
+		${lineNumbersSettingsHtml()}
+	</div>
 	<h3>Vi mode</h3>
 	<div class="stack">
 		<label class="check"><input id="setting-vi-mode" type="checkbox"${viModeEnabled() ? " checked" : ""}>Vi keybindings (like Neovim)</label>
@@ -382,6 +387,7 @@ function createSettingsModal(){
 		${listFoldingSettingsHtml()}
 		${autoCheckParentsSettingsHtml()}
 	</div>` + autoDetectSettingsHtml());
+	initLineNumbersSettings();
 	initHeadingFoldingSettings();
 	initListFoldingSettings();
 	initAutoCheckParentsSettings();
@@ -1129,6 +1135,7 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 	ensureDocumentIds(); // documents from before the ids (doclinks.js)
 	// the settings may have come with the notebook
 	applyFoldingSettings();
+	applyLineNumbersSetting();
 	applyViMode();
 	refreshFileTree();
 	if (loadLastOpened){
