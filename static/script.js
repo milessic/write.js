@@ -595,8 +595,8 @@ function saveDocumentToLocalStorage(){
 	let documentNameValue = ''
 	try { 
 		documentNameValue = getDocumentName();
-		let documentText = getDocumentText();
 		if ( !validateDocumentName() ){return}
+		let documentText = documentHtmlToStore();
 		localStorage.setItem(docPrefix + documentNameValue, documentText);
 		setUserLoggedIn(null);
 		setUserConsent(userConsent);
@@ -636,9 +636,8 @@ function performAutoSave(){
 	try {
 		if (!validateDocumentName(false)){return};
 		let name = getDocumentName();
-		let content = getDocumentText();
-		if (!content){return}
-		localStorage.setItem(docPrefix + name, content);
+		if (!getDocumentText()){return}
+		localStorage.setItem(docPrefix + name, documentHtmlToStore());
 		saveAsLastOpenedDocument(name)
 		markActiveTabSaved();
 		if ( typeof handleRemoteAutosave !== "undefined" ){
@@ -1125,6 +1124,7 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 		if ( name !== null ) { reloadDocumentTabs(name) }
 	}
 	if ( fromCloud ) { rememberSynced(synced) }
+	ensureDocumentIds(); // documents from before the ids (doclinks.js)
 	// the settings may have come with the notebook
 	applyFoldingSettings();
 	applyViMode();
@@ -1160,7 +1160,7 @@ function resolveSyncConflicts(conflicts, sourceLabel, fromCloud){
 		`'${name}' was changed on this device and ${fromCloud ? "in the cloud since the last sync" : "differs from the backup"}. Pick the version to keep.`
 		+ (conflicts.length ? ` ${conflicts.length} more after this one.` : "");
 	const views = modal.querySelectorAll(".compare-view");
-	const diff = renderLineDiff(views[0], views[1], local, remote);
+	const diff = renderLineDiff(views[0], views[1], splitDocumentId(local).html, splitDocumentId(remote).html);
 	const summary = modal.querySelector(".diff-summary");
 	if ( diff.removed || diff.added ) {
 		summary.innerHTML = `<span class="diff-count-removed">−${diff.removed}</span>`
@@ -1179,11 +1179,12 @@ function resolveSyncConflicts(conflicts, sourceLabel, fromCloud){
 		} else if ( pick === "both" ) {
 			let copyName = `${name} (${sourceLabel.toLowerCase()})`;
 			for ( let i = 2; documentExists(copyName); i++ ) { copyName = `${name} (${sourceLabel.toLowerCase()} ${i})` }
-			localStorage.setItem(docPrefix + copyName, remote);
+			localStorage.setItem(docPrefix + copyName, withDocumentId(remote, newDocumentId()));
 			const folder = folderOfDocument(name);
 			if ( folder ) { assignDocumentFolder(copyName, folder) }
 		}
 		if ( fromCloud ) { rememberSynced({ [key]: remote }) }
+		ensureDocumentIds();
 		refreshFileTree();
 		// this device's version or the copy goes to the cloud with the next push
 		if ( pick !== "remote" && typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() }
@@ -1416,12 +1417,19 @@ function createInsertLinkModal(){
 		<div class="stack">
 			<label>Link Text<input id='link-name' type='text' value="${caretPosition.cloneContents().textContent}"></label>
 			<label>Link url<input id='link-href' type='text'></label>
+			<label>Write.JS doc<input id='link-doc' type='text' list='link-doc-options' placeholder='Link a document instead of a url' autocomplete='off'></label>
+			<datalist id='link-doc-options'></datalist>
 		</div>
 		`
 	} catch ( err ) {
 		informError("First, point where the link shuold be inserted", err, "warning")
 		return
 	}
+	fillDocumentLinkOptions(c_div.querySelector("#link-doc-options"));
+	// a picked document is linked instead of the url, its name is the text unless one is typed
+	c_div.querySelector("#link-doc").addEventListener("input", (e) => {
+		c_div.querySelector("#link-href").disabled = Boolean(e.target.value);
+	});
 	const b_div = document.createElement("div");
 	b_div.classList.add("row");
 	b_div.style.marginTop = ".8rem";
@@ -1445,6 +1453,11 @@ function createInsertLinkModal(){
 }
 
 function insertLink(){
+	const docName = document.getElementById("link-doc").value;
+	if ( docName ) {
+		if ( insertDocumentLink(docName, document.getElementById("link-name").value) ) { closeInsertLinkModal() }
+		return
+	}
 	const href = document.getElementById("link-href").value;
 	const text = document.getElementById("link-name").value;
 	if ( !href || !text ) { informError("Both Text and Link have to be provided!","");return}

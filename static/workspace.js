@@ -988,7 +988,10 @@ function loadPane(pane){
 	const tab = tabById(pane.tabId);
 	let html = tab.html;
 	if ( html === null ) {
-		html = documentExists(tab.name) ? localStorage.getItem(docPrefix + tab.name) : "";
+		// the stored document's id stays on the tab, the editor shows only the content (doclinks.js)
+		const stored = splitDocumentId(documentExists(tab.name) ? localStorage.getItem(docPrefix + tab.name) : "");
+		html = stored.html;
+		if ( stored.id ) { tab.docId = stored.id }
 	}
 	tab.html = null;
 	pane.editor.innerHTML = html;
