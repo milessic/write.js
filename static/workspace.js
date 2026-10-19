@@ -4,8 +4,9 @@
  * the layout, the opened tabs and the split editors are user preferences kept in localStorage.
  * Folders are listed on top of the tree and can hold sub-folders, up to maxFolderDepth levels;
  * a folder is known by its path, e.g. "work/projects". A document is in at most one folder.
- * The folders and which document is in which are kept under foldersKey and go to the cloud
- * with the notebook.
+ * The folders, which document is in which and the folders' colors are kept under foldersKey and go
+ * to the cloud with the notebook. A folder's color tints it, its sub-folders without a color of their own
+ * and the tabs of the documents in them.
  * Documents in the tree can be selected with Ctrl/Cmd+click (one more) and Shift+click (a range);
  * opening, deleting, moving and dragging then act on all the selected documents.
  *
@@ -40,6 +41,19 @@ const maxEditors = 4;
 const tabDragType = "application/x-writejs-tab";
 const documentDragType = "application/x-writejs-document";
 const folderDragType = "application/x-writejs-folder";
+// pastel background colors of folders; a folder stores the key, so the shades can be tuned later
+const folderColors = [
+	{ key: "rose", label: "Rose", color: "#f6c6cc" },
+	{ key: "peach", label: "Peach", color: "#f8d5bd" },
+	{ key: "butter", label: "Butter", color: "#f6eab2" },
+	{ key: "lime", label: "Lime", color: "#ddeeb8" },
+	{ key: "mint", label: "Mint", color: "#c3ead4" },
+	{ key: "aqua", label: "Aqua", color: "#bfe6e8" },
+	{ key: "sky", label: "Sky", color: "#c6dcf4" },
+	{ key: "lavender", label: "Lavender", color: "#d6cff3" },
+	{ key: "lilac", label: "Lilac", color: "#ebcbee" },
+	{ key: "sand", label: "Sand", color: "#e3dacb" },
+];
 
 let treePinned = localStorage.getItem(treePinnedKey) === "true";
 // treeSide "left" / "right" / "top" / "bottom";
@@ -99,7 +113,7 @@ window.addEventListener("beforeunload", (e) => {
 	if ( tabs.some(t => t.dirty && t.id !== focusedPane.tabId) ) { e.preventDefault() }
 });
 // documents changed in another browser tab
-window.addEventListener("storage", () => refreshFileTree());
+window.addEventListener("storage", () => { refreshFileTree(); renderTabs() });
 
 documentNameObject.addEventListener("input", () => {
 	const tab = getActiveTab();
@@ -439,6 +453,8 @@ function treeFolderItem(folder, folders, byFolder, depth){
 	li.setAttribute("role", "treeitem");
 	li.setAttribute("aria-expanded", String(!collapsed));
 	li.dataset.folder = folder;
+	// only a folder with a color of its own is tinted, sub-folders without one inherit it
+	if ( folderColorValue(readFolders().colors[folder]) ) { applyFolderTint(li, folder) }
 	const row = treeRow("tree-folder", folderLabel(folder), depth);
 	row.title = `${displayFolder(folder)} (${names.length} document${names.length === 1 ? "" : "s"})`;
 	row.draggable = true;
@@ -458,6 +474,7 @@ function treeFolderItem(folder, folders, byFolder, depth){
 		{ label: "New document in folder", action: () => createNewDocumentInFolder(folder) },
 		{ label: "New sub-folder", action: () => createFolder(folder), disabled: folderDepth(folder) >= maxFolderDepth },
 		{ label: "Rename folder", action: () => renameFolder(folder) },
+		{ swatches: folderColorSwatches(folder) },
 		{ label: "Move to top level", action: () => moveFolder(folder, ""), disabled: !parentFolder(folder) },
 		{ label: "Delete folder", danger: true, action: () => deleteFolder(folder) },
 		null,
@@ -902,6 +919,8 @@ function renderTabs(){
 		el.title = label + (tab.dirty ? " (unsaved)" : "") + (pane && panes.length > 1 ? ` - editor ${panes.indexOf(pane) + 1}` : "");
 		// the folders the document is in, shown grayed out before the name in the hover tooltip
 		if ( tab.name || label !== untitledTabLabel ) { el.dataset.path = folderSeparator + (tab.folder ? tab.folder + folderSeparator : "") }
+		const owner = folderColorOwner(tab.folder || "");
+		if ( owner ) { applyFolderTint(el, owner) }
 		el.draggable = true;
 
 		const name = document.createElement("span");
@@ -1225,11 +1244,12 @@ function renderPanes(){
 
 // folders
 function readFolders(){
-	// {folders: [name], documents: {documentName: folderName}}
+	// {folders: [name], documents: {documentName: folderName}, colors: {folderName: colorKey}}
 	const store = readJsonSetting(foldersKey);
 	return {
 		folders: Array.isArray(store.folders) ? normalizeFolders(store.folders.filter(f => typeof f === "string")) : [],
 		documents: store.documents && typeof store.documents === "object" ? store.documents : {},
+		colors: store.colors && typeof store.colors === "object" ? store.colors : {},
 	};
 }
 
@@ -1371,11 +1391,13 @@ function relocateFolder(folder, path){
 	const store = readFolders();
 	store.folders = store.folders.map(moved);
 	for ( const [doc, f] of Object.entries(store.documents) ) { store.documents[doc] = moved(f) }
+	store.colors = Object.fromEntries(Object.entries(store.colors).map(([f, c]) => [moved(f), c]));
 	tabs.forEach(t => t.folder = moved(t.folder || ""));
 	layout.collapsedFolders = layout.collapsedFolders.map(moved);
 	expandFolder(parentFolder(path));
 	saveLayout();
 	writeFolders(store);
+	renderTabs();
 	syncFolders();
 }
 
@@ -1400,10 +1422,14 @@ function deleteFolder(folder){
 	for ( const [doc, f] of Object.entries(store.documents) ) {
 		if ( isInFolder(f, folder) ) { delete store.documents[doc] }
 	}
+	for ( const f of Object.keys(store.colors) ) {
+		if ( isInFolder(f, folder) ) { delete store.colors[f] }
+	}
 	tabs.filter(t => isInFolder(t.folder || "", folder)).forEach(t => t.folder = "");
 	layout.collapsedFolders = layout.collapsedFolders.filter(f => !isInFolder(f, folder));
 	saveLayout();
 	writeFolders(store);
+	renderTabs();
 	if ( names.length && typeof sendNotebook !== "undefined" ) {
 		if ( remoteAutoSaveEnabled || showConfirm("Do you want to send updated Notebook to the cloud?") ) { sendNotebookForce() }
 	} else {
@@ -1427,6 +1453,7 @@ function moveDocumentsToFolder(names, folder){
 	if ( folder ) { expandFolder(folder) }
 	writeFolders(store);
 	refreshFileTree(true);
+	renderTabs();
 	syncFolders();
 }
 
@@ -1438,6 +1465,67 @@ function moveToFolderMenuItems(names){
 		{ label: "Move to new folder...", action: () => { const f = createFolder(); if ( f ) { moveDocumentsToFolder(names, f) } } },
 		...(sole !== "" ? [{ label: "Move out of folder", action: () => moveDocumentsToFolder(names, "") }] : []),
 	];
+}
+
+function folderColorValue(key){
+	return folderColors.find(c => c.key === key)?.color || null;
+}
+
+function folderColorOwner(folder){
+	// the folder itself if it has a color, or the nearest folder above it that has one
+	if ( !folder || !validateUserConsent(false) ) { return null }
+	const colors = readFolders().colors;
+	return [folder, ...folderAncestors(folder)].find(f => folderColorValue(colors[f])) || null;
+}
+
+function applyFolderTint(el, folder){
+	// the folder's color; a folder colored inside colored folders is striped with all of their colors,
+	// the outermost first, a color repeated as often as it is set on the way
+	const colors = readFolders().colors;
+	const chain = [...folderAncestors(folder).reverse(), folder].map(f => folderColorValue(colors[f])).filter(Boolean);
+	el.classList.add("colored");
+	el.style.setProperty("--folder-color", chain.at(-1));
+	if ( chain.length > 1 ) {
+		el.classList.add("striped");
+		el.style.setProperty("--folder-stripes", folderStripes(chain, false));
+		el.style.setProperty("--folder-stripes-strong", folderStripes(chain, true));
+	}
+}
+
+function folderStripes(chain, strong){
+	// pastel over the theme's surface; dark themes would make the tints hard to tell apart,
+	// so there they get lighter from the outermost folder's color to the folder's own
+	const width = 10;
+	const stops = chain.map((color, i) => {
+		const dark = (strong ? 22 : 14) + 20 * i / (chain.length - 1);
+		const light = strong ? color : `color-mix(in srgb, ${color} 75%, var(--surface))`;
+		const tint = `light-dark(${light}, color-mix(in srgb, ${color} ${dark}%, var(--surface)))`;
+		return `${tint} ${i * width}px ${(i + 1) * width}px`;
+	});
+	return `repeating-linear-gradient(-45deg, ${stops.join(", ")})`;
+}
+
+function setFolderColor(folder, key){
+	if ( !validateUserConsent() ) { return }
+	const store = readFolders();
+	if ( (store.colors[folder] || null) === key ) { return }
+	if ( key ) {
+		store.colors[folder] = key;
+	} else {
+		delete store.colors[folder];
+	}
+	writeFolders(store);
+	renderTabs();
+	syncFolders();
+}
+
+function folderColorSwatches(folder){
+	// "No color" first; a sub-folder without a color shows the color of the folder it is in
+	const current = readFolders().colors[folder] || null;
+	return [
+		{ key: null, label: "No color", color: null },
+		...folderColors,
+	].map(c => ({ ...c, selected: c.key === current, action: () => setFolderColor(folder, c.key) }));
 }
 
 function deleteDocuments(names){
@@ -1478,7 +1566,9 @@ function mergeFolders(json){
 	const folders = Array.isArray(incoming.folders) ? incoming.folders.filter(f => typeof f === "string" && f) : [];
 	store.folders = normalizeFolders([...store.folders, ...folders]);
 	Object.assign(store.documents, incoming.documents && typeof incoming.documents === "object" ? incoming.documents : {});
+	Object.assign(store.colors, incoming.colors && typeof incoming.colors === "object" ? incoming.colors : {});
 	localStorage.setItem(foldersKey, JSON.stringify(store));
+	renderTabs();
 }
 
 function normalizeFolders(folders){
@@ -1535,6 +1625,10 @@ function openContextMenu(e, items){
 			contextMenu.append(document.createElement("hr"));
 			continue;
 		}
+		if ( item.swatches ) {
+			contextMenu.append(contextMenuSwatches(item.swatches));
+			continue;
+		}
 		const btn = document.createElement("button");
 		btn.setAttribute("role", "menuitem");
 		btn.textContent = item.label;
@@ -1558,6 +1652,26 @@ function openContextMenu(e, items){
 	contextMenu.style.left = Math.max(0, Math.min(e.clientX, window.innerWidth - width - 4)) + "px";
 	contextMenu.style.top = Math.max(0, Math.min(e.clientY, window.innerHeight - height - 4)) + "px";
 	contextMenu.querySelector("button:not([disabled])")?.focus();
+}
+
+function contextMenuSwatches(swatches){
+	// a row of color buttons; one without a color is the "No color" choice
+	const row = document.createElement("div");
+	row.className = "menu-swatches";
+	row.setAttribute("role", "group");
+	row.setAttribute("aria-label", "Folder color");
+	for ( const swatch of swatches ) {
+		const btn = document.createElement("button");
+		btn.className = "menu-swatch" + (swatch.color ? "" : " no-color");
+		btn.setAttribute("role", "menuitemradio");
+		btn.setAttribute("aria-checked", String(Boolean(swatch.selected)));
+		btn.setAttribute("aria-label", swatch.label);
+		btn.title = swatch.label;
+		if ( swatch.color ) { btn.style.setProperty("--swatch-color", swatch.color) }
+		btn.addEventListener("click", () => { closeContextMenu(); swatch.action() });
+		row.append(btn);
+	}
+	return row;
 }
 
 function closeContextMenu(){

@@ -453,6 +453,44 @@ body.app > .topbar {
 	outline-offset: -2px;
 }
 
+/* folder colors (workspace.js): a pastel tint over the theme's surface, softer in dark themes so the text stays readable;
+   sub-folders without a color of their own show the one of the folder they are in.
+   A folder colored inside colored folders is striped diagonally with all of their colors (built in workspace.js) */
+.tree [data-folder].colored,
+.tab.colored {
+	--folder-bg: light-dark(
+		color-mix(in srgb, var(--folder-color) 75%, var(--surface)),
+		color-mix(in srgb, var(--folder-color) 18%, var(--surface))
+	);
+	--folder-bg-strong: light-dark(
+		var(--folder-color),
+		color-mix(in srgb, var(--folder-color) 30%, var(--surface))
+	);
+}
+.tree [data-folder].colored {
+	background: var(--folder-bg);
+	border-radius: calc(var(--radius) / 3);
+}
+.tree [data-folder].colored .tree-row:not(.selected):hover,
+.tree [data-folder].colored .tree-row.active:not(.selected) {
+	background: color-mix(in srgb, var(--ink) 7%, transparent);
+}
+.tab.colored {
+	background: var(--folder-bg);
+}
+.tab.colored:hover,
+.tab.colored.active {
+	background: var(--folder-bg-strong);
+}
+.tree [data-folder].striped,
+.tab.striped {
+	background: var(--folder-stripes);
+}
+.tab.striped:hover,
+.tab.striped.active {
+	background: var(--folder-stripes-strong);
+}
+
 /* opened documents (tabs) */
 .tab-bar {
 	flex: none;
@@ -722,6 +760,38 @@ body.app > .topbar {
 }
 .context-menu.menu-opened {
 	display: flex;
+}
+/* a row of color choices in the menu (a folder's color) */
+.menu-swatches {
+	display: flex;
+	flex-wrap: wrap;
+	gap: .3rem;
+	max-width: 13rem;
+	padding: .35rem .7rem;
+}
+.menu-swatch {
+	flex: none;
+	width: 1.35rem;
+	height: 1.35rem;
+	padding: 0;
+	background: var(--swatch-color);
+	border: 1px solid var(--line-strong);
+	border-radius: 50%;
+	cursor: pointer;
+}
+/* no color: a crossed-out circle */
+.menu-swatch.no-color {
+	background: linear-gradient(to top right, transparent calc(50% - 1px), var(--muted) calc(50% - 1px), var(--muted) calc(50% + 1px), transparent calc(50% + 1px)), var(--surface);
+}
+.menu-swatch:hover {
+	transform: scale(1.12);
+}
+.menu-swatch:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
+.menu-swatch[aria-checked="true"] {
+	box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink-2);
 }
 
 /* full name of a tab, document or editor on hover (workspace.js) */
