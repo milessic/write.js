@@ -27,7 +27,7 @@ const textObjectKinds = new Set(["w", "W", "\"", "'", "`", "b", "(", ")", "[", "
 let enabled = false;
 let mode = "normal";
 let pending = [];                       // keys of the command being typed in NORMAL / VISUAL
-let register = {text: "", linewise: false};
+let register = {text: "", linewise: false, items: null}; // items: the lines' list items (linewise), see listItemsOf
 let lastFind = null;                    // {key: "f", char} for ; and ,
 let lastSearch = null;                  // {pattern, backward}
 let searchHighlight = false;            // hlsearch: matches of lastSearch stay highlighted until :noh
@@ -1060,13 +1060,13 @@ function applyOperator(editor, model, op, from, to, linewise, cursor){
 	const text = model.text;
 	switch ( op ) {
 	case "y":
-		yank(text.slice(from, to), linewise);
+		yank(text.slice(from, to), linewise, model, from);
 		// the cursor goes to the start of what was yanked, yy and yj leave it where it is
 		setCaret(model, linewise && lineStart(text, cursor) === from ? cursor : from);
 		flashRange(model, from, to);
 		return;
 	case "d":
-		yank(text.slice(from, to), linewise);
+		yank(text.slice(from, to), linewise, model, from);
 		if ( linewise ) {
 			deleteLines(editor, model, from, to);
 		} else {
@@ -1076,7 +1076,7 @@ function applyOperator(editor, model, op, from, to, linewise, cursor){
 		changed();
 		return;
 	case "c":
-		yank(text.slice(from, to), linewise);
+		yank(text.slice(from, to), linewise, model, from);
 		if ( linewise ) {
 			// keeps the line (and its indent), only its text goes
 			const start = firstNonBlank(text, from);
@@ -1199,6 +1199,10 @@ function ruleBetween(model, from, to){
 	return [...model.editor.querySelectorAll("hr")].some(hr => range.intersectsNode(hr));
 }
 
+function repeatedItems(count){
+	return register.items && Array(count).fill(register.items).flat();
+}
+
 function put(editor, model, i, before, count){
 	if ( !register.text && !register.linewise ) { return }
 	const text = model.text;
@@ -1211,6 +1215,7 @@ function put(editor, model, i, before, count){
 				if ( line ) { exec("insertText", line) }
 				exec("insertParagraph");
 			});
+			restoreListItems(editor, 0, repeatedItems(count));
 			const after = textModel(editor);
 			setCaret(after, firstNonBlank(after.text, 0));
 			return
@@ -1221,6 +1226,7 @@ function put(editor, model, i, before, count){
 			exec("insertParagraph");
 			if ( line ) { exec("insertText", line) }
 		}
+		restoreListItems(editor, at + 1, repeatedItems(count));
 		const after = textModel(editor);
 		setCaret(after, firstNonBlank(after.text, at + 1));
 		return
@@ -1266,8 +1272,66 @@ function replaceChar(editor, char){
 	changed();
 }
 
-function yank(text, linewise){
-	register = {text, linewise};
+function yank(text, linewise, model=null, from=0){
+	// whole lines keep what makes them list items (checklist state, nesting level), so p puts them back as items
+	register = {text, linewise, items: linewise && model ? listItemsOf(model, from, text.split("\n").length) : null};
+}
+
+function listDepth(editor, li){
+	// the lists it is in: a nested list can be in its item or right after it (as Tab nests them)
+	let depth = -1;
+	for ( let el = li.parentElement; el && el !== editor; el = el.parentElement ) {
+		if ( el.nodeName === "UL" || el.nodeName === "OL" ) { depth++ }
+	}
+	return depth;
+}
+
+function lineListItem(model, index){
+	const li = elementOf(positionAt(model, index).node)?.closest("li");
+	return li && model.editor.contains(li) && li.parentElement?.nodeName === "UL" ? li : null;
+}
+
+function listItemsOf(model, from, count){
+	// per line: {depth, checked} for an item of a bulleted list (checked: "true" / "false" for a checklist item, null for a bullet)
+	const first = lineNumber(model.text, from);
+	const items = [];
+	for ( let n = 0; n < count; n++ ) {
+		const li = lineListItem(model, lineStartOfNumber(model.text, first + n));
+		items.push(li ? {depth: listDepth(model.editor, li), checked: li.getAttribute("data-checked")} : null);
+	}
+	return items.some(Boolean) ? items : null;
+}
+
+function restoreListItems(editor, from, items){
+	// the pasted lines from the line at from on become the list items they were yanked from
+	if ( !items ) { return }
+	const first = lineNumber(textModel(editor).text, from);
+	items.forEach((item, n) => {
+		if ( !item ) { return }
+		const lineAt = () => {
+			const model = textModel(editor);
+			setCaret(model, lineStartOfNumber(model.text, first + n));
+			return lineListItem(model, lineStartOfNumber(model.text, first + n));
+		};
+		let li = lineAt();
+		if ( !li ) {
+			exec("insertUnorderedList");
+			li = lineAt();
+		}
+		// as deep as it was, as far as the list lets it (an item can't be nested deeper than under the one above)
+		for ( let guard = 0; li && guard < 32; guard++ ) {
+			const depth = listDepth(editor, li);
+			if ( depth === item.depth ) { break }
+			// the first item of a list has nothing to be nested under
+			if ( depth < item.depth && li.previousElementSibling?.nodeName !== "LI" ) { break }
+			exec(depth < item.depth ? "indent" : "outdent");
+			li = lineAt();
+			if ( !li || listDepth(editor, li) === depth ) { break }
+		}
+		if ( !li ) { return }
+		if ( item.checked === null ) { li.removeAttribute("data-checked") } else { li.dataset.checked = item.checked }
+	});
+	if ( typeof normalizeChecklists === "function" ) { normalizeChecklists(editor) } // checklist.js
 }
 
 function flashRange(model, from, to){
@@ -1848,7 +1912,7 @@ function runVisual(editor, keys){
 		return change();
 	}
 	case "p": case "P": {
-		const replaced = {text: text.slice(from, to), linewise};
+		const replaced = {text: text.slice(from, to), linewise, items: linewise ? listItemsOf(model, from, text.slice(from, to).split("\n").length) : null};
 		const pasted = register;
 		setMode("normal");
 		if ( linewise ) {
@@ -1865,6 +1929,7 @@ function runVisual(editor, keys){
 				setCaret(after, from);
 				exec("insertParagraph");
 				insertLines(pasted.text.split("\n"));
+				restoreListItems(editor, from + 1, pasted.items);
 			} else {
 				setCaret(after, from);
 				insertLines(pasted.text.split("\n"));
