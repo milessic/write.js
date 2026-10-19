@@ -71,10 +71,8 @@ function ensureDocumentIds(withTabs=true){
 	}
 }
 
-function documentHtmlToStore(){
-	// the focused document as it is saved: its id, then the editor's content
-	const name = getDocumentName();
-	const tab = getActiveTab();
+function documentHtmlToStore(tab=getActiveTab(), name=getDocumentName(), html=getDocumentText()){
+	// a document as it is saved (the focused one by default): its id, then the editor's content
 	let id;
 	if ( !tab ) {
 		id = documentIdOf(name);
@@ -89,7 +87,7 @@ function documentHtmlToStore(){
 	}
 	id ||= newDocumentId();
 	if ( tab ) { tab.docId = id }
-	return withDocumentId(getDocumentText(), id);
+	return withDocumentId(html, id);
 }
 
 function fillDocumentLinkOptions(datalist){

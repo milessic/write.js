@@ -822,18 +822,58 @@ function moveTab(id, beforeId){
 function markActiveTabSaved(){
 	// called after the focused document is written to localStorage
 	const tab = getActiveTab();
-	if ( tab ) {
-		tab.name = getDocumentName();
-		tab.dirty = false;
-		// a new or renamed document goes to the tab's folder, a document saved over keeps its own
-		if ( tab.folder && !folderOfDocument(tab.name) ) { assignDocumentFolder(tab.name, tab.folder) }
-		tab.folder = folderOfDocument(tab.name);
-		if ( tab.savedName && tab.savedName !== tab.name ) { removeRenamedDocument(tab.savedName) }
-		tab.savedName = tab.name;
-	}
+	if ( tab ) { markTabSaved(tab, getDocumentName()) }
 	renderTabs();
 	refreshFileTree();
 	saveOpenedTabs();
+}
+
+function markTabSaved(tab, name){
+	tab.name = name;
+	tab.dirty = false;
+	// a new or renamed document goes to the tab's folder, a document saved over keeps its own
+	if ( tab.folder && !folderOfDocument(tab.name) ) { assignDocumentFolder(tab.name, tab.folder) }
+	tab.folder = folderOfDocument(tab.name);
+	if ( tab.savedName && tab.savedName !== tab.name ) { removeRenamedDocument(tab.savedName) }
+	tab.savedName = tab.name;
+}
+
+function saveAllTabs(){
+	// vi's :wa: every tab with unsaved changes is written to localStorage, where it is (shown or not);
+	// untitled ones can't be, they are only counted
+	if ( !validateUserConsent() ) { return }
+	const unsaved = tabs.filter(t => t.dirty);
+	const untitled = unsaved.filter(t => !tabLabelName(t));
+	let saved = 0;
+	try {
+		for ( const tab of unsaved.filter(t => tabLabelName(t)) ) {
+			const name = tabLabelName(tab);
+			const pane = paneOfTab(tab);
+			localStorage.setItem(docPrefix + name, documentHtmlToStore(tab, name, pane ? pane.editor.innerHTML : tab.html));
+			markTabSaved(tab, name);
+			// a tab that isn't shown reloads its document from localStorage (loadPane)
+			if ( !pane ) { tab.html = null }
+			saved++;
+		}
+	} catch ( err ) {
+		informError("Could not save documents!", err);
+	}
+	if ( saved ) {
+		const active = getActiveTab();
+		if ( active?.name ) { saveAsLastOpenedDocument(active.name) }
+		renderTabs();
+		refreshFileTree();
+		saveOpenedTabs();
+	}
+	if ( untitled.length ) {
+		createNotification(`${saved} document${saved === 1 ? "" : "s"} saved, ${untitled.length} untitled not saved (no name)`, "warning");
+	} else {
+		createNotification(saved ? `${saved} document${saved === 1 ? "" : "s"} saved!` : "No unsaved documents", "info");
+	}
+}
+
+function tabLabelName(tab){
+	return tab.id === focusedPane?.tabId ? getDocumentName() : tab.name;
 }
 
 function removeRenamedDocument(oldName){

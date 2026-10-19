@@ -2032,6 +2032,7 @@ let completions = null;                 // {items: [{value, label, at, length, d
 // the commands of runExCommand, the first name is the one listed when several match
 const exCommands = [
 	[["write"], "save"],
+	[["wall"], "save all documents"],
 	[["quit", "close"], "close the tab"],
 	[["qall", "quitall"], "close all tabs but the unsaved ones"],
 	[["wq", "xit", "exit"], "save and close the tab"],
@@ -2199,6 +2200,9 @@ function runExCommand(editor, value, visual){
 	switch ( name ) {
 	case "w": case "write": case "w!":
 		saveDocumentToLocalStorage();
+		return;
+	case "wa": case "wall": case "wa!": case "wall!":
+		saveAllTabs();
 		return;
 	case "q": case "quit": case "q!": case "quit!": case "close":
 		closeActiveTab(name.endsWith("!"));
@@ -2739,6 +2743,7 @@ const helpSections = [
 	]],
 	["Commands", [
 		[":w", "save"],
+		[":wa", "save all documents"],
 		[":q :q!", "close the tab (not with unsaved changes), close it anyway"],
 		[":qa :qa!", "close all tabs but the unsaved ones, close all tabs"],
 		[":wq :x", "save and close the tab"],
