@@ -1082,7 +1082,7 @@ function simulateEnter() {
 function isDeviceOnlyKey(key){
 	// state of this device that never goes to the cloud or a notebook backup
 	// (the workspace.js keys are looked up on call, that file loads after this one)
-	return [userLoggedInKey, syncPendingKey, syncBaseKey, viEscButtonKey, openedTabsKey, openedEditorsKey, treeWidthKey, treeWidthMobileKey, treePinnedKey, layoutKey, tocWidthKey].includes(key);
+	return [userLoggedInKey, syncPendingKey, syncBaseKey, viEscButtonKey, openedTabsKey, openedEditorsKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey].includes(key);
 }
 
 function getAllLocalStorageItems() {

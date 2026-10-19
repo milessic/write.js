@@ -34,26 +34,84 @@ body.app > .topbar {
 	flex-direction: column;
 }
 
-/* below the top bar: the documents tree beside the editor area (opened tabs + workspace).
-   body[data-tree-side] and body[data-tabs-side] are the user's docking preferences */
+/* below the top bar: the documents tree beside, above or below the editor area (opened tabs + workspace).
+   body[data-tree-side], body[data-toc-side] and body[data-tabs-side] are the user's docking preferences.
+   A grid of 5 x 5 tracks, the editor area in the middle: the documents in the outer ones, the table of contents
+   (toc.js) in the inner ones, next to the editors; tracks with no panel in them take no room */
 .app-body {
 	flex: 1;
 	min-height: 0;
-	display: flex;
+	display: grid;
+	grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+	grid-template-rows: auto auto minmax(0, 1fr) auto auto;
 }
-/* the side panels are put in place by order: the documents outermost, the table of contents (toc.js) next to the editors */
-.file-tree { order: -2; }
-[data-tree-side="right"] .file-tree { order: 2; }
-.toc-panel { order: 1; }
-[data-toc-side="left"] .toc-panel { order: -1; }
+.file-tree, .toc-split .side-dock { grid-column: 1; grid-row: 2 / 5; }
+[data-tree-side="right"] :is(.file-tree, .toc-split .side-dock) { grid-column: 5; }
+[data-tree-side="top"] :is(.file-tree, .toc-split .side-dock) { grid-column: 1 / -1; grid-row: 1; }
+[data-tree-side="bottom"] :is(.file-tree, .toc-split .side-dock) { grid-column: 1 / -1; grid-row: 5; }
+.toc-panel { grid-column: 4; grid-row: 2 / 5; }
+[data-toc-side="left"] .toc-panel { grid-column: 2; }
+[data-toc-side="top"] .toc-panel { grid-column: 2 / 5; grid-row: 2; }
+[data-toc-side="bottom"] .toc-panel { grid-column: 2 / 5; grid-row: 4; }
 .editor-area {
-	flex: 1;
+	grid-column: 3;
+	grid-row: 3;
 	min-width: 0;
+	min-height: 0;
 	display: flex;
 	flex-direction: column;
 }
 [data-tabs-side="bottom"] .editor-area {
 	flex-direction: column-reverse;
+}
+
+/* the side panels' box: only there for the grid, unless the table of contents splits the documents' place with them
+   (toc.js): then it takes the documents' place and size, the two panels share it, under each other, or side by side
+   above or below the editors. The documents' resizer is on the box's edge then, it resizes both */
+.side-dock {
+	display: contents;
+}
+.toc-split .side-dock {
+	display: flex;
+	flex-direction: column;
+	position: relative;
+	width: var(--tree-width, 15rem);
+	min-height: 0;
+	border-right: 1px solid var(--line);
+}
+[data-tree-side="right"].toc-split .side-dock {
+	border-right: 0;
+	border-left: 1px solid var(--line);
+}
+:is([data-tree-side="top"], [data-tree-side="bottom"]).toc-split .side-dock {
+	flex-direction: row;
+	width: auto;
+	height: var(--tree-height, 12rem);
+	border-right: 0;
+	border-bottom: 1px solid var(--line);
+}
+[data-tree-side="bottom"].toc-split .side-dock {
+	border-bottom: 0;
+	border-top: 1px solid var(--line);
+}
+.toc-split .side-dock > :is(.file-tree, .toc-panel) {
+	position: static;
+	flex: 1 1 0;
+	width: auto;
+	height: auto;
+	min-width: 0;
+	min-height: 0;
+	border: 0;
+}
+.toc-split:not(.tree-hidden) .side-dock > .toc-panel {
+	border-top: 1px solid var(--line);
+}
+:is([data-tree-side="top"], [data-tree-side="bottom"]).toc-split:not(.tree-hidden) .side-dock > .toc-panel {
+	border-top: 0;
+	border-left: 1px solid var(--line);
+}
+.toc-split .toc-resizer {
+	display: none;
 }
 
 /* documents tree (file explorer) */
@@ -73,6 +131,17 @@ body.app > .topbar {
 [data-tree-side="right"] .file-tree {
 	border-right: 0;
 	border-left: 1px solid var(--line);
+}
+/* above or below the editors: as wide as the page, --tree-height set by dragging its inner edge */
+:is([data-tree-side="top"], [data-tree-side="bottom"]) .file-tree {
+	width: auto;
+	height: var(--tree-height, 12rem);
+	border-right: 0;
+	border-bottom: 1px solid var(--line);
+}
+[data-tree-side="bottom"] .file-tree {
+	border-bottom: 0;
+	border-top: 1px solid var(--line);
 }
 .tree-hidden .file-tree,
 .file-tree-scrim {
@@ -95,6 +164,16 @@ body.app > .topbar {
 	border-left: 0;
 	border-right: 1px solid var(--line);
 }
+:is([data-toc-side="top"], [data-toc-side="bottom"]) .toc-panel {
+	width: auto;
+	height: var(--toc-height, 12rem);
+	border-left: 0;
+	border-bottom: 1px solid var(--line);
+}
+[data-toc-side="bottom"] .toc-panel {
+	border-bottom: 0;
+	border-top: 1px solid var(--line);
+}
 .toc-separate .toc-panel {
 	display: flex;
 }
@@ -108,6 +187,13 @@ body.app > .topbar {
 [data-toc-side="left"] .toc-panel .file-tree-resizer {
 	left: auto;
 	right: -3px;
+}
+[data-toc-side="top"] .toc-panel .file-tree-resizer {
+	top: auto;
+	bottom: -3px;
+}
+[data-toc-side="bottom"] .toc-panel .file-tree-resizer {
+	top: -3px;
 }
 /* the tree's tabs: only "Documents" (looking like a title) until the table of contents is a tab next to it */
 .side-tabs {
@@ -227,6 +313,26 @@ body.app > .topbar {
 [data-tree-side="right"] .file-tree-resizer {
 	right: auto;
 	left: -3px;
+}
+/* above or below the editors: the edge is the panel's bottom or top one, dragged up and down */
+:is([data-tree-side="top"], [data-tree-side="bottom"]) .file-tree .file-tree-resizer,
+:is([data-toc-side="top"], [data-toc-side="bottom"]) .toc-panel .file-tree-resizer {
+	left: 0;
+	right: 0;
+	width: auto;
+	height: 6px;
+	cursor: row-resize;
+}
+[data-tree-side="top"] .file-tree .file-tree-resizer {
+	top: auto;
+	bottom: -3px;
+}
+[data-tree-side="bottom"] .file-tree .file-tree-resizer {
+	bottom: auto;
+	top: -3px;
+}
+.tree-resizing.resizing-rows {
+	cursor: row-resize;
 }
 .file-tree-resizer:hover,
 .tree-resizing .file-tree-resizer {
@@ -641,33 +747,43 @@ body.app > .topbar {
 	color: var(--muted);
 }
 
-/* drop zones shown while a panel's handle is dragged */
+/* drop zones shown while a panel's handle is dragged, over everything else (the notifications too) */
 .dock-zones {
 	display: none;
 	position: fixed;
 	inset: 0;
-	z-index: 40;
+	z-index: 110;
 }
 .dock-zones.dragging {
 	display: grid;
 	gap: 1rem;
 	padding: 1rem;
+	/* the page dimmed and blurred behind the zones, so they stand out from it */
+	background: color-mix(in srgb, var(--surface) 55%, transparent);
+	backdrop-filter: blur(4px);
+	-webkit-backdrop-filter: blur(4px);
 }
 .dock-zones[data-panel="tree"] {
-	grid-template-columns: 1fr 1fr;
+	grid-template: "top top" 1fr "left right" 2fr "bottom bottom" 1fr / 1fr 1fr;
 }
 .dock-zones[data-panel="tabs"] {
-	grid-template-rows: 1fr 1fr;
+	grid-template: "top" 1fr "bottom" 1fr / 1fr;
 }
 .dock-zones[data-panel="toc"] {
-	grid-template-columns: 1fr 1fr 1fr;
+	grid-template: "top top top" 1fr "left tree right" 1fr "left split right" 1fr "bottom bottom bottom" 1fr / 1fr 1fr 1fr;
 }
+.dock-zone[data-side="top"] { grid-area: top; }
+.dock-zone[data-side="bottom"] { grid-area: bottom; }
+.dock-zone[data-side="left"] { grid-area: left; }
+.dock-zone[data-side="right"] { grid-area: right; }
+.dock-zone[data-side="tree"] { grid-area: tree; }
+.dock-zone[data-side="split"] { grid-area: split; }
 .dock-zone {
 	display: none;
 	place-items: center;
 	color: var(--ink);
 	font-weight: 600;
-	background: color-mix(in srgb, var(--accent) 10%, transparent);
+	background: color-mix(in srgb, var(--accent) 12%, var(--surface));
 	border: 2px dashed var(--accent);
 	border-radius: var(--radius);
 }
@@ -680,7 +796,7 @@ body.app > .topbar {
 	display: grid;
 }
 .dock-zone.over {
-	background: color-mix(in srgb, var(--accent) 30%, transparent);
+	background: color-mix(in srgb, var(--accent) 30%, var(--surface));
 }
 
 /* phones and tablets: the documents tree is a drawer over the editor */
@@ -699,6 +815,16 @@ body.app > .topbar {
 	[data-tree-side="right"] .file-tree {
 		left: auto;
 		right: 0;
+	}
+	/* docked above or below the editors on a desktop: here the drawer on the left */
+	:is([data-tree-side="top"], [data-tree-side="bottom"]) .file-tree {
+		grid-column: 1;
+		grid-row: 2 / 5;
+		width: min(20rem, 85vw);
+		height: auto;
+		border-top: 0;
+		border-bottom: 0;
+		border-right: 1px solid var(--line);
 	}
 	.tree-drawer-open .file-tree {
 		display: flex;
@@ -727,6 +853,15 @@ body.app > .topbar {
 	[data-tree-side="right"].tree-pinned .file-tree-resizer {
 		right: auto;
 		left: -8px;
+	}
+	:is([data-tree-side="top"], [data-tree-side="bottom"]).tree-pinned .file-tree .file-tree-resizer {
+		top: 0;
+		bottom: 0;
+		left: auto;
+		right: -8px;
+		width: 16px;
+		height: auto;
+		cursor: col-resize;
 	}
 	.tree-pinned.tree-drawer-open .file-tree-scrim {
 		display: none;

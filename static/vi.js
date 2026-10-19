@@ -2384,7 +2384,7 @@ function focusEditorTowards(editor, direction, count=1){
 			if ( !best || gap < best.gap - 1 || (Math.abs(gap - best.gap) <= 1 && overlap > best.overlap) ) { best = {pane, gap, overlap} }
 		}
 		if ( !best ) {
-			if ( horizontal && treeTowards(from, direction) ) { focusTree(); return }
+			if ( treeTowards(from, direction) ) { focusTree(); return }
 			break
 		}
 		editor = best.pane.querySelector(".editor");
@@ -2453,13 +2453,13 @@ function treeTowards(from, direction){
 	if ( !tree ) { return false }
 	const side = document.body.dataset.treeSide || "left";
 	if ( typeof isFileTreeVisible === "function" && !isFileTreeVisible() ) {
-		if ( side !== direction ) { return false }
+		if ( side !== ({up: "top", down: "bottom"}[direction] || direction) ) { return false }
 		showFileTree();
 		return true;
 	}
 	const to = tree.getBoundingClientRect();
 	if ( !to.width ) { return false }
-	return direction === "left" ? to.right <= from.left + 1 : to.left >= from.right - 1;
+	return {left: to.right <= from.left + 1, right: to.left >= from.right - 1, up: to.bottom <= from.top + 1, down: to.top >= from.bottom - 1}[direction];
 }
 
 function treeRows(){
@@ -2519,7 +2519,7 @@ function onTreeKeydown(e){
 		take();
 		treePending = [];
 		const command = key.replace(/^<C-(.)>$/, "$1");
-		if ( ["h", "l", "w", "W", "p", "ArrowLeft", "ArrowRight"].includes(command) ) { leaveTree() } else { render() }
+		if ( ["h", "j", "k", "l", "w", "W", "p", "ArrowLeft", "ArrowDown", "ArrowUp", "ArrowRight"].includes(command) ) { leaveTree() } else { render() }
 		return
 	}
 	if ( key === "<C-w>" ) { take(); treePending = ["<C-w>"]; render(); return }
@@ -2666,11 +2666,11 @@ const helpSections = [
 		["gt gT, 3gt", "next / previous tab, tab 3"],
 	]],
 	["Documents (TREE, like NeoTree)", [
-		["Ctrl+w h, Ctrl+w l", "from the editor next to it: go to the documents, opened if hidden"],
+		["Ctrl+w h l k j", "from the editor next to it: go to the documents (left / right / above / below), opened if hidden"],
 		["j k, gg G", "next / previous row, first / last row"],
 		["l Enter o, h", "open the document or folder, close the folder / go to its folder"],
 		["/", "filter the documents: Enter opens the first one, Esc goes back to the rows"],
-		["Ctrl+w h l w", "back to the editor"],
+		["Ctrl+w h l k j w", "back to the editor"],
 	]],
 	["Commands", [
 		[":w", "save"],

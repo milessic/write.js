@@ -83,8 +83,10 @@
 
 	<!-- documents tree + editor area; both panels dock by drag-and-drop or right click (workspace.js) -->
 	<div class="app-body" id="app-body">
+	<!-- the side panels; the table of contents can share the documents' place, split with them (toc.js) -->
+	<div class="side-dock" id="side-dock">
 	<aside class="file-tree" id="file-tree" aria-label="Documents">
-		<div class="file-tree-head" id="file-tree-head" draggable="true" title="Drag to the other side, or right-click for options">
+		<div class="file-tree-head" id="file-tree-head" draggable="true" title="Drag to another side, or right-click for options">
 			<!-- the table of contents can be a tab here, next to the documents (toc.js) -->
 			<div class="side-tabs" role="tablist" aria-label="Side panel">
 				<button class="side-tab file-tree-title" id="documents-tab" role="tab" data-tree-tab="documents" aria-selected="true">Documents</button>
@@ -102,16 +104,17 @@
 		<nav class="toc-body" aria-label="Table of contents"><ol class="toc-list"></ol></nav>
 		<div class="file-tree-resizer" id="file-tree-resizer" role="separator" aria-orientation="vertical" aria-label="Resize documents" title="Drag to resize, double-click to reset"></div>
 	</aside>
-	<div class="file-tree-scrim" id="file-tree-scrim"></div>
-	<!-- the table of contents on its own, left or right of the editors (toc.js) -->
+	<!-- the table of contents on its own, left, right, above or below the editors, or split with the documents (toc.js) -->
 	<aside class="toc-panel" id="toc-panel" aria-label="Table of contents">
-		<div class="file-tree-head toc-head" id="toc-head" draggable="true" title="Drag to the other side or onto the documents, or right-click for options">
+		<div class="file-tree-head toc-head" id="toc-head" draggable="true" title="Drag to another side or onto the documents, or right-click for options">
 			<span class="file-tree-title">Contents</span>
 			<button class="small-btn" id="toc-hide" title="Close the table of contents" aria-label="Close the table of contents">✕</button>
 		</div>
 		<nav class="toc-body" aria-label="Table of contents"><ol class="toc-list"></ol></nav>
 		<div class="file-tree-resizer toc-resizer" id="toc-resizer" role="separator" aria-orientation="vertical" aria-label="Resize the table of contents" title="Drag to resize, double-click to reset"></div>
 	</aside>
+	</div>
+	<div class="file-tree-scrim" id="file-tree-scrim"></div>
 	<div class="editor-area">
 	<div class="tab-bar" id="tab-bar">
 		<span class="tab-grip" id="tab-grip" draggable="true" title="Drag to the top or bottom, or right-click for options" aria-hidden="true">⋮⋮</span>
@@ -187,11 +190,16 @@
 	</div>
 	</div>
 	<div class="dock-zones" id="dock-zones" aria-hidden="true">
+		<div class="dock-zone" data-side="top" data-for="tree"><span>Dock documents at the top</span></div>
 		<div class="dock-zone" data-side="left" data-for="tree"><span>Dock documents left</span></div>
 		<div class="dock-zone" data-side="right" data-for="tree"><span>Dock documents right</span></div>
+		<div class="dock-zone" data-side="bottom" data-for="tree"><span>Dock documents at the bottom</span></div>
+		<div class="dock-zone" data-side="top" data-for="toc"><span>Dock contents at the top</span></div>
 		<div class="dock-zone" data-side="left" data-for="toc"><span>Dock contents left</span></div>
 		<div class="dock-zone" data-side="tree" data-for="toc"><span>Show contents as a tab next to the documents</span></div>
+		<div class="dock-zone" data-side="split" data-for="toc"><span>Split the documents' place with contents</span></div>
 		<div class="dock-zone" data-side="right" data-for="toc"><span>Dock contents right</span></div>
+		<div class="dock-zone" data-side="bottom" data-for="toc"><span>Dock contents at the bottom</span></div>
 		<div class="dock-zone" data-side="top" data-for="tabs"><span>Dock opened documents at the top</span></div>
 		<div class="dock-zone" data-side="bottom" data-for="tabs"><span>Dock opened documents at the bottom</span></div>
 	</div>

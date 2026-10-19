@@ -1,8 +1,9 @@
 /*
  * Table of contents: the headings of the focused document; a click scrolls the document to one and puts the caret on it,
  * and the heading of the part being read is marked as the document scrolls.
- * It is a tab next to the documents in the tree (layout.tocSide "tree") or a panel of its own left or right of the editors
- * ("left" / "right"), moved by dragging its tab or head onto a dock zone, or from its right-click menu. On phones and tablets
+ * It is a tab next to the documents in the tree (layout.tocSide "tree"), a panel of its own left, right, above or below
+ * the editors ("left" / "right" / "top" / "bottom"), or splits the documents' place with them ("split": under them, or
+ * beside them docked above or below), moved by dragging its tab or head onto a dock zone, or from its right-click menu. On phones and tablets
  * it is always a tab of the documents drawer. Menu > Table Of Contents and vi's :TableOfContents open it; the panel's x or, as a tab, the tree's
  * little menu (☰, which then also has the tree's buttons) closes it;
  * it is remembered open or closed and where with the layout (workspace.js, this device only).
@@ -10,6 +11,7 @@
  * Keys in the list: arrows or j / k move, Enter goes to the heading, Esc goes back to the editor.
  */
 const tocWidthKey = "__tocWidth__"; // the panel's width, a preference of this device only (isDeviceOnlyKey)
+const tocHeightKey = "__tocHeight__"; // and its height above or below the editors
 const tocLevels = [1, 2, 3, 4];
 const narrowScreen = matchMedia("(max-width: 999px)");
 let tocHeadings = []; // the listed headings of tocEditor, in the rows' order
@@ -39,9 +41,11 @@ function applyTocLayout(){
 	const body = document.body;
 	const showingToc = tocInTree() && layout.treeTab === "toc";
 	body.dataset.tocSide = layout.tocSide;
+	document.getElementById("toc-resizer").setAttribute("aria-orientation", dockedInRows(layout.tocSide) ? "horizontal" : "vertical");
 	body.dataset.treeTab = showingToc ? "toc" : "documents";
 	body.classList.toggle("toc-in-tree", tocInTree());
 	body.classList.toggle("toc-separate", !layout.tocHidden && !tocInTree());
+	body.classList.toggle("toc-split", !layout.tocHidden && !tocInTree() && layout.tocSide === "split");
 	document.getElementById("documents-tab").setAttribute("aria-selected", String(!showingToc));
 	document.getElementById("toc-tab").setAttribute("aria-selected", String(showingToc));
 	scheduleToc();
@@ -67,9 +71,10 @@ function closeTableOfContents(){
 }
 
 function setTocSide(side){
-	// "left" / "right" on its own, "tree" as a tab next to the documents
+	// "left" / "right" / "top" / "bottom" on its own, "tree" as a tab next to the documents, "split" sharing their place
 	layout.tocSide = side;
 	layout.tocHidden = false;
+	if ( side === "split" ) { layout.treeHidden = false }
 	if ( side === "tree" ) {
 		layout.treeTab = "toc";
 		layout.treeHidden = false;
@@ -89,8 +94,11 @@ function tocPanelMenuItems(){
 	const side = layout.tocSide;
 	return [
 		{ label: "Show contents next to the documents", action: () => setTocSide("tree"), disabled: side === "tree" },
+		{ label: "Split the documents' place with contents", action: () => setTocSide("split"), disabled: side === "split" },
 		{ label: "Move contents to the left", action: () => setTocSide("left"), disabled: side === "left" },
 		{ label: "Move contents to the right", action: () => setTocSide("right"), disabled: side === "right" },
+		{ label: "Move contents to the top", action: () => setTocSide("top"), disabled: side === "top" },
+		{ label: "Move contents to the bottom", action: () => setTocSide("bottom"), disabled: side === "bottom" },
 		{ label: "Close contents", action: closeTableOfContents },
 	];
 }
@@ -266,41 +274,54 @@ function handleTocKeydown(e){
 }
 
 
-// panel width: the inner edge is dragged, like the documents tree's (workspace.js)
+// panel width, or height above or below the editors: the inner edge is dragged, like the documents tree's (workspace.js)
 function applyTocWidth(width){
 	const style = document.getElementById("toc-panel").style;
 	if ( !width ) { style.removeProperty("--toc-width"); return }
 	style.setProperty("--toc-width", Math.min(maxTreeWidth, Math.max(minTreeWidth, width)) + "px");
 }
 
+function applyTocHeight(height){
+	const style = document.getElementById("toc-panel").style;
+	if ( !height ) { style.removeProperty("--toc-height"); return }
+	style.setProperty("--toc-height", Math.min(maxTreeHeight, Math.max(minTreeHeight, height)) + "px");
+}
+
 function setupTocResizing(){
 	const panel = document.getElementById("toc-panel");
 	const resizer = document.getElementById("toc-resizer");
 	applyTocWidth(Number(localStorage.getItem(tocWidthKey)) || null);
+	applyTocHeight(Number(localStorage.getItem(tocHeightKey)) || null);
 	resizer.addEventListener("pointerdown", (e) => {
 		if ( e.button !== 0 ) { return }
 		e.preventDefault();
 		resizer.setPointerCapture(e.pointerId);
-		const startX = e.clientX;
-		const startWidth = panel.getBoundingClientRect().width;
-		// docked right, the edge is on the panel's left: dragging left makes it wider
-		const direction = layout.tocSide === "right" ? -1 : 1;
+		const rows = dockedInRows(layout.tocSide);
+		const start = rows ? e.clientY : e.clientX;
+		const rect = panel.getBoundingClientRect();
+		const startSize = rows ? rect.height : rect.width;
+		// docked right or bottom, the edge is on the panel's left or top: dragging left or up makes it bigger
+		const direction = layout.tocSide === "right" || layout.tocSide === "bottom" ? -1 : 1;
+		const apply = rows ? applyTocHeight : applyTocWidth;
 		document.body.classList.add("tree-resizing");
-		const move = (ev) => applyTocWidth(startWidth + (ev.clientX - startX) * direction);
+		document.body.classList.toggle("resizing-rows", rows);
+		const move = (ev) => apply(startSize + ((rows ? ev.clientY : ev.clientX) - start) * direction);
 		const end = () => {
 			resizer.removeEventListener("pointermove", move);
 			resizer.removeEventListener("pointerup", end);
 			resizer.removeEventListener("pointercancel", end);
-			document.body.classList.remove("tree-resizing");
-			if ( validateUserConsent(false) ) { localStorage.setItem(tocWidthKey, String(Math.round(panel.getBoundingClientRect().width))) }
+			document.body.classList.remove("tree-resizing", "resizing-rows");
+			const rect = panel.getBoundingClientRect();
+			if ( validateUserConsent(false) ) { localStorage.setItem(rows ? tocHeightKey : tocWidthKey, String(Math.round(rows ? rect.height : rect.width))) }
 		};
 		resizer.addEventListener("pointermove", move);
 		resizer.addEventListener("pointerup", end);
 		resizer.addEventListener("pointercancel", end);
 	});
 	resizer.addEventListener("dblclick", () => {
-		applyTocWidth(null);
-		localStorage.removeItem(tocWidthKey);
+		const rows = dockedInRows(layout.tocSide);
+		rows ? applyTocHeight(null) : applyTocWidth(null);
+		localStorage.removeItem(rows ? tocHeightKey : tocWidthKey);
 	});
 }
 
@@ -315,7 +336,8 @@ function tocSettingsHtml(){
 		</div>
 		<p class="muted small">The headings listed. Open it from the menu or with <kbd>:TableOfContents</kbd> in vi mode; a click on a heading scrolls the document to it.</p>
 		<label class="check"><input type="radio" name="setting-toc-side" value="tree"${layout.tocSide === "tree" ? " checked" : ""}>A tab next to the documents</label>
-		<label class="check"><input type="radio" name="setting-toc-side" value="panel"${layout.tocSide !== "tree" ? " checked" : ""}>A panel of its own</label>
+		<label class="check"><input type="radio" name="setting-toc-side" value="split"${layout.tocSide === "split" ? " checked" : ""}>Splitting the documents' place</label>
+		<label class="check"><input type="radio" name="setting-toc-side" value="panel"${!["tree", "split"].includes(layout.tocSide) ? " checked" : ""}>A panel of its own</label>
 		<p class="muted small">Drag its tab or its title onto a side to move it, or right-click it. On phones it is a tab next to the documents.</p>`;
 }
 
@@ -329,7 +351,7 @@ function initTocSettings(){
 	}));
 	document.querySelectorAll('input[name="setting-toc-side"]').forEach((input) => input.addEventListener("change", (e) => {
 		// on its own it goes opposite the documents
-		const side = e.target.value === "tree" ? "tree" : layout.treeSide === "right" ? "left" : "right";
+		const side = e.target.value !== "panel" ? e.target.value : layout.treeSide === "right" ? "left" : "right";
 		layout.tocSide = side;
 		if ( side === "tree" && !layout.tocHidden ) { layout.treeTab = "toc" }
 		saveLayout();

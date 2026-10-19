@@ -1,6 +1,6 @@
 /*
  * Workspace: the documents tree (file explorer), the opened documents (tabs) and the editors.
- * The tree and the tabs bar can be docked by drag-and-drop or from their right-click menu;
+ * The tree (left, right, top or bottom) and the tabs bar (top or bottom) can be docked by drag-and-drop or from their right-click menu;
  * the layout, the opened tabs and the split editors are user preferences kept in localStorage.
  * Folders are listed on top of the tree and can hold sub-folders, up to maxFolderDepth levels;
  * a folder is known by its path, e.g. "work/projects". A document is in at most one folder.
@@ -19,6 +19,8 @@ const openedEditorsKey = "__openedEditors__";
 const foldersKey = "__folders__";
 // the tree's width is a preference of this device only, it doesn't go to the cloud (isDeviceOnlyKey)
 const treeWidthKey = "__treeWidth__";
+// and its height docked above or below the editors
+const treeHeightKey = "__treeHeight__";
 // the pinned tree's width on phones and tablets is kept apart from the desktop one
 const treeWidthMobileKey = "__treeWidthMobile__";
 // phones and tablets: a pinned tree stays open beside the editor, without the scrim, and can be resized;
@@ -28,6 +30,9 @@ const minTreeWidth = 160;
 // the pinned tree on phones and tablets can be narrower, it shares the screen with the editor
 const minTreeWidthMobile = minTreeWidth / 2;
 const maxTreeWidth = 600;
+// docked above or below the editors
+const minTreeHeight = 80;
+const maxTreeHeight = 600;
 const folderSeparator = "/";
 const maxFolderDepth = 5;
 const untitledTabLabel = "Untitled";
@@ -37,7 +42,8 @@ const documentDragType = "application/x-writejs-document";
 const folderDragType = "application/x-writejs-folder";
 
 let treePinned = localStorage.getItem(treePinnedKey) === "true";
-// the table of contents (toc.js): tocSide "left" / "right" on its own or "tree" as a tab next to the documents,
+// treeSide "left" / "right" / "top" / "bottom";
+// the table of contents (toc.js): tocSide "left" / "right" / "top" / "bottom" on its own or "tree" as a tab next to the documents,
 // treeTab is the tab the tree shows then
 const layout = Object.assign(
 	{ treeSide: "left", tabsSide: "top", treeHidden: false, collapsedFolders: [], tocSide: "right", tocHidden: true, treeTab: "documents" },
@@ -180,50 +186,83 @@ function saveLayout(){
 
 function applyLayout(){
 	document.body.dataset.treeSide = layout.treeSide;
+	document.getElementById("file-tree-resizer").setAttribute("aria-orientation", dockedInRows(layout.treeSide) ? "horizontal" : "vertical");
 	document.body.dataset.tabsSide = layout.tabsSide;
 	document.body.classList.toggle("tree-hidden", layout.treeHidden);
 	if ( typeof applyTocLayout === "function" ) { applyTocLayout() } // toc.js loads after this file
 	requestAnimationFrame(() => window.WriteVi?.relayout());
 }
 
+function dockedInRows(side){
+	// above or below the editors: the panel is resized by its height
+	return side === "top" || side === "bottom";
+}
+
 function setupTreeResizing(){
-	// the edge of the tree next to the editors is dragged to set its width
+	// the edge of the tree next to the editors is dragged to set its width, or its height above or below them
 	const tree = document.getElementById("file-tree");
 	const resizer = document.getElementById("file-tree-resizer");
 	applyTreeWidth(Number(localStorage.getItem(treeWidthKey)) || null, false);
 	applyTreeWidth(Number(localStorage.getItem(treeWidthMobileKey)) || null, true);
+	applyTreeHeight(Number(localStorage.getItem(treeHeightKey)) || null);
 
 	resizer.addEventListener("pointerdown", (e) => {
 		if ( e.button !== 0 ) { return }
 		e.preventDefault();
 		resizer.setPointerCapture(e.pointerId);
-		const startX = e.clientX;
-		const startWidth = tree.getBoundingClientRect().width;
-		// docked right, the edge is on the tree's left: dragging left makes it wider
-		const direction = layout.treeSide === "right" ? -1 : 1;
 		const mobile = isLowWidthViewport;
+		// on phones and tablets the tree is beside the editor wherever it's docked (styles.css)
+		const rows = dockedInRows(layout.treeSide) && !mobile;
+		const start = rows ? e.clientY : e.clientX;
+		const rect = tree.getBoundingClientRect();
+		const startSize = rows ? rect.height : rect.width;
+		// docked right or bottom, the edge is on the tree's left or top: dragging left or up makes it bigger
+		const direction = layout.treeSide === "right" || (rows && layout.treeSide === "bottom") ? -1 : 1;
 		document.body.classList.add("tree-resizing");
+		document.body.classList.toggle("resizing-rows", rows);
 
-		const move = (ev) => applyTreeWidth(startWidth + (ev.clientX - startX) * direction, mobile);
+		const move = (ev) => {
+			const size = startSize + ((rows ? ev.clientY : ev.clientX) - start) * direction;
+			rows ? applyTreeHeight(size) : applyTreeWidth(size, mobile);
+		};
 		const end = () => {
 			resizer.removeEventListener("pointermove", move);
 			resizer.removeEventListener("pointerup", end);
 			resizer.removeEventListener("pointercancel", end);
-			document.body.classList.remove("tree-resizing");
-			saveTreeWidth(Math.round(tree.getBoundingClientRect().width), mobile);
+			document.body.classList.remove("tree-resizing", "resizing-rows");
+			const rect = tree.getBoundingClientRect();
+			rows ? saveTreeHeight(Math.round(rect.height)) : saveTreeWidth(Math.round(rect.width), mobile);
 		};
 		resizer.addEventListener("pointermove", move);
 		resizer.addEventListener("pointerup", end);
 		resizer.addEventListener("pointercancel", end);
 	});
 	resizer.addEventListener("dblclick", () => {
+		if ( dockedInRows(layout.treeSide) && !isLowWidthViewport ) {
+			applyTreeHeight(null);
+			saveTreeHeight(null);
+			return
+		}
 		applyTreeWidth(null, isLowWidthViewport);
 		saveTreeWidth(null, isLowWidthViewport);
 	});
 }
 
+function applyTreeHeight(height){
+	const style = document.getElementById("app-body").style;
+	if ( !height ) { style.removeProperty("--tree-height"); return }
+	style.setProperty("--tree-height", Math.min(maxTreeHeight, Math.max(minTreeHeight, height)) + "px");
+}
+
+function saveTreeHeight(height){
+	if ( !validateUserConsent(false) ) { return }
+	if ( height ) { localStorage.setItem(treeHeightKey, String(height)) }
+	else { localStorage.removeItem(treeHeightKey) }
+}
+
 function applyTreeWidth(width, mobile){
-	const style = document.getElementById("file-tree").style;
+	// set on the panels' container: the table of contents split with the tree (toc.js) takes the same room
+	const style = document.getElementById("app-body").style;
 	const property = mobile ? "--tree-width-mobile" : "--tree-width";
 	if ( !width ) { style.removeProperty(property); return }
 	const clamped = Math.min(maxTreeWidth, Math.max(mobile ? minTreeWidthMobile : minTreeWidth, width));
@@ -1431,6 +1470,8 @@ function treePanelMenuItems(){
 		{ label: "New folder", action: createFolder },
 		{ label: "Move documents to the left", action: () => setTreeSide("left"), disabled: layout.treeSide === "left" },
 		{ label: "Move documents to the right", action: () => setTreeSide("right"), disabled: layout.treeSide === "right" },
+		{ label: "Move documents to the top", action: () => setTreeSide("top"), disabled: layout.treeSide === "top" },
+		{ label: "Move documents to the bottom", action: () => setTreeSide("bottom"), disabled: layout.treeSide === "bottom" },
 		{ label: "Hide documents", action: hideFileTree },
 	];
 }
