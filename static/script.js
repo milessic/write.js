@@ -556,6 +556,8 @@ function insertHTMLAtLastCaret(html){
 		selection.addRange(range);
 	}
 	document.execCommand("insertHTML", false, html);
+	moveLinesOutOfLines(editor);
+	moveHeadingsOutOfLines(editor);
 	updateCaretPosition();
 	performAutoSave();
 	handleWordCounter();
@@ -797,8 +799,78 @@ function loadLastOpenedDocument(){
 }
 
 function markdownToHtml(markdown) {
-	const converter = new showdown.Converter({ tasklists: true });
-	return markdownTaskItemsToChecklist(converter.makeHtml(markdown));
+	// a line break in the Markdown is a line in the document, as typed
+	const converter = new showdown.Converter({ tasklists: true, simpleLineBreaks: true, noHeaderId: true });
+	return sanitizeStyles(markdownTaskItemsToChecklist(converter.makeHtml(markdown)));
+}
+
+const sanitizedRenames = { STRONG: "b", EM: "i", H5: "h4", H6: "h4" };
+const sanitizedAttributes = { A: ["href"], LI: ["data-checked"], OL: ["start"], IMG: ["src", "alt", "title"] };
+
+function sanitizeStyles(html){
+	// imported markup as the editor makes it when typing: lines are <div>s (an empty one between paragraphs), <b>/<i>,
+	// h1-h4, <pre> of plain text, nested lists after their item, no ids, classes or styles. The newlines showdown puts
+	// between tags go too: .editor is white-space: pre-wrap, they would show as blank lines
+	const template = document.createElement("template");
+	template.innerHTML = html;
+	const root = template.content;
+	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+	const texts = [];
+	while ( walker.nextNode() ) { texts.push(walker.currentNode) }
+	for ( const text of texts ) {
+		if ( text.parentElement?.closest("pre") ) { continue }
+		if ( text.textContent.includes("\n") && text.textContent.trim() === "" ) { text.remove(); continue }
+		text.textContent = text.textContent.replace(/\n[ \t]*/g, "");
+		if ( !text.textContent ) { text.remove() }
+	}
+	for ( const pre of root.querySelectorAll("pre") ) { pre.textContent = pre.textContent.replace(/\n$/, "") }
+	for ( const p of root.querySelectorAll("li > p") ) { p.replaceWith(...p.childNodes) }
+	for ( const p of root.querySelectorAll("p") ) {
+		if ( p.previousElementSibling?.nodeName === "P" ) { p.before(emptyLine()) }
+	}
+	for ( const p of root.querySelectorAll("p") ) {
+		// a <br> in a paragraph starts the next line
+		const lines = [document.createElement("div")];
+		for ( const node of [...p.childNodes] ) {
+			node.nodeName === "BR" ? lines.push(document.createElement("div")) : lines.at(-1).appendChild(node);
+		}
+		for ( const line of lines ) { if ( !line.firstChild ) { line.appendChild(document.createElement("br")) } }
+		p.replaceWith(...lines);
+	}
+	// a quote has no style in the editor: its lines keep the "> " they were typed with
+	for ( const quote of [...root.querySelectorAll("blockquote")].reverse() ) {
+		for ( const line of quote.children ) { if ( line.nodeName === "DIV" ) { line.prepend("> ") } }
+		quote.replaceWith(...quote.childNodes);
+	}
+	for ( const el of [...root.querySelectorAll("*")].reverse() ) {
+		if ( el.nodeName === "SPAN" || el.nodeName === "FONT" ) { el.replaceWith(...el.childNodes); continue }
+		const keep = sanitizedAttributes[el.nodeName] || [];
+		for ( const attribute of [...el.attributes] ) {
+			if ( !keep.includes(attribute.name) ) { el.removeAttribute(attribute.name) }
+		}
+		const tag = sanitizedRenames[el.nodeName];
+		if ( tag ) {
+			const renamed = document.createElement(tag);
+			renamed.append(...el.childNodes);
+			el.replaceWith(renamed);
+		}
+	}
+	moveListsOutOfItems(root);
+	if ( headingBreaksEnabled() ) {
+		for ( const heading of root.querySelectorAll("h1, h2, h3, h4") ) {
+			if ( heading.nextElementSibling?.tagName === "HR" ) { continue }
+			const hr = document.createElement("hr");
+			hr.className = "heading-break";
+			heading.after(hr);
+		}
+	}
+	return template.innerHTML;
+}
+
+function emptyLine(){
+	const line = document.createElement("div");
+	line.appendChild(document.createElement("br"));
+	return line;
 }
 
 
@@ -1681,12 +1753,32 @@ function moveHeadingsOutOfLines(editor){
 	}
 }
 
+function moveLinesOutOfLines(editor){
+	// a line holding lines, headings or lists (insertHTML on an empty line puts them inside it) is replaced by them;
+	// text beside them gets its own line
+	for ( const line of [...editor.children] ) {
+		if ( line.nodeName !== "DIV" || ![...line.children].some(isBlockNode) ) { continue }
+		const parts = [];
+		let text = null;
+		for ( const node of [...line.childNodes] ) {
+			if ( isBlockNode(node) ) { text = null; parts.push(node); continue }
+			// the <br> that kept the line open goes with it
+			if ( node.nodeName === "BR" && !text ) { continue }
+			if ( !text ) { text = document.createElement("div"); parts.push(text) }
+			text.appendChild(node);
+		}
+		line.replaceWith(...parts);
+	}
+}
+
 function removeInlineStyles(editor){
 	// Chrome keeps the look of text moved between blocks (Backspace/Delete joining a heading and a line, formatBlock,
 	// list items) by wrapping it in <span style="font-size: 1.3em; ..."> with the old block's computed style, so a line
 	// takes a heading's size and the other way round; the editor never makes styled spans itself, so they go away
-	for ( const span of editor.querySelectorAll("span[style]") ) {
-		if ( span.attributes.length === 1 ) { span.replaceWith(...span.childNodes) }
+	// (and <b style>, <i style>, ... from insertHTML)
+	for ( const el of editor.querySelectorAll("[style]") ) {
+		if ( el.nodeName === "SPAN" && el.attributes.length === 1 ) { el.replaceWith(...el.childNodes) }
+		else { el.removeAttribute("style") }
 	}
 }
 
