@@ -1243,6 +1243,32 @@ body.show-line-numbers .line-numbers {
 :where(.editor, #content, .compare-view) :is(h1, h2, h3, h4, p, div, ul, ol, pre, hr) {
 	margin-top: .3rem;
 }
+/* a rule (---) is a line of its own: as tall as a line of text, drawn across its middle, as wide as the text.
+   --rule-height is the editor's line height, in px (registered, so 1lh is resolved on .editor and inherited as is:
+   the headings use it with their own font size) */
+@property --rule-height {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 20px;
+}
+:where(.editor, #content, .compare-view) {
+	--rule-height: 1lh;
+}
+:where(.editor, #content, .compare-view) hr {
+	box-sizing: content-box;
+	height: var(--rule-height);
+	margin: .3rem 0 0;
+	border: 0;
+	overflow: visible;
+	color: var(--line-strong, var(--muted));
+	background: linear-gradient(currentColor, currentColor) left center / 100% 1px no-repeat;
+}
+/* a collapsed heading whose section starts with a rule draws the rule where it was, under it: a background, not a line
+   the caret (vi's or the browser's) could go to. The padding is the hidden rule's margin and height */
+.heading-folding .editor > [data-collapsed="true"]:has(+ hr) {
+	padding-bottom: calc(.3rem + var(--rule-height));
+	background: linear-gradient(var(--line-strong, var(--muted)), var(--line-strong, var(--muted))) left 0 bottom calc(var(--rule-height) / 2 - .5px) / 100% 1px no-repeat;
+}
 :where(.editor, #content, .compare-view) :is(ul, ol) {
 	margin-bottom: 0;
 	padding-left: 2rem;
@@ -1545,4 +1571,117 @@ body.focus-mode .focus-exit:is(:hover, :focus-visible) {
 /* the vi mode indicator moves left of the x */
 body.focus-mode:not(.apple-platform) .vi-bar {
 	margin-right: 2rem;
+}
+
+/* comments (comments.js): an icon in the margin right of a commented line, red while any comment is unresolved,
+   green when all are; it opens the comments in a popover */
+.editor-card {
+	position: relative;
+}
+.editor-card.has-comments {
+	padding-right: calc(var(--comments-gutter, 1.5rem) + .25rem);
+}
+.line-comments {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	right: 0;
+	width: var(--comments-gutter, 1.5rem);
+	pointer-events: none;
+}
+.line-comment {
+	position: absolute;
+	left: 0;
+	right: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--tone-fail, #c62828);
+	cursor: pointer;
+	pointer-events: auto;
+}
+.line-comment.resolved {
+	color: var(--tone-ok, #2e7d32);
+}
+.line-comment:hover {
+	filter: brightness(1.2);
+}
+.line-comment:focus-visible {
+	outline: 2px solid var(--accent);
+	border-radius: calc(var(--radius) / 2);
+}
+.menu.comments-popover {
+	position: fixed;
+	z-index: 60;
+	display: flex;
+	flex-direction: column;
+	gap: .5rem;
+	width: min(22rem, calc(100vw - 8px));
+	max-height: min(28rem, calc(100vh - 8px));
+	padding: .6rem;
+}
+.comments-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	font-weight: 600;
+}
+.comments-list {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.comments-list > .comment {
+	padding: .4rem .5rem;
+	border-left: 3px solid var(--tone-fail, #c62828);
+	border-radius: calc(var(--radius) / 4);
+	background: var(--surface);
+}
+.comments-list > .comment + .comment {
+	margin-top: .4rem;
+}
+.comments-list > .comment.resolved {
+	border-left-color: var(--tone-ok, #2e7d32);
+	opacity: .75;
+}
+.comment-meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: .2rem .5rem;
+	font-size: .8rem;
+	color: var(--muted);
+}
+.comment-meta strong {
+	color: var(--ink);
+}
+.comment-meta .comment-resolve,
+.comment-meta .comment-badge {
+	margin-left: auto;
+}
+.comment-badge {
+	color: var(--tone-ok, #2e7d32);
+	font-weight: 600;
+}
+.comment-text {
+	margin-top: .2rem;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.comment-input {
+	width: 100%;
+	box-sizing: border-box;
+	resize: vertical;
+	font: inherit;
+}
+.comments-actions {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
 }

@@ -175,6 +175,7 @@ function autoDetectBlock(editor, node, before){
 		action = () => {
 			// the rule takes the line, typing goes on in a new line under it
 			document.execCommand("insertHTML", false, "<hr><div><br></div>");
+			moveRulesOutOfLines(editor); // script.js
 		};
 	} else if ( /^#{1,4} $/.test(before) && !inList && autoDetectRuleOn("heading") ) {
 		action = () => formatBlockWithHeadingBreaks(`h${before.length - 1}`);

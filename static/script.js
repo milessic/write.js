@@ -166,6 +166,7 @@ function formatText(command) {
     } else if (command === "hr") {
         document.execCommand("insertHorizontalRule", false, null);
 		simulateEnter()
+		moveRulesOutOfLines(document.getElementById("editor"));
     } else if (command === "code") {
         document.execCommand("formatBlock", false, "pre");
     } else if (command === "inline-code") {
@@ -536,6 +537,7 @@ function fillEditorWithHTML(html, append=false){
     document.getElementById("editor").innerHTML = html;
 	moveListsOutOfItems(document.getElementById("editor"));
 	moveHeadingsOutOfLines(document.getElementById("editor"));
+	moveRulesOutOfLines(document.getElementById("editor"));
 	removeInlineStyles(document.getElementById("editor"));
 	normalizeChecklists(document.getElementById("editor"));
 	document.getElementById("editor").closest(".pane-scroll").scrollTo(0, 1000);
@@ -1758,17 +1760,35 @@ function moveLinesOutOfLines(editor){
 	// text beside them gets its own line
 	for ( const line of [...editor.children] ) {
 		if ( line.nodeName !== "DIV" || ![...line.children].some(isBlockNode) ) { continue }
-		const parts = [];
-		let text = null;
-		for ( const node of [...line.childNodes] ) {
-			if ( isBlockNode(node) ) { text = null; parts.push(node); continue }
-			// the <br> that kept the line open goes with it
-			if ( node.nodeName === "BR" && !text ) { continue }
-			if ( !text ) { text = document.createElement("div"); parts.push(text) }
-			text.appendChild(node);
-		}
-		line.replaceWith(...parts);
+		splitLineIntoBlocks(line);
 	}
+}
+
+function moveRulesOutOfLines(editor){
+	// a rule inside a line (--- typed on a line, or inserted into one: <div><hr><div>text</div></div>) is a line of its
+	// own, so a heading's section can start with it (folding.js) and vi and the line numbers count it; the caret stays
+	const hasRule = (line) => line.nodeName === "DIV" && [...line.children].some((el) => el.nodeName === "HR");
+	const selection = window.getSelection();
+	const saved = selection.rangeCount ? [selection.anchorNode, selection.anchorOffset, selection.focusNode, selection.focusOffset] : null;
+	let moved = false;
+	for ( let lines; (lines = [...editor.children].filter(hasRule)).length; ) {
+		lines.forEach(splitLineIntoBlocks);
+		moved = true;
+	}
+	if ( moved && saved && editor.contains(saved[0]) && editor.contains(saved[2]) ) { selection.setBaseAndExtent(...saved) }
+}
+
+function splitLineIntoBlocks(line){
+	const parts = [];
+	let text = null;
+	for ( const node of [...line.childNodes] ) {
+		if ( isBlockNode(node) ) { text = null; parts.push(node); continue }
+		// the <br> that kept the line open goes with it
+		if ( node.nodeName === "BR" && !text ) { continue }
+		if ( !text ) { text = document.createElement("div"); parts.push(text) }
+		text.appendChild(node);
+	}
+	line.replaceWith(...parts);
 }
 
 function removeInlineStyles(editor){
@@ -1784,11 +1804,11 @@ function removeInlineStyles(editor){
 
 // pasting a list into a list: its items become items of that list, where the caret is (before, after, or splitting
 // its item), nested ones nested as Tab nests them; into a checklist, items without a checkbox get one
-const pastedListLine = /^([ \t]*)([-*+]|\d+[.)])[ \t]+(?:\[([ xX])\][ \t]+)?(.*)$/;
+const pastedListLine = /^([ \t]*)([-*+]|\d+[.)])[ \t]+(?:\[([ xX]?)\](?:[ \t]+|$))?(.*)$/;
 const pastedInlineTags = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "CODE", "A"]);
 
 function pastedItemsFromText(text){
-	// "- a", "* a", "1. a", "- [ ] a", "- [x] a" lines, nested by their indent; null if any line isn't one
+	// "- a", "* a", "1. a", "- [ ] a", "- [] a", "- [x] a" lines, nested by their indent; null if any line isn't one
 	const lines = text.replace(/\r\n?/g, "\n").split("\n").filter((line) => line.trim() !== "");
 	if ( !lines.length || !lines.every((line) => pastedListLine.test(line)) ) { return null }
 	const root = { children: [], indent: -1 };
@@ -1798,7 +1818,7 @@ function pastedItemsFromText(text){
 		const indent = space.replace(/\t/g, " ".repeat(indentSize)).length;
 		while ( stack.length > 1 && stack.at(-1).indent >= indent ) { stack.pop() }
 		const parent = stack.at(-1);
-		const item = { html: escapeHtmlText(content), checked: box === undefined ? null : box !== " ", children: [], indent, ordered: /\d/.test(marker) };
+		const item = { html: escapeHtmlText(content), checked: box === undefined ? null : box.trim() !== "", children: [], indent, ordered: /\d/.test(marker) };
 		parent.children.push(item);
 		stack.push(item);
 	}

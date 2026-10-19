@@ -24,9 +24,9 @@ def numbers(vi):
 	return vi.page.evaluate(NUMBERS_JS)
 
 
-def test_a_number_for_each_line_not_for_a_rule(numbered):
+def test_a_number_for_each_line_and_rule(numbered):
 	numbered.load(html="<h2>heading</h2><hr><div>one</div><div><br></div><ul><li>a</li><li>b</li></ul><div>x<br>y</div>")
-	assert numbers(numbered) == ["1", "2", "3", "4", "5", "6", "7"]
+	assert numbers(numbered) == ["1", "2", "3", "4", "5", "6", "7", "8"]
 
 
 def test_numbers_follow_edits(numbered):
@@ -58,7 +58,7 @@ def test_caret_line_is_current(numbered):
 
 
 def test_vi_goes_to_the_numbered_line(numbered):
-	numbered.load(html="<h2>heading</h2><hr><div>one</div><div>two</div>").command("3").keys("i").type("X").keys("Escape")
+	numbered.load(html="<h2>heading</h2><hr><div>one</div><div>two</div>").command("4").keys("i").type("X").keys("Escape")
 	assert numbered.page.evaluate("document.getElementById('editor').children[3].textContent") == "Xtwo"
 
 

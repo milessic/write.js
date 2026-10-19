@@ -40,8 +40,8 @@ def app(browser, server):
 def test_loaded_headings_move_up_to_the_editor(app):
 	assert app.evaluate(TOP_HEADINGS) == ["Regulacja hamulca Side Pull", "Składam Fixed Gear", "Rama", "Koła", "Break"]
 	html = app.evaluate("document.getElementById('editor').innerHTML")
-	# the lines around them are split, the heading's break stays under it, lists keep their headings
-	assert '<div><hr></div><h3>Rama</h3><div>- tsunami SNM100</div>' in html
+	# the lines around them are split, the heading's break stays under it, lists keep their headings; a rule is a line
+	assert '<hr><h3>Rama</h3><div>- tsunami SNM100</div>' in html
 	assert '<h2>Break</h2><hr class="heading-break"><div><span>after break</span></div>' in html
 	assert '<ul><li><h4>in a list</h4></li></ul>' in html
 

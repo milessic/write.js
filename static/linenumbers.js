@@ -1,7 +1,7 @@
 /*
  * Line numbers: a faint counter in the margin left of each editor, the caret's line a little brighter.
  * The lines are the ones vi mode counts (textModel, vi.js), so :12 goes to the line numbered 12: every block, list item
- * and line inside them (<br>, line breaks of pasted text) is one, a rule (<hr>) isn't. A wrapped line keeps one number;
+ * and line inside them (<br>, line breaks of pasted text) is one, a rule (<hr>) too. A wrapped line keeps one number;
  * the lines of a collapsed section (folding.js) keep theirs, hidden with them.
  * The numbers are drawn in the editor's card, outside the editor, so they are never part of the document.
  * Settings > Editor or vi's :lines turns them on and off (lineNumbersKey, script.js); it goes to the cloud with the notebook.
@@ -86,6 +86,8 @@ function editorLines(editor){
 				emit(node, 0);
 				if ( !isTrailingBreak(node) ) { needsStart = true }
 			} else if ( node.nodeName === "HR" ) {
+				breakLine();
+				emit(node, 0);
 				breakLine();
 			} else if ( lineBlockTags.has(node.nodeName) ) {
 				breakLine();

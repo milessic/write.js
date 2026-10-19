@@ -399,6 +399,7 @@ document.addEventListener("selectionchange", handleListFoldSelectionChange);
 document.getElementById("editor-grid").addEventListener("input", (e) => {
 	const editor = e.target.closest?.(".editor");
 	if ( !editor ) { return }
+	moveRulesOutOfLines(editor); // script.js
 	applyHeadingFolds(editor);
 	normalizeListFolds(editor);
 });
@@ -406,6 +407,7 @@ applyFoldingSettings();
 document.querySelectorAll("#editor-grid .editor").forEach((editor) => {
 	moveListsOutOfItems(editor);
 	moveHeadingsOutOfLines(editor);
+	moveRulesOutOfLines(editor);
 	applyHeadingFolds(editor);
 	normalizeListFolds(editor);
 });

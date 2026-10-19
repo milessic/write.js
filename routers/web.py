@@ -19,18 +19,21 @@ STATIC_DIR = Path(__file__).parent.parent / "static"
 async def read_index(request: Request):
     """Serve the index.html file."""
     try:
-        verify_access_token(request.cookies.get("access_token"), request)
+        payload = verify_access_token(request.cookies.get("access_token"), request)
         is_authenticated = True
+        username = payload.get("sub") or ""
     except HTTPException as e:
         if e.status_code != 401:
             raise
         is_authenticated = False
+        username = ""
 
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
             "is_authenticated": is_authenticated,
+            "username": username,
             **theme_context(request.cookies.get(THEME_COOKIE)),
         },
     )

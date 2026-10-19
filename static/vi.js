@@ -313,6 +313,12 @@ function characterRect(model, index){
 	const range = document.createRange();
 	range.setStart(start.node, start.offset);
 	const fontSize = parseFloat(getComputedStyle(elementOf(start.node)).fontSize) || 16;
+	const rule = ruleAt(model, index);
+	if ( rule ) {
+		// on a rule: at its start, as tall as it
+		const box = rule.getBoundingClientRect();
+		return box.height ? {left: box.left, top: box.top, width: fontSize * .6, height: box.height} : null;
+	}
 	if ( char !== undefined && char !== "\n" ) {
 		const end = positionAt(model, index + 1);
 		range.setEnd(end.node, end.offset);
@@ -569,10 +575,13 @@ function rememberSelection(){
 }
 
 
-// text model: the editor as plain text, block boundaries and <br> are "\n"
+// text model: the editor as plain text, block boundaries and <br> are "\n"; a rule (<hr>) is a line of one ruleChar,
+// before it the DOM position before the <hr>, after it the one after (so dd, yy and p take it like any line)
+const ruleChar = "\u2500";
+
 function textModel(editor){
 	let text = "";
-	const segments = [];   // {node, start, length, kind: "text" | "br" | "empty"}
+	const segments = [];   // {node, start, length, kind: "text" | "br" | "empty" | "rule"}
 	let lineOpen = false;      // the current line has something on it
 	let pendingBreak = false;  // a block ended: the next content starts a new line
 	const emit = (node, kind, string) => {
@@ -600,6 +609,8 @@ function textModel(editor){
 				// a <br> at the end of a block only holds an empty line open, it doesn't add one
 				emit(node, "br", isTrailing(node) ? "" : "\n");
 			} else if ( node.tagName === "HR" ) {
+				breakLine();
+				emit(node, "rule", ruleChar);
 				breakLine();
 			} else if ( blockTags.has(node.tagName) ) {
 				breakLine();
@@ -648,9 +659,9 @@ function positionAt(model, index){
 	}
 	if ( !found ) { return {node: model.editor, offset: 0} }
 	if ( found.kind === "text" ) { return {node: found.node, offset: Math.min(index - found.start, found.length)} }
-	if ( found.kind === "br" ) {
+	if ( found.kind === "br" || found.kind === "rule" ) {
 		const parent = found.node.parentNode;
-		// before the <br> is the end of its line, after it the start of the next one
+		// before the <br> is the end of its line, after it the start of the next one; the rule is between the two
 		return {node: parent, offset: [...parent.childNodes].indexOf(found.node) + (index > found.start ? 1 : 0)};
 	}
 	return {node: found.node, offset: 0};
@@ -676,7 +687,7 @@ function indexAt(model, node, offset){
 }
 
 function segmentPoint(segment){
-	if ( segment.kind === "br" ) {
+	if ( segment.kind === "br" || segment.kind === "rule" ) {
 		const parent = segment.node.parentNode;
 		return [parent, [...parent.childNodes].indexOf(segment.node)];
 	}
@@ -1104,7 +1115,52 @@ function applyOperator(editor, model, op, from, to, linewise, cursor){
 
 function deleteLines(editor, model, from, to){
 	const text = model.text;
-	if ( from > 0 ) {
+	const rules = [];
+	for ( let s = from; s <= to; s = lineEnd(text, s) + 1 ) {
+		rules.push(ruleAt(model, s));
+		if ( lineEnd(text, s) >= text.length ) { break }
+	}
+	const above = from > 0 ? ruleAt(model, lineStart(text, from - 1)) : null;
+	const below = to < text.length ? ruleAt(model, to + 1) : null;
+	if ( rules.every(Boolean) ) {
+		// only rules: they go, the lines around them stay as they are
+		const range = document.createRange();
+		range.setStartBefore(rules[0]);
+		range.setEndAfter(rules.at(-1));
+		const selection = window.getSelection();
+		selection.removeAllRanges();
+		selection.addRange(range);
+		exec("delete");
+		const after = textModel(editor);
+		setCaret(after, from < after.text.length ? firstNonBlank(after.text, from) : firstNonBlank(after.text, Math.max(0, from - 1)));
+	} else if ( !above && from === 0 && below ) {
+		// the first lines, over a rule: their text goes (a delete up to the rule takes it too), then their emptied line
+		deleteRange(model, 0, to);
+		const left = below.previousSibling;
+		if ( left?.nodeType === Node.ELEMENT_NODE && !left.previousSibling && left.textContent === "" && !left.querySelector(":not(br)") ) { left.remove() }
+		setCaret(textModel(editor), 0);
+	} else if ( above && to < text.length ) {
+		// under a rule: from its start to the next line's, so the rule stays
+		deleteRange(model, from, to + 1);
+		const after = textModel(editor);
+		setCaret(after, firstNonBlank(after.text, Math.min(from, after.text.length)));
+	} else if ( above ) {
+		// the last lines, under a rule: their blocks go, the rule stays
+		const start = positionAt(model, from);
+		const range = document.createRange();
+		range.setStartAfter(above);
+		range.setEnd(editor, editor.childNodes.length);
+		if ( above.parentNode !== editor ) { range.setStart(start.node, start.offset) }
+		const selection = window.getSelection();
+		selection.removeAllRanges();
+		selection.addRange(range);
+		exec("delete");
+		// the browser keeps an empty line after the rule
+		const left = above.nextSibling;
+		if ( left?.nodeType === Node.ELEMENT_NODE && !left.nextSibling && left.textContent === "" && !left.querySelector(":not(br)") ) { left.remove() }
+		const after = textModel(editor);
+		setCaret(after, lineStart(after.text, after.text.length));
+	} else if ( from > 0 ) {
 		// from the end of the line above, so the line above keeps its block (a heading stays a heading)
 		deleteRange(model, from - 1, to);
 		const after = textModel(editor);
@@ -1168,35 +1224,48 @@ function joinLines(editor, model, i, count, withSpace=true){
 }
 
 function openLine(editor, model, i, above){
+	openEmptyLine(editor, model, i, above);
+	setMode("insert");
+	changed();
+}
+
+function openEmptyLine(editor, model, i, above){
+	// a new empty line under (or over) the line at i, the caret in it
 	const text = model.text;
 	// a new line next to a checklist item is an unchecked checklist item (checklist.js)
 	const insertParagraph = () => typeof withNewTaskItemsUnchecked === "function"
 		? withNewTaskItemsUnchecked(editor, () => exec("insertParagraph"))
 		: exec("insertParagraph");
 	const start = lineStart(text, i);
-	// a rule isn't a line: above a line right under one, the new line goes between them, not over the rule
-	if ( above && (start === 0 || ruleBetween(model, start - 1, start)) ) {
-		setCaret(model, start);
+	const next = above ? start : lineEnd(text, i) + 1; // the line the new one goes before (past the text: none)
+	const prev = next - 1;                            // the end of the line it goes after (-1: none)
+	const prevRule = prev >= 0 ? ruleAt(model, lineStart(text, prev)) : null;
+	const nextRule = next <= text.length ? ruleAt(model, next) : null;
+	if ( prev >= 0 && !prevRule ) {
+		// Enter at the end of the line above
+		setCaret(model, prev);
+		insertParagraph();
+	} else if ( next <= text.length && !nextRule ) {
+		// Enter at the start of the line below, back to the line it made
+		setCaret(model, next);
 		insertParagraph();
 		window.getSelection().modify("move", "backward", "character");
-		rememberSelection();
 	} else {
-		setCaret(model, above ? start - 1 : lineEnd(text, i));
-		insertParagraph();
-		rememberSelection();
+		// between rules, or a rule and the document's start or end: the browser can't split a rule, the line is made here
+		const line = document.createElement("div");
+		line.appendChild(document.createElement("br"));
+		prevRule ? prevRule.after(line) : nextRule.before(line);
+		window.getSelection().collapse(line, 0);
 	}
-	setMode("insert");
-	changed();
+	rememberSelection();
 }
 
-function ruleBetween(model, from, to){
-	// an <hr> between two text positions
-	const a = positionAt(model, from);
-	const b = positionAt(model, to);
-	const range = document.createRange();
-	range.setStart(a.node, a.offset);
-	range.setEnd(b.node, b.offset);
-	return [...model.editor.querySelectorAll("hr")].some(hr => range.intersectsNode(hr));
+function restoreRules(editor){
+	// the put lines that were rules (ruleChar) become rules again
+	for ( const line of editor.querySelectorAll("div, p") ) {
+		if ( line.textContent !== ruleChar || line.querySelector(":not(br)") ) { continue }
+		line.replaceWith(document.createElement("hr"));
+	}
 }
 
 function repeatedItems(count){
@@ -1208,27 +1277,16 @@ function put(editor, model, i, before, count){
 	const text = model.text;
 	const lines = Array(count).fill(register.text).join(register.linewise ? "\n" : "").split("\n");
 	if ( register.linewise ) {
-		const start = lineStart(text, i);
-		if ( before && start === 0 ) {
-			setCaret(model, 0);
-			lines.forEach((line) => {
-				if ( line ) { exec("insertText", line) }
-				exec("insertParagraph");
-			});
-			restoreListItems(editor, 0, repeatedItems(count));
-			const after = textModel(editor);
-			setCaret(after, firstNonBlank(after.text, 0));
-			return
-		}
-		const at = before ? start - 1 : lineEnd(text, i);
-		setCaret(model, at);
-		for ( const line of lines ) {
-			exec("insertParagraph");
+		openEmptyLine(editor, model, i, before);
+		const first = caretIndex(textModel(editor));
+		lines.forEach((line, n) => {
+			if ( n ) { exec("insertParagraph") }
 			if ( line ) { exec("insertText", line) }
-		}
-		restoreListItems(editor, at + 1, repeatedItems(count));
+		});
+		restoreListItems(editor, first, repeatedItems(count));
+		restoreRules(editor);
 		const after = textModel(editor);
-		setCaret(after, firstNonBlank(after.text, at + 1));
+		setCaret(after, firstNonBlank(after.text, first));
 		return
 	}
 	const at = before || text[i] === undefined || text[i] === "\n" ? i : i + 1;
@@ -1597,17 +1655,61 @@ function browserTarget(model, i, [direction, granularity], count){
 }
 
 function browserMove(selection, direction, granularity){
+	if ( granularity !== "line" ) {
+		selection.modify("move", direction, granularity);
+		return
+	}
+	// a rule is a line the browser's caret skips: a line move stops on the first one it crosses, and leaves one by the model
+	const editor = elementOf(selection.focusNode)?.closest(".editor");
+	if ( !editor ) {
+		selection.modify("move", direction, granularity);
+		return
+	}
+	const model = textModel(editor);
+	const i = indexAt(model, selection.focusNode, selection.focusOffset);
+	if ( i !== null && ruleAt(model, i) ) {
+		const text = model.text;
+		let target = null;
+		if ( direction === "forward" ) {
+			if ( lineEnd(text, i) < text.length ) { target = lineEnd(text, i) + 1 }
+		} else if ( i > 0 ) {
+			target = lineStart(text, i - 1);
+		}
+		if ( target !== null ) {
+			const p = positionAt(model, target);
+			selection.collapse(p.node, p.offset);
+		}
+		return
+	}
+	const from = document.createRange();
+	from.setStart(selection.focusNode, selection.focusOffset);
 	selection.modify("move", direction, granularity);
-	// a line move can stop next to an <hr>, which isn't a line: it goes on to the line past it
-	if ( granularity === "line" && atRule(selection) ) { selection.modify("move", direction, granularity) }
+	const crossed = document.createRange();
+	if ( direction === "forward" ) {
+		crossed.setStart(from.startContainer, from.startOffset);
+		crossed.setEnd(selection.focusNode, selection.focusOffset);
+	} else {
+		crossed.setStart(selection.focusNode, selection.focusOffset);
+		crossed.setEnd(from.startContainer, from.startOffset);
+	}
+	const rules = [...editor.querySelectorAll("hr")].filter((hr) => crossed.intersectsNode(hr) && hr.getClientRects().length);
+	const rule = direction === "forward" ? rules[0] : rules.at(-1);
+	if ( rule ) {
+		selection.collapse(rule.parentNode, [...rule.parentNode.childNodes].indexOf(rule));
+		return
+	}
+	// after a rule is the end of its line: the cursor is on the rule
+	const after = textModel(editor);
+	const j = indexAt(after, selection.focusNode, selection.focusOffset);
+	if ( j > 0 && ruleAt(after, j - 1) ) {
+		const p = positionAt(after, j - 1);
+		selection.collapse(p.node, p.offset);
+	}
 }
 
-function atRule(selection){
-	const node = selection.focusNode;
-	if ( !node || node.nodeType !== Node.ELEMENT_NODE ) { return false }
-	const isRule = (n) => n?.nodeType === Node.ELEMENT_NODE && n.tagName === "HR";
-	const offset = selection.focusOffset;
-	return isRule(node) || isRule(node.childNodes[offset]) || isRule(node.childNodes[offset - 1]);
+function ruleAt(model, index){
+	// the <hr> of the rule line at index
+	return model.segments.find(s => s.kind === "rule" && s.start === index)?.node || null;
 }
 
 function findInLine(text, i, key, char, count, repeat){

@@ -4,6 +4,8 @@
  * The checkbox is the item's ::before (styles.css): a click on it, or Ctrl/Cmd+Enter in the item, toggles it.
  * The state is the attribute, so it is saved with the document, goes to the cloud, and to Markdown as "- [ ]" / "- [x]".
  * Documents from before keep working: their <input type="checkbox"> + span lines are turned into items when loaded.
+ * Copied, checklist items are Markdown text ("- [ ] a", "- [x] a", nested by 4 spaces); Markdown checklist lines
+ * ("- [ ]", "- []", "- [x]") pasted outside of a list become a checklist (into a list, script.js's paste takes them).
  */
 const taskItemSelector = "li[data-checked]";
 let paragraphSnapshot = null; // the editor's items before an Enter, to tell which item the browser just made
@@ -438,6 +440,103 @@ function markdownTaskItemsToChecklist(html){
 	return template.innerHTML;
 }
 
+const plainTextBlockTags = new Set(["DIV", "P", "H1", "H2", "H3", "H4", "H5", "H6", "PRE", "BLOCKQUOTE"]);
+
+function selectionWithListContext(range, editor){
+	// the selected nodes inside clones of the lists and items around them, so the items keep their depth and checkbox
+	let fragment = range.cloneContents();
+	const container = range.commonAncestorContainer;
+	let el = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
+	for ( ; el && el !== editor; el = el.parentElement ) {
+		if ( el.nodeName !== "LI" && !isListElement(el) ) { continue }
+		const wrapper = el.cloneNode(false);
+		wrapper.append(fragment);
+		fragment = wrapper;
+	}
+	const root = document.createElement("div");
+	root.append(fragment);
+	return root;
+}
+
+function checklistPlainText(root){
+	// the copied lines as text, list items with their Markdown marker, nested ones indented by 4 spaces
+	const lines = []; // {depth, prefix, text}; depth: lists around a list item, 0 for other lines
+	let line = null;
+	const start = (depth, prefix) => { line = { depth, prefix, text: "" }; lines.push(line) };
+	const walk = (node, depth) => {
+		for ( const child of node.childNodes ) {
+			if ( child.nodeType === Node.TEXT_NODE ) {
+				if ( isListElement(node) && child.data.trim() === "" ) { continue }
+				if ( !line ) { start(0, "") }
+				line.text += child.data;
+			} else if ( child.nodeName === "BR" ) {
+				if ( !line ) { start(0, "") }
+				line = null;
+			} else if ( isListElement(child) ) {
+				line = null;
+				walk(child, depth + 1);
+				line = null;
+			} else if ( child.nodeName === "LI" ) {
+				const number = [...node.children].filter((el) => el.nodeName === "LI").indexOf(child) + 1;
+				const marker = isTaskItem(child) ? `- [${isChecked(child) ? "x" : " "}] ` : node.nodeName === "OL" ? `${number}. ` : "- ";
+				start(depth, marker);
+				walk(child, depth);
+				line = null;
+			} else if ( child.nodeName === "HR" ) {
+				start(0, "---");
+				line = null;
+			} else if ( plainTextBlockTags.has(child.nodeName) ) {
+				line = null;
+				walk(child, depth);
+				line = null;
+			} else if ( child.nodeType === Node.ELEMENT_NODE ) {
+				walk(child, depth);
+			}
+		}
+	};
+	walk(root, 0);
+	const items = lines.filter((l) => l.depth > 0);
+	const top = items.length ? Math.min(...items.map((l) => l.depth)) : 0;
+	return lines
+		.map((l) => (l.depth ? " ".repeat(indentSize * (l.depth - top)) : "") + l.prefix + l.text.replace(/\n+$/, ""))
+		.join("\n");
+}
+
+function handleChecklistCopy(e){
+	// only a selection with checklist items is copied by us; anything else stays the browser's
+	const editor = e.target.closest?.(".editor");
+	const selection = window.getSelection();
+	if ( !editor || !e.clipboardData || !selection.rangeCount || selection.isCollapsed ) { return }
+	const range = selection.getRangeAt(0);
+	if ( !editor.contains(range.commonAncestorContainer) ) { return }
+	const root = selectionWithListContext(range, editor);
+	if ( !root.querySelector(taskItemSelector) ) { return }
+	e.preventDefault();
+	e.clipboardData.setData("text/plain", checklistPlainText(root));
+	e.clipboardData.setData("text/html", root.innerHTML);
+	if ( e.type === "cut" && editor.isContentEditable ) { document.execCommand("delete") }
+}
+
+function handleChecklistPaste(e){
+	// a pasted Markdown (or HTML) list with checkboxes, outside of a list, becomes a checklist; into a list,
+	// handlePasteListIntoList (script.js) takes it
+	if ( e.defaultPrevented ) { return }
+	const editor = e.target.closest?.(".editor");
+	const selection = window.getSelection();
+	if ( !editor || !selection.rangeCount ) { return }
+	const range = selection.getRangeAt(0);
+	const inList = (node) => (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)?.closest("li, ul, ol");
+	if ( inList(range.startContainer) || inList(range.endContainer) ) { return }
+	const html = e.clipboardData?.getData("text/html");
+	const items = (html && pastedItemsFromHtml(html)) || pastedItemsFromText(e.clipboardData?.getData("text/plain") || "");
+	const hasCheckbox = (list) => list.some((item) => item.checked !== null || hasCheckbox(item.children));
+	if ( !items?.length || !hasCheckbox(items) ) { return }
+	e.preventDefault();
+	const list = items[0].ordered ? "ol" : "ul";
+	document.execCommand("insertHTML", false, `<${list}>${pastedItemsHtml(items, false)}</${list}>`);
+	normalizeChecklists(editor);
+}
+
 // capture: Ctrl/Cmd+Enter is the toggle before any Enter handling
 document.getElementById("editor-grid").addEventListener("keydown", handleChecklistKeydown, true);
 document.getElementById("editor-grid").addEventListener("mousedown", handleChecklistMouseDown);
@@ -445,4 +544,7 @@ document.getElementById("editor-grid").addEventListener("touchstart", handleChec
 document.getElementById("editor-grid").addEventListener("touchend", handleChecklistTouchEnd, {passive: false});
 document.getElementById("editor-grid").addEventListener("beforeinput", handleChecklistBeforeInput);
 document.getElementById("editor-grid").addEventListener("input", handleChecklistInput);
+document.getElementById("editor-grid").addEventListener("copy", handleChecklistCopy);
+document.getElementById("editor-grid").addEventListener("cut", handleChecklistCopy);
+document.getElementById("editor-grid").addEventListener("paste", handleChecklistPaste);
 document.querySelectorAll("#editor-grid .editor").forEach(normalizeChecklists);
