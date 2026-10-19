@@ -33,6 +33,10 @@ def rows(vi):
 	return vi.page.evaluate(ROWS_JS)
 
 
+def menu(vi):
+	return vi.page.evaluate("[...document.querySelectorAll('#context-menu.menu-opened button')].map((b) => b.textContent)")
+
+
 def visible(vi, selector):
 	return vi.page.evaluate(f"Boolean(document.querySelector('{selector}')?.offsetParent)")
 
@@ -91,9 +95,24 @@ def test_as_a_tab_next_to_the_documents(toc):
 	assert rows(toc) == []
 	toc.page.click("#toc-tab")
 	assert rows(toc)[:2] == ["Notes", "Chapter 1"]
-	toc.page.click("#toc-tab-close")
+	# the tree's buttons and closing are in its little menu
+	assert not visible(toc, "#file-tree-new")
+	toc.page.click("#side-menu-btn")
+	assert menu(toc) == ["New document", "New folder", "Close Table of Contents"]
+	toc.page.click("#context-menu >> text=Close Table of Contents")
 	assert not visible(toc, "#toc-tab")
 	assert visible(toc, "#file-tree-list")
+	# without the tabs the buttons are back
+	assert visible(toc, "#file-tree-new")
+	assert not visible(toc, "#side-menu-btn")
+
+
+def test_little_menu_closes_the_file_explorer_from_its_tab(toc):
+	toc.page.evaluate("setTocSide('tree'); showTreeTab('documents')")
+	toc.page.click("#side-menu-btn")
+	assert menu(toc) == ["New document", "New folder", "Close File Explorer"]
+	toc.page.click("#context-menu >> text=Close File Explorer")
+	assert not visible(toc, "#file-tree")
 
 
 def test_vi_command_opens_it_and_keys_go_to_a_heading(toc):

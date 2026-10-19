@@ -151,50 +151,14 @@ body.app > .topbar {
 .toc-in-tree .side-tab:hover {
 	color: var(--ink);
 }
-.side-tab-close {
-	flex: none;
-	padding: 0 .25rem;
-	font: inherit;
-	line-height: 1;
-	color: var(--muted);
-	background: none;
-	border: 0;
-	border-radius: calc(var(--radius) / 3);
-	cursor: pointer;
-	opacity: .7;
-}
-.side-tab-close:hover {
-	color: var(--ink);
-	background: var(--line);
-	opacity: 1;
-}
-/* with the tabs, the tree's head takes two rows: the tabs and the panel's buttons, then the documents' buttons */
-.side-tabs-break {
+/* with the tabs, the tree's buttons and closing are in its little menu (☰) */
+.side-menu-btn {
 	display: none;
 }
-.toc-in-tree .file-tree-head {
-	flex-wrap: wrap;
-	row-gap: .3rem;
+.toc-in-tree .side-menu-btn {
+	display: inline-block;
 }
-.toc-in-tree .file-tree-head > * {
-	order: 1;
-}
-.toc-in-tree .file-tree-head > .side-tabs {
-	order: 0;
-}
-.toc-in-tree .side-tabs-break {
-	display: block;
-	order: 2;
-	flex-basis: 100%;
-	height: 0;
-}
-.toc-in-tree :is(#file-tree-new, #file-tree-new-folder) {
-	order: 3;
-}
-.toc-in-tree #file-tree-new {
-	margin-left: auto;
-}
-[data-tree-tab="toc"] .side-tabs-break {
+.toc-in-tree :is(#file-tree-new, #file-tree-new-folder, #file-tree-hide) {
 	display: none;
 }
 /* the tree showing the table of contents: the documents' parts step aside */

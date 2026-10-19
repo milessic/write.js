@@ -3,7 +3,8 @@
  * and the heading of the part being read is marked as the document scrolls.
  * It is a tab next to the documents in the tree (layout.tocSide "tree") or a panel of its own left or right of the editors
  * ("left" / "right"), moved by dragging its tab or head onto a dock zone, or from its right-click menu. On phones and tablets
- * it is always a tab of the documents drawer. Menu > Table Of Contents and vi's :TableOfContents open it, its x closes it;
+ * it is always a tab of the documents drawer. Menu > Table Of Contents and vi's :TableOfContents open it; the panel's x or, as a tab, the tree's
+ * little menu (☰, which then also has the tree's buttons) closes it;
  * it is remembered open or closed and where with the layout (workspace.js, this device only).
  * Settings > Table of contents picks the heading levels listed (tocHeadingsKey, script.js), they go with the notebook.
  * Keys in the list: arrows or j / k move, Enter goes to the heading, Esc goes back to the editor.
@@ -92,6 +93,24 @@ function tocPanelMenuItems(){
 		{ label: "Move contents to the right", action: () => setTocSide("right"), disabled: side === "right" },
 		{ label: "Close contents", action: closeTableOfContents },
 	];
+}
+
+function sideMenuItems(){
+	// the tree's little menu while the table of contents is a tab in it: its buttons, and closing the tab shown
+	const toc = layout.treeTab === "toc";
+	return [
+		{ label: "New document", action: createNewDocument },
+		{ label: "New folder", action: () => createFolder() },
+		null,
+		toc ? { label: "Close Table of Contents", action: closeTableOfContents } : { label: "Close File Explorer", action: hideFileTree },
+	];
+}
+
+function openSideMenu(e){
+	// the menu opens under the button; the click mustn't reach the document, which closes menus
+	e.stopPropagation();
+	const rect = e.currentTarget.getBoundingClientRect();
+	openContextMenu({ clientX: rect.left, clientY: rect.bottom + 2, defaultPrevented: false, preventDefault(){} }, sideMenuItems());
 }
 
 
@@ -316,9 +335,9 @@ function initTocSettings(){
 
 document.getElementById("documents-tab").addEventListener("click", () => showTreeTab("documents"));
 document.getElementById("toc-tab").addEventListener("click", () => showTreeTab("toc"));
-document.getElementById("toc-tab-close").addEventListener("click", closeTableOfContents);
+document.getElementById("side-menu-btn").addEventListener("click", openSideMenu);
 document.getElementById("toc-hide").addEventListener("click", closeTableOfContents);
-for ( const id of ["toc-tab", "toc-tab-close", "toc-panel"] ) {
+for ( const id of ["toc-tab", "toc-panel"] ) {
 	document.getElementById(id).addEventListener("contextmenu", (e) => openContextMenu(e, tocPanelMenuItems()));
 }
 document.querySelectorAll(".toc-body").forEach((body) => {

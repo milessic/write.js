@@ -89,11 +89,11 @@
 			<div class="side-tabs" role="tablist" aria-label="Side panel">
 				<button class="side-tab file-tree-title" id="documents-tab" role="tab" data-tree-tab="documents" aria-selected="true">Documents</button>
 				<button class="side-tab file-tree-title toc-tab" id="toc-tab" role="tab" data-tree-tab="toc" aria-selected="false" draggable="true" title="Drag to show it on its own, or right-click for options">Contents</button>
-				<button class="side-tab-close toc-tab" id="toc-tab-close" title="Close the table of contents" aria-label="Close the table of contents">×</button>
 			</div>
-			<span class="side-tabs-break" aria-hidden="true"></span>
 			<button class="small-btn" id="file-tree-new" title="New document" aria-label="New document">+</button>
 			<button class="small-btn" id="file-tree-new-folder" title="New folder" aria-label="New folder"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10v6M9 13h6"/></svg></button>
+			<!-- with the tabs: the documents' buttons and closing go into this menu (toc.js) -->
+			<button class="small-btn side-menu-btn" id="side-menu-btn" title="More" aria-label="More" aria-haspopup="menu">☰</button>
 			<button class="small-btn tree-pin-btn" id="file-tree-pin" title="Pin documents open" aria-label="Pin documents" aria-pressed="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg></button>
 			<button class="small-btn" id="file-tree-hide" title="Hide documents" aria-label="Hide documents">✕</button>
 		</div>
