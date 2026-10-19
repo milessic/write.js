@@ -2097,6 +2097,10 @@ function runExCommand(editor, value, visual){
 	case "f": case "focus":
 		toggleFocusMode();
 		return;
+	case "lines":
+		// shows or hides the line numbers (linenumbers.js), like Settings > Editor
+		if ( toggleLineNumbers() ) { showMessage(lineNumbersEnabled() ? "Line numbers on" : "Line numbers off") }
+		return;
 	case "noh": case "nohlsearch":
 		searchHighlight = false;
 		renderSearch();
@@ -2613,6 +2617,7 @@ const helpSections = [
 		[":h0 :h1 :h2 :h3 :h4", "text, heading 1 to 4 (on the selected lines from VISUAL)"],
 		[":tree :FileExplorer", "show the documents and go to them (TREE)"],
 		[":toc :TableOfContents", "show the table of contents and go to it: j / k, Enter goes to the heading, Esc back"],
+		[":lines", "line numbers on / off"],
 		[":f :focus", "focus mode on / off: only the text; Esc Esc in NORMAL or the faint x leaves it"],
 		[":h :help", "this help"],
 		["q, Esc", "close pop-ups (this help, Settings, menus); Esc in any mode"],

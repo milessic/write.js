@@ -66,3 +66,17 @@ def test_off_shows_nothing(vi):
 	vi.load(["one"])
 	assert not vi.page.evaluate("document.body.classList.contains('show-line-numbers')")
 	assert vi.page.evaluate("document.querySelectorAll('.line-numbers > span').length") == 0
+
+
+def test_vi_lines_command_shows_and_hides_them(vi):
+	vi.load(["one", "two"])
+	vi.command("lines")
+	assert vi.page.evaluate("document.body.classList.contains('show-line-numbers')")
+	assert vi.page.evaluate("localStorage.getItem('__lineNumbers__')") == "1"
+	assert numbers(vi) == ["1", "2"]
+	vi.command("lines")
+	assert not vi.page.evaluate("document.body.classList.contains('show-line-numbers')")
+	assert vi.page.evaluate("localStorage.getItem('__lineNumbers__')") == "0"
+	# the editor keeps going in NORMAL
+	vi.keys("x")
+	assert vi.lines == ["ne", "two"]

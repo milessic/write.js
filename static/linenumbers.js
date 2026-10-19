@@ -4,7 +4,7 @@
  * and line inside them (<br>, line breaks of pasted text) is one, a rule (<hr>) isn't. A wrapped line keeps one number;
  * the lines of a collapsed section (folding.js) keep theirs, hidden with them.
  * The numbers are drawn in the editor's card, outside the editor, so they are never part of the document.
- * Settings > Editor turns them on (lineNumbersKey, script.js) and goes to the cloud with the notebook.
+ * Settings > Editor or vi's :lines turns them on and off (lineNumbersKey, script.js); it goes to the cloud with the notebook.
  */
 const lineBlockTags = new Set(["ADDRESS", "ARTICLE", "ASIDE", "BLOCKQUOTE", "DD", "DIV", "DL", "DT", "FIGURE", "FOOTER", "FORM", "H1", "H2", "H3", "H4", "H5", "H6", "HEADER", "HR", "LI", "MAIN", "NAV", "OL", "P", "PRE", "SECTION", "TABLE", "TBODY", "TD", "TH", "THEAD", "TR", "UL"]);
 const lineNumberViews = new Map(); // editor -> {gutter, lines: [{node, offset, el}]}
@@ -207,12 +207,23 @@ function lineNumbersSettingsHtml(){
 		<p class="muted small">A line counter in the margin left of the text. The lines are the ones vi mode counts, so <kbd>:12</kbd> goes to line 12.</p>`;
 }
 
+function setLineNumbers(show){
+	// false without the consent to store the setting
+	if ( !validateUserConsent() ) { return false }
+	localStorage.setItem(lineNumbersKey, show ? "1" : "0");
+	applyLineNumbersSetting();
+	if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	return true;
+}
+
+function toggleLineNumbers(){
+	// vi's :lines
+	return setLineNumbers(!lineNumbersEnabled());
+}
+
 function initLineNumbersSettings(){
 	document.getElementById("setting-line-numbers").addEventListener("change", (e) => {
-		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
-		localStorage.setItem(lineNumbersKey, e.target.checked ? "1" : "0");
-		applyLineNumbersSetting();
-		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+		if ( !setLineNumbers(e.target.checked) ) { e.target.checked = !e.target.checked }
 	});
 }
 
