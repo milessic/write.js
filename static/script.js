@@ -98,6 +98,8 @@ document.getElementById("editor-grid").addEventListener('paste', handlePasteLink
 document.getElementById("editor-grid").addEventListener('paste', handlePasteListIntoList);
 // formatting shortcuts and undo change the line's style without moving the caret
 document.getElementById("editor-grid").addEventListener('input', updateBlockSelect);
+// Chrome's styled spans, before anything else reads the line
+document.getElementById("editor-grid").addEventListener('input', (e) => { if ( e.target.classList?.contains("editor") ) { removeInlineStyles(e.target) } }, true);
 document.getElementById("editor-grid").addEventListener('beforeinput', handleListItemBackspace);
 document.getElementById("editor-grid").addEventListener('keyup', (e) => {updateCaretPosition();handleWordCounter()});
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
@@ -534,6 +536,7 @@ function fillEditorWithHTML(html, append=false){
     document.getElementById("editor").innerHTML = html;
 	moveListsOutOfItems(document.getElementById("editor"));
 	moveHeadingsOutOfLines(document.getElementById("editor"));
+	removeInlineStyles(document.getElementById("editor"));
 	normalizeChecklists(document.getElementById("editor"));
 	document.getElementById("editor").closest(".pane-scroll").scrollTo(0, 1000);
 }
@@ -1675,6 +1678,15 @@ function moveHeadingsOutOfLines(editor){
 			if ( !blank([...after.childNodes]) ) { (headingBreak || heading).after(after) }
 			if ( blank([...line.childNodes]) ) { line.remove() }
 		}
+	}
+}
+
+function removeInlineStyles(editor){
+	// Chrome keeps the look of text moved between blocks (Backspace/Delete joining a heading and a line, formatBlock,
+	// list items) by wrapping it in <span style="font-size: 1.3em; ..."> with the old block's computed style, so a line
+	// takes a heading's size and the other way round; the editor never makes styled spans itself, so they go away
+	for ( const span of editor.querySelectorAll("span[style]") ) {
+		if ( span.attributes.length === 1 ) { span.replaceWith(...span.childNodes) }
 	}
 }
 
