@@ -1,5 +1,5 @@
 """
-Vi mode: after 2 characters on the : command line, the matching commands are listed; Ctrl+N / Ctrl+P pick one, a click runs it.
+Vi mode: after the first character on the : command line, the matching commands are listed; Ctrl+N / Ctrl+P pick one, a click runs it.
 """
 import pytest
 
@@ -33,9 +33,11 @@ def typing(vi):
 	vi.keys("Escape")
 
 
-def test_one_character_lists_nothing(typing):
+def test_one_character_lists_the_matching_commands(typing):
 	typing.load(["one"]).keys(":", "l")
-	assert items(typing) is None
+	assert items(typing) == ["lines"]
+	typing.keys("Backspace", "w")
+	assert items(typing) == ["write", "wall", "wq"]
 
 
 def test_two_characters_list_the_matching_commands(typing):

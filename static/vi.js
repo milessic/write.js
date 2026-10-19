@@ -3,7 +3,8 @@
  * Loaded by script.js (applyViMode) only when "Vi mode" is on in Settings; WriteVi.enable()/disable() toggle it later.
  *
  *  - modes: NORMAL, INSERT, VISUAL, V-LINE, REPLACE, and a command line for : / ?
- *  - h j k l (and the arrows) move like the arrow keys in the browser (Selection.modify), so j/k follow wrapped lines
+ *  - h j k l (and the arrows) move like the arrow keys in the browser (Selection.modify), so j/k follow wrapped lines;
+ *    with "Word-wrap navigation" off in Settings j/k go through the lines of the text, like Vim
  *  - everything else works on a plain-text model of the editor (textModel): blocks and <br> are "\n",
  *    and indexes into that text are mapped back to DOM positions
  *  - edits go through document.execCommand, so they stay on the browser's undo stack (u / Ctrl+r)
@@ -48,6 +49,7 @@ const editorRanges = new WeakMap();     // each editor's selection, for going ba
 let escapeAt = -Infinity;               // when vi got an Esc in an editor
 let normalEscapeAt = -Infinity;         // the last Esc in NORMAL with nothing pending: Esc Esc leaves focus mode
 let pointerAt = -Infinity;              // the last click / tap: a focus change that comes after one is the user's
+let lineColumn = null;                  // {editor, index, column}: j / k by the lines of the text keep the column they started from
 
 const ui = {};
 
@@ -864,14 +866,15 @@ function runNormal(editor, keys){
 		moveCaret(editor, model, i, motion, count1);
 		return
 	}
-	if ( ["f", "F", "t", "T"].includes(key) ) { return }   // f<Esc>
+	if ( ["f", "F", "t", "T"].includes(key) || (["]", "["].includes(key) && keys.at(-1) === "Escape") ) { return }   // f<Esc>, ]<Esc>
 
 	switch ( key ) {
 	// INSERT
 	case "i": enterInsert(model, i); break;
 	case "a": enterInsert(model, text[i] !== undefined && text[i] !== "\n" ? i + 1 : i); break;
-	case "I": enterInsert(model, firstNonBlank(text, i)); break;
-	case "A": enterInsert(model, lineEnd(text, i)); break;
+	// with "Word-wrap navigation" on, I and A work on the wrapped line, like j and k
+	case "I": enterInsert(model, wrapNavigation() ? wrappedLineStart(model, i) : firstNonBlank(text, i)); break;
+	case "A": enterInsert(model, wrapNavigation() ? wrappedLineEnd(model, i) : lineEnd(text, i)); break;
 	case "o": openLine(editor, model, i, false); break;
 	case "O": openLine(editor, model, i, true); break;
 	case "R": setMode("replace"); break;
@@ -1534,6 +1537,7 @@ function parseMotion(key, r){
 		return {key, char};
 	}
 	case "g": return parseMotion("g" + r.next(), r);
+	case "]": case "[": return r.next() === "m" ? {key: key + "m"} : null;
 	default: return null;
 	}
 }
@@ -1547,8 +1551,35 @@ const browserMotions = {
 	"g$": ["forward", "lineboundary"], End: ["forward", "lineboundary"],
 };
 
+// j k and the arrows by the lines of the text when "Word-wrap navigation" is off; gj gk always by the wrapped lines
+const textLineMotions = new Set(["j", "k", "ArrowDown", "ArrowUp"]);
+
+function wrapNavigation(){
+	return typeof viWrapNavigationEnabled !== "function" || viWrapNavigationEnabled();
+}
+
+function byTextLines(key){
+	return textLineMotions.has(key) && !wrapNavigation();
+}
+
+function wrappedLineStart(model, i){
+	// the first character of the wrapped line, the first non-blank one on the line's first part
+	const start = browserTarget(model, i, ["backward", "lineboundary"], 1);
+	return start <= lineStart(model.text, i) ? firstNonBlank(model.text, i) : start;
+}
+
+function wrappedLineEnd(model, i){
+	// the end of the wrapped line: where the line wraps, before the spaces it wraps at
+	// (after them is the same place as the start of the next part)
+	const text = model.text;
+	let end = Math.min(browserTarget(model, i, ["forward", "lineboundary"], 1), lineEnd(text, i));
+	if ( end >= lineEnd(text, i) ) { return lineEnd(text, i) }
+	while ( end > i && isBlank(text[end - 1]) ) { end-- }
+	return end;
+}
+
 function moveCaret(editor, model, i, motion, count){
-	const browser = browserMotions[motion.key];
+	const browser = !byTextLines(motion.key) && browserMotions[motion.key];
 	if ( browser ) {
 		// exactly like the arrow keys: wrapped lines, the remembered column, crossing to the next line
 		const selection = window.getSelection();
@@ -1570,6 +1601,7 @@ function evalMotion(editor, model, i, motion, count, forOperator){
 	const n = count || 1;
 	const key = motion.key;
 	if ( browserMotions[key] && !forOperator ) {
+		if ( byTextLines(key) ) { return textLineTarget(model, i, key === "j" || key === "ArrowDown" ? 1 : -1, n) }
 		const target = browserTarget(model, i, browserMotions[key], n);
 		return {index: target};
 	}
@@ -1630,6 +1662,10 @@ function evalMotion(editor, model, i, motion, count, forOperator){
 		for ( let s = 0; s < n; s++ ) { j = key === "}" ? nextParagraph(text, j) : prevParagraph(text, j) }
 		return {index: j};
 	}
+	case "]m": case "[m": {
+		const target = headingMotion(model, i, key === "]m", n);
+		return target === null ? null : {index: target};
+	}
 	case "%": {
 		const match = matchBracket(text, i);
 		return match === null ? null : {index: match, inclusive: true};
@@ -1644,6 +1680,72 @@ function evalMotion(editor, model, i, motion, count, forOperator){
 	}
 	default: return null;
 	}
+}
+
+function textLineTarget(model, i, step, count){
+	// like Vim's j / k: count lines of the text up or down (the folded ones skipped), in the column the moves started from
+	const text = model.text;
+	const column = lineColumn?.editor === model.editor && lineColumn.index === i ? lineColumn.column : i - lineStart(text, i);
+	const lines = lineCount(text);
+	let line = lineNumber(text, i);
+	let moved = 0;
+	for ( let l = line + step; l >= 0 && l < lines && moved < count; l += step ) {
+		if ( lineVisible(model, lineStartOfNumber(text, l)) ) {
+			line = l;
+			moved++;
+		}
+	}
+	if ( !moved ) { return null }
+	const start = lineStartOfNumber(text, line);
+	const index = Math.min(start + column, lastCharOfLine(text, start));
+	lineColumn = {editor: model.editor, index, column};
+	return {index};
+}
+
+function lineVisible(model, start){
+	// a line in a collapsed section or list item isn't shown
+	const segment = model.segments.find(s => s.start >= start);
+	if ( !segment ) { return true }
+	const element = segment.kind === "text" || segment.kind === "br" ? segment.node.parentElement : segment.node;
+	return element.getClientRects().length > 0;
+}
+
+function headingMotion(model, i, forward, count){
+	// ]m: the next heading of the same level or higher (an h2 goes to the next h2, or to the next h1 when its h1 ends);
+	// [m: the start of the cursor's section first, then the previous heading of the same level or higher.
+	// From a line under a heading the level is that heading's, before the first heading any heading goes.
+	const headings = headingsOf(model);
+	let j = i;
+	for ( let n = 0; n < count; n++ ) {
+		const section = headings.findLast(h => h.index <= j);
+		const level = section?.level ?? 6;
+		let target;
+		if ( forward ) {
+			target = headings.find(h => h.index > j && h.level <= level);
+		} else if ( section && section.index < j ) {
+			target = section;
+		} else {
+			target = headings.findLast(h => h.index < j && h.level <= level);
+		}
+		if ( !target ) { break }
+		j = target.index;
+	}
+	return j === i ? null : j;
+}
+
+function headingsOf(model){
+	// [{index, level}] of the shown headings, index at the start of the heading's line
+	const headings = [];
+	let last = null;
+	for ( const segment of model.segments ) {
+		const heading = elementOf(segment.node).closest("h1, h2, h3, h4, h5, h6");
+		if ( !heading || heading === last || !model.editor.contains(heading) ) { continue }
+		last = heading;
+		if ( heading.getClientRects().length ) {
+			headings.push({index: lineStart(model.text, segment.start), level: Number(heading.tagName[1])});
+		}
+	}
+	return headings;
 }
 
 function browserTarget(model, i, [direction, granularity], count){
@@ -2127,7 +2229,7 @@ function onCommandLineKeydown(e){
 	render();
 }
 
-// completion: after 2 characters of a command its matching commands, after the first character of an :e name
+// completion: after the first character of a command its matching commands, after the first character of an :e name
 // the documents with it in their name; Tab / Ctrl+N / Down next, Shift+Tab / Ctrl+P / Up previous, or a click
 let completions = null;                 // {items: [{value, label, at, length, description, argument}], selected}
 
@@ -2154,7 +2256,7 @@ const exCommands = [
 function updateCompletions(){
 	const value = commandLine?.kind === ":" ? ui.indicator.querySelector("input").value : "";
 	const open = value.match(/^\s*(e|edit|tabe|tabedit|tabnew)\s+(.*\S)\s*$/);
-	const name = value.match(/^\s*([A-Za-z]{2,})$/);
+	const name = value.match(/^\s*([A-Za-z]+)$/);
 	if ( open ) {
 		const query = open[2].toLowerCase();
 		const names = (getDocumentNamesFromLocalStorage() || []).filter(name => name.toLowerCase().includes(query));
@@ -2785,18 +2887,20 @@ function hideMessage(){
 // :help
 const helpSections = [
 	["Modes", [
-		["i a I A o O", "INSERT before / after the cursor, at the line start / end, on a new line below / above"],
+		["i a I A o O", "INSERT before / after the cursor, at the line start / end (of the wrapped line with Word-wrap navigation on), on a new line below / above"],
 		["Esc, Ctrl+[", "back to NORMAL (the Esc button on phones, see Settings)"],
 		["v V", "VISUAL, V-LINE"],
 		["R", "REPLACE: typing overwrites"],
 		[": / ?", "command line, search forward / backward"],
 	]],
 	["Moving (with a count: 3j, 2w)", [
-		["h j k l, arrows", "like the arrow keys: j / k follow wrapped lines"],
+		["h j k l, arrows", "like the arrow keys: j / k follow wrapped lines (lines of the text with Word-wrap navigation off in Settings)"],
+		["gj gk", "down / up a wrapped line"],
 		["w b e ge, W B E gE", "words, WORDS (separated by spaces only)"],
 		["0 ^ $ g_", "line start, first character, line end, last character"],
 		["gg G, 5G, :5", "first / last line, line 5"],
 		["{ }", "previous / next empty line"],
+		["]m [m", "next heading of the same level or higher, start of the section / previous heading"],
 		["f F t T + char, ; ,", "to / before a character on the line, repeat, repeat backward"],
 		["%", "matching bracket"],
 		["Ctrl+d Ctrl+u, zz zt zb", "half a page down / up, scroll the cursor to the middle / top / bottom"],
@@ -2860,7 +2964,7 @@ const helpSections = [
 		[":lines", "line numbers on / off"],
 		[":f :focus", "focus mode on / off: only the text; Esc Esc in NORMAL or the faint x leaves it"],
 		[":h :help", "this help"],
-		[":ab", "after 2 letters the matching commands are listed: Ctrl+N / Ctrl+P, Tab or arrows pick one, a click runs it"],
+		[":ab", "after the first letter the matching commands are listed: Ctrl+N / Ctrl+P, Tab or arrows pick one, a click runs it"],
 		["q, Esc", "close pop-ups (this help, Settings, menus); Esc in any mode"],
 	]],
 ];

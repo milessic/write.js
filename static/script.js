@@ -16,6 +16,7 @@ const listFoldingKey = "__listFolding__"; // "0" when collapsing list items with
 const autoCheckParentsKey = "__autoCheckParents__"; // "0" when a checklist item isn't checked with all its nested items (Settings, checklist.js), goes with the notebook
 const lineNumbersKey = "__lineNumbers__"; // "1" when the line numbers show left of the text (Settings, linenumbers.js), goes with the notebook
 const tocHeadingsKey = "__tocHeadings__"; // the heading levels listed in the table of contents, e.g. [1, 2] (Settings, toc.js), goes with the notebook
+const viWrapNavigationKey = "__viWrapNavigation__"; // "0" when vi's j / k move by the lines of the text like Vim, not by the wrapped lines (Settings), goes with the notebook
 const viEscButtonKey = "__viEscButton__"; // "1" shows the vi Esc button on touch screens, this device only
 const viScriptUrl = document.currentScript?.dataset.viSrc || "static/vi.js"; // content-versioned by the server, see utils/static_files.py
 
@@ -377,6 +378,8 @@ function createSettingsModal(){
 	<h3>Vi mode</h3>
 	<div class="stack">
 		<label class="check"><input id="setting-vi-mode" type="checkbox"${viModeEnabled() ? " checked" : ""}>Vi keybindings (like Neovim)</label>
+		<label class="check"><input id="setting-vi-wrap" type="checkbox"${viWrapNavigationEnabled() ? " checked" : ""}${viModeEnabled() ? "" : " disabled"}>Word-wrap navigation</label>
+		<p class="muted small"><kbd>j</kbd> / <kbd>k</kbd> go through the wrapped lines; turned off, through the lines of the text, like Vim, and <kbd>gj</kbd> / <kbd>gk</kbd> through the wrapped ones.</p>
 		<label class="check"><input id="setting-vi-esc" type="checkbox"${localStorage.getItem(viEscButtonKey) === "1" ? " checked" : ""}${viModeEnabled() ? "" : " disabled"}>Show Esc on mobiles <span class="muted small">(this device only)</span></label>
 		<p class="muted small">Starts in NORMAL mode: <kbd>i</kbd> to type, <kbd>Esc</kbd> to go back, <kbd>v</kbd> / <kbd>V</kbd> to select, <kbd>:w</kbd> saves, <kbd>:q</kbd> closes the tab, <kbd>:help</kbd> lists all the commands. The mode is shown in the top right corner.</p>
 	</div>
@@ -418,6 +421,7 @@ function createSettingsModal(){
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
 		localStorage.setItem(viModeKey, e.target.checked ? "1" : "0");
 		document.getElementById("setting-vi-esc").disabled = !e.target.checked;
+		document.getElementById("setting-vi-wrap").disabled = !e.target.checked;
 		applyViMode();
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
@@ -426,6 +430,16 @@ function createSettingsModal(){
 		localStorage.setItem(viEscButtonKey, e.target.checked ? "1" : "0");
 		window.WriteVi?.setEscButton(e.target.checked);
 	});
+	document.getElementById("setting-vi-wrap").addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
+		localStorage.setItem(viWrapNavigationKey, e.target.checked ? "1" : "0");
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
+}
+
+function viWrapNavigationEnabled(){
+	// on unless turned off: j / k follow the wrapped lines
+	return localStorage.getItem(viWrapNavigationKey) !== "0";
 }
 
 function viModeEnabled(){
