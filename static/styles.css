@@ -770,7 +770,7 @@ body.app > .topbar {
 	grid-template: "top" 1fr "bottom" 1fr / 1fr;
 }
 .dock-zones[data-panel="toc"] {
-	grid-template: "top top top" 1fr "left tree right" 1fr "left split right" 1fr "bottom bottom bottom" 1fr / 1fr 1fr 1fr;
+	grid-template: "top top top" 1fr "tree left right" 1fr "split left right" 1fr "bottom bottom bottom" 1fr / 1fr 1fr 1fr;
 }
 .dock-zone[data-side="top"] { grid-area: top; }
 .dock-zone[data-side="bottom"] { grid-area: bottom; }
