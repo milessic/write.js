@@ -24,6 +24,8 @@ def toc(vi):
 		localStorage.removeItem("__tocHeadings__");
 		Object.assign(layout, {tocSide: "right", tocHidden: true, treeTab: "documents", treeHidden: false});
 		saveLayout();
+		if ( treePinned ) { toggleTreePinned() }
+		document.body.classList.remove("tree-drawer-open");
 	}""")
 	vi.page.set_viewport_size({"width": 1400, "height": 900})
 
@@ -164,3 +166,15 @@ def test_little_menu_pins_the_drawer_on_phones(toc):
 	toc.page.click("#side-menu-btn")
 	toc.page.click("#context-menu >> text=Unpin documents")
 	assert not toc.page.evaluate("document.body.classList.contains('tree-pinned')")
+
+
+def test_phone_menu_opens_the_tab_asked_for(toc):
+	# the drawer not pinned: closed after each, and opened again from the menu on the tab picked there
+	toc.page.set_viewport_size({"width": 420, "height": 800})
+	for item, documents in [("#toc-btn", False), ("#open-doc-btn", True), ("#toc-btn", False), ("#open-doc-btn", True)]:
+		toc.page.click("#hamburger-button")
+		toc.page.click(item)
+		assert visible(toc, "#file-tree-list") == documents
+		assert visible(toc, "#file-tree .toc-body") != documents
+		toc.page.click("#file-tree-scrim", position={"x": 400, "y": 400})
+		assert not visible(toc, "#file-tree")

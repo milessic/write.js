@@ -316,9 +316,11 @@ function isFileTreeVisible(){
 }
 
 function showFileTree(){
+	// the documents, not the table of contents (toc.js) the tree may have shown last
 	layout.treeTab = "documents";
 	if ( isLowWidthViewport ) {
 		document.body.classList.add("tree-drawer-open");
+		saveLayout();
 	} else {
 		layout.treeHidden = false;
 		saveLayout();
