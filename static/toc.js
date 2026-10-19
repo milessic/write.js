@@ -96,14 +96,18 @@ function tocPanelMenuItems(){
 }
 
 function sideMenuItems(){
-	// the tree's little menu while the table of contents is a tab in it: its buttons, and closing the tab shown
+	// the tree's little menu while the table of contents is a tab in it: its buttons with their icons, and closing the tab shown
 	const toc = layout.treeTab === "toc";
+	const icon = (id) => document.getElementById(id).innerHTML;
 	return [
-		{ label: "New document", action: createNewDocument },
-		{ label: "New folder", action: () => createFolder() },
+		{ label: "New document", icon: icon("file-tree-new"), action: createNewDocument },
+		{ label: "New folder", icon: icon("file-tree-new-folder"), action: () => createFolder() },
+		// pinning only matters where the tree is a drawer (phones and tablets)
+		narrowScreen.matches ? { label: treePinned ? "Unpin documents" : "Pin documents open", icon: icon("file-tree-pin"), action: toggleTreePinned } : null,
 		null,
-		toc ? { label: "Close Table of Contents", action: closeTableOfContents } : { label: "Close File Explorer", action: hideFileTree },
-	];
+		toc ? { label: "Close Table of Contents", icon: icon("file-tree-hide"), action: closeTableOfContents }
+			: { label: "Close File Explorer", icon: icon("file-tree-hide"), action: hideFileTree },
+	].filter((item, i, items) => item || items[i - 1]);
 }
 
 function openSideMenu(e){

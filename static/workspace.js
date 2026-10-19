@@ -1454,6 +1454,15 @@ function openContextMenu(e, items){
 		const btn = document.createElement("button");
 		btn.setAttribute("role", "menuitem");
 		btn.textContent = item.label;
+		// an icon before the label (markup of the app's own, like the buttons it stands for)
+		if ( item.icon ) {
+			const icon = document.createElement("span");
+			icon.className = "block-option-icon";
+			icon.setAttribute("aria-hidden", "true");
+			icon.innerHTML = item.icon;
+			btn.prepend(icon);
+			btn.classList.add("with-icon");
+		}
 		btn.disabled = Boolean(item.disabled);
 		if ( item.danger ) { btn.classList.add("danger") }
 		btn.addEventListener("click", () => { closeContextMenu(); item.action() });

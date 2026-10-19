@@ -158,7 +158,7 @@ body.app > .topbar {
 .toc-in-tree .side-menu-btn {
 	display: inline-block;
 }
-.toc-in-tree :is(#file-tree-new, #file-tree-new-folder, #file-tree-hide) {
+.toc-in-tree :is(#file-tree-new, #file-tree-new-folder, #file-tree-hide, #file-tree-pin) {
 	display: none;
 }
 /* the tree showing the table of contents: the documents' parts step aside */
@@ -826,6 +826,12 @@ body.app > .topbar {
 .block-select-menu > button {
 	display: flex;
 	align-items: center;
+}
+/* a menu option with an icon (openContextMenu, workspace.js): the icons in a column, the labels lined up after them */
+.menu > button.with-icon {
+	display: flex;
+	align-items: center;
+	text-align: left;
 }
 .block-option-icon {
 	display: inline-flex;

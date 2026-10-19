@@ -34,7 +34,12 @@ def rows(vi):
 
 
 def menu(vi):
-	return vi.page.evaluate("[...document.querySelectorAll('#context-menu.menu-opened button')].map((b) => b.textContent)")
+	# the labels, after their icons
+	return vi.page.evaluate("[...document.querySelectorAll('#context-menu.menu-opened button')].map((b) => b.lastChild.textContent)")
+
+
+def menu_icons(vi):
+	return vi.page.evaluate("[...document.querySelectorAll('#context-menu.menu-opened button')].map((b) => Boolean(b.querySelector('.block-option-icon')?.innerHTML))")
 
 
 def visible(vi, selector):
@@ -111,6 +116,7 @@ def test_little_menu_closes_the_file_explorer_from_its_tab(toc):
 	toc.page.evaluate("setTocSide('tree'); showTreeTab('documents')")
 	toc.page.click("#side-menu-btn")
 	assert menu(toc) == ["New document", "New folder", "Close File Explorer"]
+	assert all(menu_icons(toc))
 	toc.page.click("#context-menu >> text=Close File Explorer")
 	assert not visible(toc, "#file-tree")
 
@@ -145,3 +151,16 @@ def test_phones_show_it_in_the_drawer(toc):
 	toc.page.click(".file-tree .toc-row >> text=Chapter 2")
 	toc.page.wait_for_timeout(100)
 	assert not visible(toc, "#file-tree")
+
+
+def test_little_menu_pins_the_drawer_on_phones(toc):
+	toc.page.set_viewport_size({"width": 500, "height": 800})
+	toc.page.evaluate("openTableOfContents()")
+	assert not visible(toc, "#file-tree-pin")
+	toc.page.click("#side-menu-btn")
+	assert menu(toc) == ["New document", "New folder", "Pin documents open", "Close Table of Contents"]
+	toc.page.click("#context-menu >> text=Pin documents open")
+	assert toc.page.evaluate("document.body.classList.contains('tree-pinned')")
+	toc.page.click("#side-menu-btn")
+	toc.page.click("#context-menu >> text=Unpin documents")
+	assert not toc.page.evaluate("document.body.classList.contains('tree-pinned')")
