@@ -160,6 +160,7 @@ function buildUi(){
 		.vi-complete li:hover { background: rgba(255, 255, 255, .1); }
 		.vi-complete li[aria-selected="true"] { background: #2f7de1; }
 		.vi-complete li.vi-complete-empty { opacity: .65; cursor: default; background: none; }
+		.vi-complete .vi-complete-hint { margin-left: 1rem; opacity: .6; font-size: .9em; }
 		.vi-complete mark { background: none; color: inherit; font-weight: 700; text-decoration: underline; }
 		.vi-message[data-type="error"] { background: #d03b3b; }
 		.vi-message[data-type="warning"] { background: #b45309; }
@@ -844,6 +845,8 @@ function runNormal(editor, keys){
 		if ( caseOperators[key] ) { return runOperator(editor, model, i, key, count1, r, keysAfterCount) }
 	}
 	if ( operators.has(key) ) { return runOperator(editor, model, i, key, count1, r, keysAfterCount) }
+	// Space on a heading or a list item with nested items folds / unfolds it, elsewhere it moves like l
+	if ( key === " " && toggleFoldAtCaret(editor) ) { return }
 
 	const motion = parseMotion(key, r);
 	if ( motion ) {
@@ -983,6 +986,22 @@ function runNormal(editor, keys){
 	default: return unknown;
 	}
 	if ( changeCommands.has(key) ) { return {change: true, count: count1, keys: keysAfterCount()} }
+}
+
+function toggleFoldAtCaret(editor){
+	// folds / unfolds the heading or list item the cursor is on (folding.js); false when it doesn't fold
+	if ( typeof toggleHeadingFold !== "function" ) { return false }
+	const line = caretLine(editor)?.line;
+	if ( document.body.classList.contains("heading-folding") && isFoldableHeading(line) ) {
+		toggleHeadingFold(line);
+		return true;
+	}
+	const li = caretItem(editor)?.li;
+	if ( document.body.classList.contains("list-folding") && isFoldableItem(li) ) {
+		toggleListFold(li);
+		return true;
+	}
+	return false;
 }
 
 function runOperator(editor, model, i, op, count1, r, keysAfterCount, wholeLine=false){
@@ -1914,10 +1933,12 @@ function onCommandLineKeydown(e){
 		closeCommandLine(true);
 		return
 	}
-	// Tab would move the focus out and close the command line
-	if ( e.key === "Tab" || (completions && (e.key === "ArrowDown" || e.key === "ArrowUp")) ) {
+	// Tab would move the focus out and close the command line, Ctrl+N / Ctrl+P open a window / print
+	const next = (e.ctrlKey && e.key === "n") || (completions && e.key === "ArrowDown") || (e.key === "Tab" && !e.shiftKey);
+	const previous = (e.ctrlKey && e.key === "p") || (completions && e.key === "ArrowUp") || (e.key === "Tab" && e.shiftKey);
+	if ( next || previous ) {
 		e.preventDefault();
-		if ( completions ) { selectCompletion(e.key === "ArrowUp" || (e.key === "Tab" && e.shiftKey) ? -1 : 1) }
+		if ( completions ) { selectCompletion(previous ? -1 : 1) }
 		return
 	}
 	if ( e.key !== "Enter" ) { return }
@@ -1939,38 +1960,77 @@ function onCommandLineKeydown(e){
 	render();
 }
 
-// :e name completion: after the first character of the name, the documents with it in their name
-let completions = null;                 // {command, names, selected}
+// completion: after 2 characters of a command its matching commands, after the first character of an :e name
+// the documents with it in their name; Tab / Ctrl+N / Down next, Shift+Tab / Ctrl+P / Up previous, or a click
+let completions = null;                 // {items: [{value, label, at, length, description, argument}], selected}
+
+// the commands of runExCommand, the first name is the one listed when several match
+const exCommands = [
+	[["write"], "save"],
+	[["quit", "close"], "close the tab"],
+	[["qall", "quitall"], "close all tabs but the unsaved ones"],
+	[["wq", "xit", "exit"], "save and close the tab"],
+	[["edit", "tabedit", "tabnew"], "open a document", true],
+	[["split", "vsplit", "vsp", "new", "vnew"], "split the editor"],
+	[["tree", "FileExplorer"], "show the documents and go to them"],
+	[["toc", "TableOfContents"], "show the table of contents and go to it"],
+	[["focus"], "focus mode on / off"],
+	[["lines"], "line numbers on / off"],
+	[["nohlsearch", "noh"], "hide the search highlight"],
+	[["help"], "vi help"],
+	[["delete"], "delete lines"],
+	[["yank"], "yank lines"],
+	[["substitute"], "replace: :s/a/b/g", true],
+];
 
 function updateCompletions(){
-	const match = commandLine?.kind === ":" && ui.indicator.querySelector("input").value.match(/^\s*(e|edit|tabe|tabedit|tabnew)\s+(.*\S)\s*$/);
-	if ( !match ) { hideCompletions(); return }
-	const query = match[2].toLowerCase();
-	const names = (getDocumentNamesFromLocalStorage() || []).filter(name => name.toLowerCase().includes(query));
-	const starts = (name) => name.toLowerCase().startsWith(query);
-	names.sort((a, b) => starts(b) - starts(a) || a.localeCompare(b));
-	completions = {command: match[1], names, selected: -1};
-	renderCompletions(query);
+	const value = commandLine?.kind === ":" ? ui.indicator.querySelector("input").value : "";
+	const open = value.match(/^\s*(e|edit|tabe|tabedit|tabnew)\s+(.*\S)\s*$/);
+	const name = value.match(/^\s*([A-Za-z]{2,})$/);
+	if ( open ) {
+		const query = open[2].toLowerCase();
+		const names = (getDocumentNamesFromLocalStorage() || []).filter(name => name.toLowerCase().includes(query));
+		const starts = (name) => name.toLowerCase().startsWith(query);
+		names.sort((a, b) => starts(b) - starts(a) || a.localeCompare(b));
+		const items = names.map(name => ({value: `${open[1]} ${name}`, label: name, at: name.toLowerCase().indexOf(query), length: query.length}));
+		showCompletions(items, "No matching documents");
+	} else if ( name ) {
+		const query = name[1].toLowerCase();
+		const items = [];
+		for ( const [names, description, argument] of exCommands ) {
+			const match = names.find(n => n.toLowerCase().startsWith(query));
+			if ( match ) { items.push({value: match, label: match, at: 0, length: query.length, description, argument}) }
+		}
+		if ( items.length ) { showCompletions(items) } else { hideCompletions() }
+	} else {
+		hideCompletions();
+	}
 }
 
-function renderCompletions(query){
+function showCompletions(items, emptyText){
+	completions = {items, selected: -1};
 	const list = ui.completions;
 	list.replaceChildren();
-	if ( !completions.names.length ) {
+	if ( !items.length ) {
 		const empty = document.createElement("li");
 		empty.className = "vi-complete-empty";
-		empty.textContent = "No matching documents";
+		empty.textContent = emptyText;
 		list.append(empty);
 	}
-	for ( const [i, name] of completions.names.entries() ) {
+	for ( const [i, {label, at, length, description}] of items.entries() ) {
 		const item = document.createElement("li");
 		item.setAttribute("role", "option");
 		item.dataset.index = i;
-		item.title = name;
-		const at = name.toLowerCase().indexOf(query);
+		item.title = description ? `${label}: ${description}` : label;
 		const mark = document.createElement("mark");
-		mark.textContent = name.slice(at, at + query.length);
-		item.append(name.slice(0, at), mark, name.slice(at + query.length));
+		mark.textContent = label.slice(at, at + length);
+		item.append(label.slice(0, at), mark, label.slice(at + length));
+		if ( description ) {
+			const hint = document.createElement("span");
+			hint.className = "vi-complete-hint";
+			hint.textContent = description;
+			item.append(hint);
+		}
 		list.append(item);
 	}
 	list.hidden = false;
@@ -1986,11 +2046,11 @@ function hideCompletions(){
 }
 
 function selectCompletion(step){
-	// like the wildmenu: Tab / Down next, Shift+Tab / Up previous, the name goes into the command line
-	const count = completions.names.length;
+	// like the wildmenu: the picked item goes into the command line
+	const count = completions.items.length;
 	if ( !count ) { return }
 	completions.selected = completions.selected === -1 && step < 0 ? count - 1 : (completions.selected + step + count) % count;
-	ui.indicator.querySelector("input").value = `${completions.command} ${completions.names[completions.selected]}`;
+	ui.indicator.querySelector("input").value = completions.items[completions.selected].value;
 	markSelectedCompletion();
 }
 
@@ -2005,8 +2065,15 @@ function markSelectedCompletion(){
 function onCompletionClick(e){
 	const item = e.target.closest("li[role=option]");
 	if ( !item || !commandLine ) { return }
+	const {value, argument} = completions.items[Number(item.dataset.index)];
+	const input = ui.indicator.querySelector("input");
+	if ( argument ) {
+		// a command that needs more (:e name, :s/a/b/): it goes into the command line to finish
+		input.value = value === "substitute" ? "s/" : `${value} `;
+		updateCompletions();
+		return
+	}
 	const {editor, visual} = commandLine;
-	const value = `${completions.command} ${completions.names[Number(item.dataset.index)]}`;
 	closeCommandLine(true);
 	runExCommand(editor, value, visual);
 	render();
@@ -2562,6 +2629,7 @@ const helpSections = [
 		["f F t T + char, ; ,", "to / before a character on the line, repeat, repeat backward"],
 		["%", "matching bracket"],
 		["Ctrl+d Ctrl+u, zz zt zb", "half a page down / up, scroll the cursor to the middle / top / bottom"],
+		["Space", "on a heading or a list item with nested items: fold / unfold it"],
 	]],
 	["Editing", [
 		["x X, s S", "delete a character after / before, change a character / the line"],
@@ -2609,7 +2677,7 @@ const helpSections = [
 		[":q :q!", "close the tab (not with unsaved changes), close it anyway"],
 		[":qa :qa!", "close all tabs but the unsaved ones, close all tabs"],
 		[":wq :x", "save and close the tab"],
-		[":e name", "open a document: the matching documents are listed, Tab / Shift+Tab or arrows pick one"],
+		[":e name", "open a document: the matching documents are listed, Tab / Shift+Tab, Ctrl+N / Ctrl+P or arrows pick one"],
 		[":vs :sp", "split the editor"],
 		[":s/a/b/g :%s/a/b/gi", "replace on the line / everywhere (g: all on a line, i: ignore case)"],
 		[":d :y, :2,5d", "delete, yank lines"],
@@ -2620,6 +2688,7 @@ const helpSections = [
 		[":lines", "line numbers on / off"],
 		[":f :focus", "focus mode on / off: only the text; Esc Esc in NORMAL or the faint x leaves it"],
 		[":h :help", "this help"],
+		[":ab", "after 2 letters the matching commands are listed: Ctrl+N / Ctrl+P, Tab or arrows pick one, a click runs it"],
 		["q, Esc", "close pop-ups (this help, Settings, menus); Esc in any mode"],
 	]],
 ];

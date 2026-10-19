@@ -1033,6 +1033,7 @@ body.show-line-numbers .line-numbers {
 	margin-top: .3rem;
 }
 :where(.editor, #content, .compare-view) :is(ul, ol) {
+	margin-bottom: 0;
 	padding-left: 2rem;
 }
 /* checklist items (checklist.js): the checkbox is the ::before in the list's gutter, its tick the ::after */
