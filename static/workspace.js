@@ -54,6 +54,14 @@ const folderColors = [
 	{ key: "lilac", label: "Lilac", color: "#ebcbee" },
 	{ key: "sand", label: "Sand", color: "#e3dacb" },
 ];
+// how much of a folder's color goes over the theme's surface, in light themes and in dark ones (from the outermost
+// folder's stripe to the folder's own); tabs are paler than the tree, the active or hovered one a bit stronger.
+// Keep in line with --folder-bg in styles.css
+const folderTints = {
+	tree: { light: 75, dark: [14, 34] },
+	tab: { light: 35, dark: [8, 20] },
+	tabStrong: { light: 55, dark: [12, 26] },
+};
 
 let treePinned = localStorage.getItem(treePinnedKey) === "true";
 // treeSide "left" / "right" / "top" / "bottom";
@@ -949,7 +957,7 @@ function renderTabs(){
 		// the folders the document is in, shown grayed out before the name in the hover tooltip
 		if ( tab.name || label !== untitledTabLabel ) { el.dataset.path = folderSeparator + (tab.folder ? tab.folder + folderSeparator : "") }
 		const owner = folderColorOwner(tab.folder || "");
-		if ( owner ) { applyFolderTint(el, owner) }
+		if ( owner ) { applyFolderTint(el, owner, true) }
 		el.draggable = true;
 
 		const name = document.createElement("span");
@@ -1508,7 +1516,7 @@ function folderColorOwner(folder){
 	return [folder, ...folderAncestors(folder)].find(f => folderColorValue(colors[f])) || null;
 }
 
-function applyFolderTint(el, folder){
+function applyFolderTint(el, folder, tab=false){
 	// the folder's color; a folder colored inside colored folders is striped with all of their colors,
 	// the outermost first, a color repeated as often as it is set on the way
 	const colors = readFolders().colors;
@@ -1517,20 +1525,18 @@ function applyFolderTint(el, folder){
 	el.style.setProperty("--folder-color", chain.at(-1));
 	if ( chain.length > 1 ) {
 		el.classList.add("striped");
-		el.style.setProperty("--folder-stripes", folderStripes(chain, false));
-		el.style.setProperty("--folder-stripes-strong", folderStripes(chain, true));
+		el.style.setProperty("--folder-stripes", folderStripes(chain, tab ? folderTints.tab : folderTints.tree));
+		if ( tab ) { el.style.setProperty("--folder-stripes-strong", folderStripes(chain, folderTints.tabStrong)) }
 	}
 }
 
-function folderStripes(chain, strong){
-	// pastel over the theme's surface; dark themes would make the tints hard to tell apart,
-	// so there they get lighter from the outermost folder's color to the folder's own
+function folderStripes(chain, tint){
+	// dark themes would make the tints hard to tell apart, so there they get lighter towards the folder's own color
 	const width = 10;
 	const stops = chain.map((color, i) => {
-		const dark = (strong ? 22 : 14) + 20 * i / (chain.length - 1);
-		const light = strong ? color : `color-mix(in srgb, ${color} 75%, var(--surface))`;
-		const tint = `light-dark(${light}, color-mix(in srgb, ${color} ${dark}%, var(--surface)))`;
-		return `${tint} ${i * width}px ${(i + 1) * width}px`;
+		const dark = tint.dark[0] + (tint.dark[1] - tint.dark[0]) * i / (chain.length - 1);
+		const mix = `light-dark(color-mix(in srgb, ${color} ${tint.light}%, var(--surface)), color-mix(in srgb, ${color} ${dark}%, var(--surface)))`;
+		return `${mix} ${i * width}px ${(i + 1) * width}px`;
 	});
 	return `repeating-linear-gradient(-45deg, ${stops.join(", ")})`;
 }

@@ -456,15 +456,21 @@ body.app > .topbar {
 /* folder colors (workspace.js): a pastel tint over the theme's surface, softer in dark themes so the text stays readable;
    sub-folders without a color of their own show the one of the folder they are in.
    A folder colored inside colored folders is striped diagonally with all of their colors (built in workspace.js) */
-.tree [data-folder].colored,
-.tab.colored {
+.tree [data-folder].colored {
 	--folder-bg: light-dark(
 		color-mix(in srgb, var(--folder-color) 75%, var(--surface)),
 		color-mix(in srgb, var(--folder-color) 18%, var(--surface))
 	);
+}
+/* paler on the tabs, the active or hovered one a bit stronger (folderTints in workspace.js for the stripes) */
+.tab.colored {
+	--folder-bg: light-dark(
+		color-mix(in srgb, var(--folder-color) 35%, var(--surface)),
+		color-mix(in srgb, var(--folder-color) 10%, var(--surface))
+	);
 	--folder-bg-strong: light-dark(
-		var(--folder-color),
-		color-mix(in srgb, var(--folder-color) 30%, var(--surface))
+		color-mix(in srgb, var(--folder-color) 55%, var(--surface)),
+		color-mix(in srgb, var(--folder-color) 16%, var(--surface))
 	);
 }
 .tree [data-folder].colored {
