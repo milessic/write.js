@@ -1,7 +1,7 @@
 /*
- * Comments: right-click a line > Add comment. A line's comments are its data-comments attribute, a JSON list of
+ * Comments: hover a line and click the "+" right of it to add a comment. A line's comments are its data-comments attribute, a JSON list of
  * {id, by, date, text, resolved}, so they are saved and synced with the document. The line is the list item clicked in,
- * or else the editor's block (a <div>, a heading, ...).
+ * or else the editor's block (a <div>, a heading, ...). The right click keeps the browser's own menu (spelling etc.).
  * A line with comments gets a comment icon in the margin right of it: red while any comment is unresolved, green when
  * all are. The icon opens the comments, newest first; their authors can mark them resolved.
  * The icons and the comments are drawn outside the editor (like the line numbers, linenumbers.js), never in the document.
@@ -9,9 +9,10 @@
  */
 const commentMaxLength = 5000;
 const commentIcon = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/></svg>`;
-const commentViews = new Map(); // editor -> {layer}
+const commentViews = new Map(); // editor -> {layer, add}
 let commentsFrame = 0;
-let commentsPopover = null; // {el, line, editor}
+let commentsPopover = null; // {el, line, editor, range, scroller, scrollTop}
+let commentHover = null; // {editor, line}: the line the "+" is shown for; a text node until it gets its own <div>
 
 function commentUser(){
 	// the logged in user (routers/web.py), or one name for everyone writing locally
@@ -78,8 +79,8 @@ function resolveComment(line, id){
 	setLineComments(line, comments);
 }
 
-function commentLineAt(editor, target, x, y){
-	// the line a right click is on: its list item, or the editor's block holding it
+function commentLineAt(editor, target, x, y, create=true){
+	// the line the pointer is on: its list item, or the editor's block holding it
 	let node = target;
 	if ( node === editor ) {
 		const caret = document.caretPositionFromPoint?.(x, y);
@@ -94,6 +95,11 @@ function commentLineAt(editor, target, x, y){
 	if ( node.nodeType === Node.ELEMENT_NODE ) { return node.nodeName === "HR" ? null : node }
 	// text typed straight into the editor gets a line <div> to hold its comments
 	if ( node.nodeType !== Node.TEXT_NODE || node.data.trim() === "" ) { return null }
+	return create ? wrapCommentLine(node) : node;
+}
+
+function wrapCommentLine(node){
+	if ( node.nodeType === Node.ELEMENT_NODE ) { return node }
 	const line = document.createElement("div");
 	node.before(line);
 	line.appendChild(node);
@@ -131,16 +137,38 @@ function commentsView(editor){
 	let view = commentViews.get(editor);
 	const card = editor.closest(".editor-card");
 	if ( view && view.layer.parentElement === card ) { return view }
+	view?.add.remove();
 	const layer = document.createElement("div");
 	layer.className = "line-comments";
 	card.append(layer);
-	view = {layer};
+	const add = document.createElement("button");
+	add.type = "button";
+	add.className = "line-comment-add";
+	add.title = "Add comment";
+	add.setAttribute("aria-label", "Add comment");
+	add.innerHTML = `<span aria-hidden="true">+</span>${commentIcon}`;
+	add.hidden = true;
+	add.addEventListener("mousedown", (e) => e.preventDefault()); // the editor keeps its caret and scroll
+	add.addEventListener("click", () => {
+		if ( commentHover?.editor !== editor || !commentHover.line.isConnected ) { return }
+		const line = wrapCommentLine(commentHover.line);
+		hideCommentAdd();
+		openCommentsPopover(editor, line, true);
+	});
+	card.append(add);
+	view = {layer, add};
 	commentViews.set(editor, view);
 	return view;
 }
 
 function commentLineRect(line){
 	// the box of the line's first line of text; null when it is hidden (a collapsed section or item)
+	if ( line.nodeType === Node.TEXT_NODE ) {
+		const range = document.createRange();
+		range.selectNodeContents(line);
+		const first = range.getClientRects()[0];
+		return first?.height ? {top: first.top, height: first.height} : null;
+	}
 	const rect = line.getBoundingClientRect();
 	if ( !rect.height ) { return null }
 	const style = getComputedStyle(line);
@@ -184,7 +212,44 @@ function renderComments(editor){
 		}
 	});
 	icons.slice(lines.length).forEach((icon) => icon.remove());
+	if ( commentHover?.editor === editor ) { placeCommentAdd() }
 	if ( commentsPopover?.editor === editor ) { refreshCommentsPopover() }
+}
+
+function placeCommentAdd(){
+	// the "+" right of the hovered line, for a line without comments (one with them has its own icon)
+	const {editor, line} = commentHover;
+	const view = commentViews.get(editor);
+	const rect = line.isConnected && editor.contains(line) && !(line.nodeType === Node.ELEMENT_NODE && lineComments(line).length)
+		? commentLineRect(line) : null;
+	if ( !view || !rect ) { hideCommentAdd(); return }
+	const origin = view.layer.getBoundingClientRect().top;
+	view.add.style.top = `${rect.top - origin}px`;
+	view.add.style.height = `${rect.height}px`;
+	view.add.hidden = false;
+}
+
+function hideCommentAdd(){
+	commentHover = null;
+	for ( const {add} of commentViews.values() ) { add.hidden = true }
+}
+
+function handleCommentsHover(e){
+	if ( e.target.closest?.(".line-comment-add") ) { return }
+	const editor = e.target.closest?.(".editor");
+	if ( !editor ) {
+		// the pointer is on its way across the card's margin to the "+": it stays
+		if ( !commentHover || !commentHover.editor.closest(".editor-card").contains(e.target) ) { hideCommentAdd() }
+		return;
+	}
+	if ( commentsPopover ) { hideCommentAdd(); return }
+	const line = commentLineAt(editor, e.target, e.clientX, e.clientY, false);
+	if ( !line ) { hideCommentAdd(); return }
+	if ( commentHover?.editor === editor && commentHover.line === line ) { return }
+	hideCommentAdd();
+	commentsView(editor);
+	commentHover = {editor, line};
+	placeCommentAdd();
 }
 
 function scheduleComments(){
@@ -194,6 +259,7 @@ function scheduleComments(){
 		for ( const editor of commentViews.keys() ) {
 			if ( !editor.isConnected ) {
 				commentViews.get(editor).layer.remove();
+				commentViews.get(editor).add.remove();
 				commentViews.delete(editor);
 			}
 		}
@@ -251,7 +317,11 @@ function openCommentsPopover(editor, line, focusNew){
 		<textarea class="comment-input" rows="3" maxlength="${commentMaxLength}" placeholder="Add a comment" aria-label="New comment"></textarea>
 		<div class="comments-actions"><span class="muted small">Ctrl+Enter</span><button type="button" class="btn primary small comment-add">Comment</button></div>`;
 	document.body.append(el);
-	commentsPopover = {el, line, editor};
+	// closing it puts the caret back where it was, without scrolling the document (focus() would, to its start)
+	const selection = window.getSelection();
+	const range = selection.rangeCount && editor.contains(selection.anchorNode) ? selection.getRangeAt(0).cloneRange() : null;
+	const scroller = editor.closest(".pane-scroll");
+	commentsPopover = {el, line, editor, range, scroller, scrollTop: scroller?.scrollTop};
 	const input = el.querySelector(".comment-input");
 	const submit = () => {
 		if ( !line.isConnected || !addComment(line, input.value) ) { return }
@@ -259,7 +329,7 @@ function openCommentsPopover(editor, line, focusNew){
 		input.focus();
 	};
 	el.querySelector(".comment-add").addEventListener("click", submit);
-	el.querySelector(".comments-close").addEventListener("click", () => { closeCommentsPopover(); restoreEditorSelection() });
+	el.querySelector(".comments-close").addEventListener("click", () => closeCommentsPopover(true));
 	input.addEventListener("keydown", (e) => {
 		if ( e.key === "Enter" && (e.ctrlKey || e.metaKey) ) { e.preventDefault(); submit() }
 	});
@@ -291,31 +361,25 @@ function placeCommentsPopover(){
 	el.style.top = Math.max(4, top) + "px";
 }
 
-function closeCommentsPopover(){
+function closeCommentsPopover(restoreCaret=false){
 	if ( !commentsPopover ) { return false }
-	commentsPopover.el.remove();
+	const {el, editor, range, scroller, scrollTop} = commentsPopover;
+	el.remove();
 	commentsPopover = null;
+	if ( restoreCaret && editor.isConnected ) {
+		editor.focus({preventScroll: true});
+		if ( range && editor.contains(range.commonAncestorContainer) ) {
+			const selection = window.getSelection();
+			selection.removeAllRanges();
+			selection.addRange(range);
+		}
+		if ( scroller ) { scroller.scrollTop = scrollTop }
+	}
 	return true;
 }
 
-function commentsMenuItems(editor, line){
-	const count = lineComments(line).length;
-	const items = [{ label: "Add comment", action: () => openCommentsPopover(editor, line, true) }];
-	if ( count ) { items.push({ label: `Show comments (${count})`, action: () => openCommentsPopover(editor, line, false) }) }
-	return items;
-}
-
-function handleCommentsContextMenu(e){
-	// Shift + right click keeps the browser's own menu; a long press on a touch screen too (its text selection)
-	if ( e.shiftKey || e.pointerType === "touch" ) { return }
-	const editor = e.target.closest?.(".editor");
-	if ( !editor || !editor.closest("#editor-grid") ) { return }
-	const line = commentLineAt(editor, e.target, e.clientX, e.clientY);
-	if ( !line ) { return }
-	openContextMenu(e, commentsMenuItems(editor, line));
-}
-
-document.getElementById("editor-grid").addEventListener("contextmenu", handleCommentsContextMenu);
+document.getElementById("editor-grid").addEventListener("mousemove", handleCommentsHover);
+document.getElementById("editor-grid").addEventListener("mouseleave", hideCommentAdd);
 document.getElementById("editor-grid").addEventListener("input", (e) => {
 	const editor = e.target.closest?.(".editor");
 	if ( editor ) { normalizeComments(editor) }

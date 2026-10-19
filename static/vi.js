@@ -893,10 +893,12 @@ function runNormal(editor, keys){
 	// changes
 	case "x":
 	case "Delete": {
-		const end = Math.min(i + count, lineEnd(text, i));
-		if ( end <= i ) { return }
-		yank(text.slice(i, end), false);
-		deleteRange(model, i, end);
+		// a caret after the line's last character (a click there) is on that character, as in vim
+		const from = i === lineEnd(text, i) && i > lineStart(text, i) ? i - 1 : i;
+		const end = Math.min(from + count, lineEnd(text, from));
+		if ( end <= from ) { return }
+		yank(text.slice(from, end), false);
+		deleteRange(model, from, end);
 		clampCaret(editor);
 		changed();
 		return {change: true, count: count1, keys: ["x"]};

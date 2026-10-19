@@ -1,5 +1,5 @@
 """
-Focus mode on a phone: the documents tree hides while in it and a pinned one is open again after leaving.
+Focus mode: the documents and contents hide while in it; on a phone a pinned tree is open again after leaving.
 """
 import pytest
 
@@ -42,3 +42,20 @@ def test_unpinned_tree_stays_closed_after_focus_mode(phone):
 	phone.evaluate("toggleFocusMode(true)")
 	phone.evaluate("toggleFocusMode(false)")
 	assert not drawer_open(phone)
+
+
+def test_split_documents_and_contents_leave_no_box(browser, server):
+	context = browser.new_context(viewport={"width": 1400, "height": 900})
+	page = context.new_page()
+	page.goto(server)
+	page.evaluate("""() => {
+		localStorage.clear();
+		localStorage.setItem("__userConsent__", "1");
+		localStorage.setItem("__doc__test", "<div>test</div>");
+	}""")
+	page.reload()
+	page.evaluate("openTableOfContents(); setTreeSide('left'); setTocSide('split')")
+	assert page.is_visible("#side-dock")
+	page.evaluate("toggleFocusMode(true)")
+	assert not page.is_visible("#side-dock")
+	context.close()

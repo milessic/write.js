@@ -1472,6 +1472,7 @@ input:is(.error, .field-error) {
 	display: none;
 }
 body.focus-mode > .topbar,
+body.focus-mode .side-dock,
 body.focus-mode .file-tree,
 body.focus-mode .toc-panel,
 body.focus-mode .file-tree-scrim,
@@ -1574,11 +1575,11 @@ body.focus-mode:not(.apple-platform) .vi-bar {
 }
 
 /* comments (comments.js): an icon in the margin right of a commented line, red while any comment is unresolved,
-   green when all are; it opens the comments in a popover */
+   green when all are; it opens the comments in a popover. Hovering a line without comments shows a faint "+" there */
 .editor-card {
 	position: relative;
 }
-.editor-card.has-comments {
+#editor-grid .editor-card {
 	padding-right: calc(var(--comments-gutter, 1.5rem) + .25rem);
 }
 .line-comments {
@@ -1602,6 +1603,38 @@ body.focus-mode:not(.apple-platform) .vi-bar {
 	color: var(--tone-fail, #c62828);
 	cursor: pointer;
 	pointer-events: auto;
+}
+.line-comment-add {
+	position: absolute;
+	right: 0;
+	width: var(--comments-gutter, 1.5rem);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 1px;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--muted);
+	font-size: .8rem;
+	line-height: 1;
+	opacity: .6;
+	cursor: pointer;
+}
+.line-comment-add[hidden] {
+	display: none;
+}
+.line-comment-add svg {
+	width: 11px;
+	height: 11px;
+}
+.line-comment-add:hover {
+	opacity: 1;
+	color: var(--ink);
+}
+.line-comment-add:focus-visible {
+	outline: 2px solid var(--accent);
+	border-radius: calc(var(--radius) / 2);
 }
 .line-comment.resolved {
 	color: var(--tone-ok, #2e7d32);

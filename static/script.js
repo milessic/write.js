@@ -468,10 +468,13 @@ function saveTheme(key){
 	document.cookie = `${themeCookie}=${encodeURIComponent(key)}; path=/; max-age=31536000; SameSite=Lax`;
 }
 
-function focusEditor(){
+function focusEditor(e){
     // Focus on the 'editable' div
 	document.getElementById('menu').classList.remove("menu-opened");
-    document.getElementById('editor').focus();
+	// a button over the editor (a comment icon, comments.js) keeps its own focus: focusing the editor would put
+	// the caret at its start and scroll there
+	if ( e?.target.closest?.("button") ) { return }
+    document.getElementById('editor').focus({preventScroll: true});
 }
 
 function toggleMenu(){

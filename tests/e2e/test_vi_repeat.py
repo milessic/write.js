@@ -89,6 +89,17 @@ def test_x(vi):
 	assert vi.lines == ["cdef"]
 
 
+def test_x_after_the_last_character_deletes_it(vi):
+	# a click after the line's end puts the caret there
+	vi.load(["abc", "def"])
+	vi.page.evaluate("""() => {
+		const text = document.querySelector("#editor div").firstChild;
+		getSelection().collapse(text, text.length);
+	}""")
+	vi.keys("x")
+	assert vi.lines == ["ab", "def"]
+
+
 def test_x_with_count(vi):
 	vi.load(["abcdefgh"]).keys("2", "x", ".")
 	assert vi.lines == ["efgh"]

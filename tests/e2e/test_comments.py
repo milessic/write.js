@@ -1,5 +1,5 @@
 """
-Comments (comments.js): right click a line > Add comment. They are kept in the line's data-comments, newest first,
+Comments (comments.js): hover a line, click the "+" right of it. They are kept in the line's data-comments, newest first,
 shown as plain text; the line gets an icon, red while any comment is unresolved, green when all are resolved.
 """
 import json
@@ -37,10 +37,18 @@ def line(app, text):
 
 
 def comment(app, text, on):
-	line(app, on).click(button="right")
-	app.locator("#context-menu button", has_text="Add comment").click()
+	# a line without comments has the "+" on hover, one with them its comment icon
+	if comments_of(app, on):
+		app.locator(".line-comment").nth(commented_lines(app).index(on)).click()
+	else:
+		line(app, on).hover()
+		app.locator(".line-comment-add:visible").click()
 	app.fill(".comments-popover .comment-input", text)
 	app.click(".comments-popover .comment-add")
+
+
+def commented_lines(app):
+	return app.evaluate("[...document.querySelectorAll('#editor [data-comments]')].map((line) => line.textContent)")
 
 
 def comments_of(app, text):
@@ -48,7 +56,7 @@ def comments_of(app, text):
 	return json.loads(data) if data else []
 
 
-def test_add_comment_from_the_context_menu(app):
+def test_add_comment_from_the_hover_button(app):
 	comment(app, "check this", on="second line")
 	[saved] = comments_of(app, "second line")
 	assert saved["text"] == "check this"
@@ -101,3 +109,39 @@ def test_enter_keeps_the_comment_on_one_line(app):
 	app.keyboard.type("new")
 	assert len(comments_of(app, "first line")) == 1
 	assert comments_of(app, "new") == []
+
+
+def test_right_click_keeps_the_browsers_menu(app):
+	# its menu has the spelling suggestions
+	prevented = app.evaluate("""() => {
+		const line = document.querySelector("#editor div");
+		const e = new MouseEvent("contextmenu", {bubbles: true, cancelable: true});
+		line.dispatchEvent(e);
+		return e.defaultPrevented;
+	}""")
+	assert not prevented
+
+
+def test_add_button_only_on_lines_without_comments(app):
+	comment(app, "here", on="first line")
+	app.click(".comments-popover .comments-close")
+	line(app, "first line").hover()
+	assert app.locator(".line-comment-add:visible").count() == 0
+	line(app, "second line").hover()
+	assert app.locator(".line-comment-add:visible").count() == 1
+
+
+def test_closing_the_comments_keeps_the_scroll(app):
+	app.evaluate("""() => {
+		const editor = document.getElementById("editor");
+		editor.innerHTML = Array.from({length: 120}, (_, i) => `<div>line ${i}</div>`).join("");
+		editor.querySelector("div:nth-child(60)").dataset.comments = JSON.stringify([{id: "a", by: "Anonymous", date: new Date().toISOString(), text: "mid", resolved: false}]);
+	}""")
+	line(app, "line 60").scroll_into_view_if_needed()
+	app.locator(".line-comment").click()
+	app.fill(".comments-popover .comment-input", "reply")
+	app.press(".comments-popover .comment-input", "Control+Enter")
+	before = app.evaluate("document.querySelector('.pane-scroll').scrollTop")
+	assert before > 0
+	app.click(".comments-popover .comments-close")
+	assert app.evaluate("document.querySelector('.pane-scroll').scrollTop") == before
