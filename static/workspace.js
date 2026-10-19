@@ -522,6 +522,7 @@ function treeDocumentItem(name, label, depth){
 		const count = names.length > 1 ? ` ${names.length} documents` : "";
 		openContextMenu(e, [
 			{ label: "Open" + count, action: () => names.forEach(openDocumentFromTree) },
+			{ label: "Duplicate" + count, action: () => duplicateDocuments(names) },
 			{ label: "Delete" + count, danger: true, action: () => names.length > 1 ? deleteDocuments(names) : deleteDocumentInLocalStorage(name) },
 			...(names.length > 1 ? [{ label: "Clear selection", action: clearDocumentSelection }] : []),
 			null,
@@ -900,6 +901,34 @@ function removeRenamedDocument(oldName){
 	forgetDocumentFolder(oldName);
 }
 
+function duplicateName(name){
+	// "name (copy)", or "name (copy 2)", "name (copy 3)"... when that one is taken
+	let copy = `${name} (copy)`;
+	for ( let i = 2; documentExists(copy); i++ ) { copy = `${name} (copy ${i})` }
+	return copy;
+}
+
+function duplicateDocuments(names){
+	// each document is copied, with its unsaved edits, into its own folder under a new name and with its own id
+	if ( !validateUserConsent() ) { return }
+	const copies = [];
+	try {
+		for ( const name of names.filter(documentExists) ) {
+			const copy = duplicateName(name);
+			const html = unsavedDocumentHtml(name) ?? splitDocumentId(localStorage.getItem(docPrefix + name)).html;
+			localStorage.setItem(docPrefix + copy, withDocumentId(html, newDocumentId()));
+			assignDocumentFolder(copy, folderOfDocument(name));
+			copies.push(copy);
+		}
+	} catch ( err ) {
+		informError("Could not duplicate document!", err);
+	}
+	if ( !copies.length ) { return }
+	refreshFileTree();
+	syncFolders();
+	createNotification(copies.length === 1 ? `Document '${copies[0]}' created!` : `${copies.length} documents duplicated!`, "info");
+}
+
 function tabLabel(tab){
 	const name = tab.id === focusedPane?.tabId ? getDocumentName() : tab.name;
 	return name || untitledTabLabel;
@@ -947,6 +976,7 @@ function renderTabs(){
 			{ label: "Close", action: () => closeTab(tab.id) },
 			{ label: "Close others", action: () => closeOtherTabs(tab.id), disabled: tabs.length < 2 },
 			{ label: "Open to the side", action: () => splitEditor(tab), disabled: Boolean(pane) || panes.length >= maxEditors },
+			{ label: "Duplicate", action: () => duplicateDocuments([tab.name]), disabled: !tab.name || !documentExists(tab.name) },
 			null,
 			...tabsPanelMenuItems(),
 		]));
