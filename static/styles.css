@@ -1253,6 +1253,19 @@ body.show-line-numbers .line-numbers {
 }
 :where(.editor, #content, .compare-view) {
 	--rule-height: 1lh;
+	--rule-thickness: 1px;
+}
+/* zoomed (a device pixel ratio between whole numbers), a 1px line falls between two rows of device pixels and is
+   painted faint on both, so faint it could vanish: a bit thicker, it fills at least one */
+@media not ((resolution: 1dppx) or (resolution: 2dppx) or (resolution: 3dppx)) {
+	:where(.editor, #content, .compare-view) {
+		--rule-thickness: 1.5px;
+	}
+}
+@media (resolution < 1dppx) {
+	:where(.editor, #content, .compare-view) {
+		--rule-thickness: 2px;
+	}
 }
 :where(.editor, #content, .compare-view) hr {
 	box-sizing: content-box;
@@ -1261,21 +1274,23 @@ body.show-line-numbers .line-numbers {
 	border: 0;
 	overflow: visible;
 	color: var(--line-strong, var(--muted));
-	background: linear-gradient(currentColor, currentColor) left center / 100% 1px no-repeat;
+	background: linear-gradient(currentColor, currentColor) left center / 100% var(--rule-thickness) no-repeat;
 }
 /* a collapsed heading whose section starts with a rule draws the rule where it was, under it: a background, not a line
    the caret (vi's or the browser's) could go to. The padding is the hidden rule's margin and height */
 .heading-folding .editor > [data-collapsed="true"]:has(+ hr) {
 	padding-bottom: calc(.3rem + var(--rule-height));
-	background: linear-gradient(var(--line-strong, var(--muted)), var(--line-strong, var(--muted))) left 0 bottom calc(var(--rule-height) / 2 - .5px) / 100% 1px no-repeat;
+	background: linear-gradient(var(--line-strong, var(--muted)), var(--line-strong, var(--muted))) left 0 bottom calc((var(--rule-height) - var(--rule-thickness)) / 2) / 100% var(--rule-thickness) no-repeat;
 }
 :where(.editor, #content, .compare-view) :is(ul, ol) {
 	margin-bottom: 0;
 	padding-left: 2rem;
 }
-/* checklist items (checklist.js): the checkbox is the ::before in the list's gutter, its tick the ::after */
+/* checklist items (checklist.js): the checkbox is the ::before in the list's gutter, its tick the ::after.
+   contain: layout, not position: relative, makes the item their containing block: Safari's editing takes a positioned
+   element for a block of its own, and a delete across items (vi's dd, d$) took the nested list after them, or the item */
 :where(.editor, #content, .compare-view) ul > li[data-checked] {
-	position: relative;
+	contain: layout;
 	list-style: none;
 }
 :where(.editor, #content, .compare-view) ul > li[data-checked]::before,

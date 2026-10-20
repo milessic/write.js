@@ -156,7 +156,8 @@ setupDocumentDropping();
 setupDocking("tab-grip", "tabs");
 setupNameTooltip();
 
-document.addEventListener("click", (e) => { if ( !contextMenu.contains(e.target) ) { closeContextMenu() } });
+// on press, in the capture phase: a right-click (its native menu), a drag or a button that stops its click close it too
+document.addEventListener("pointerdown", (e) => { if ( !contextMenu.contains(e.target) ) { closeContextMenu() } }, true);
 document.addEventListener("keydown", (e) => { if ( e.key === "Escape" ) { closeContextMenu() } });
 window.addEventListener("resize", closeContextMenu);
 window.addEventListener("blur", closeContextMenu);
