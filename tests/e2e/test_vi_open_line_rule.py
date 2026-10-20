@@ -85,3 +85,38 @@ def test_cursor_is_drawn_on_a_rule(vi):
 	assert rects is not None
 	assert rects[0] == pytest.approx(rects[1], abs=1)
 	assert rects[2] == pytest.approx(rects[3], abs=1)
+
+
+CHECKLIST = '<h2>heading</h2><hr><div><br></div><ul><li data-checked="false">checkbox</li><li data-checked="false">list</li></ul>'
+
+
+def test_dd_and_J_on_the_empty_line_under_a_rule_keep_the_next_line(vi):
+	# a delete next to a rule used to merge the empty line's <br> into the checklist item after it
+	for keys in [("j", "j", "d", "d"), ("j", "j", "J")]:
+		vi.load(html=CHECKLIST).keys(*keys)
+		assert vi.page.evaluate("document.getElementById('editor').innerHTML") == \
+			'<h2>heading</h2><hr><ul><li data-checked="false">checkbox</li><li data-checked="false">list</li></ul>'
+	vi.load(html="<h2>heading</h2><hr><div><br></div><h3>next</h3>").keys("j", "j", "d", "d")
+	assert vi.page.evaluate("document.getElementById('editor').innerHTML") == "<h2>heading</h2><hr><h3>next</h3>"
+
+
+@pytest.mark.parametrize("keys", [("i", "Z"), ("a", "Z"), ("A", "Z"), ("I", "Z"), ("r", "Z"), ("s", "Z"), ("c", "c", "Z"), ("S", "Z"), ("C", "Z"), ("~",), ("J",)])
+def test_a_rule_cant_be_edited(vi, keys):
+	vi.load(html=HTML).keys("j", *keys, "Escape")
+	assert blocks(vi) == ["heading", "hr", "text"]
+
+
+@pytest.mark.parametrize("keys", [("x",), ("d", "w"), ("d", "e"), ("d", "$")])
+def test_x_and_d_with_a_motion_delete_only_the_rule(vi, keys):
+	vi.load(html=HTML).keys("j", *keys)
+	assert vi.page.evaluate("document.getElementById('editor').innerHTML") == "<h2>heading</h2><div>text</div>"
+
+
+def test_j_onto_a_rule_doesnt_scroll_to_the_top(vi):
+	lines = "".join(f"<div>line {i}</div>" for i in range(80))
+	vi.load(html=lines + "<hr><div>after</div>").keys("G", "k", "k")
+	scroller = "document.getElementById('editor').closest('.pane-scroll').scrollTop"
+	before = vi.page.evaluate(scroller)
+	assert before > 0
+	vi.keys("j")
+	assert vi.page.evaluate(scroller) == pytest.approx(before, abs=50)

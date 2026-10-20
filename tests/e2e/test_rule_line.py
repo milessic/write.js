@@ -85,3 +85,58 @@ def test_rule_inside_a_saved_line_is_lifted_when_loaded(browser, server):
 	page.wait_for_function("getActiveTab()?.name === 'old'")
 	assert page.evaluate("document.getElementById('editor').innerHTML") == "<h1>h1</h1><hr><div>some text</div>"
 	context.close()
+
+
+CHECKLIST = '<h2>heading</h2><hr><div><br></div><ul><li data-checked="false">checkbox</li><li data-checked="false">list</li></ul>'
+AFTER = '<h2>heading</h2><hr><ul><li data-checked="false">checkbox</li><li data-checked="false">list</li></ul>'
+
+
+def load(app, html, caret):
+	app.evaluate("""([html, caret]) => {
+		const editor = document.getElementById("editor");
+		editor.innerHTML = html;
+		editor.focus();
+		const node = eval(caret);
+		getSelection().collapse(node, 0);
+	}""", [html, caret])
+
+
+def test_backspace_before_a_checklist_removes_the_empty_line_under_a_rule(app):
+	# the empty line's <br> used to go into the checklist item: an empty checkbox with the text under it
+	load(app, CHECKLIST, "editor.querySelector('li').firstChild")
+	app.keyboard.press("Backspace")
+	assert app.evaluate("document.getElementById('editor').innerHTML") == AFTER
+	assert app.evaluate("getSelection().focusNode.textContent") == "checkbox"
+	app.keyboard.press("Control+z")
+	app.keyboard.press("Control+z")
+	assert app.evaluate("document.getElementById('editor').innerHTML") == CHECKLIST
+
+
+def test_delete_on_the_empty_line_under_a_rule(app):
+	load(app, CHECKLIST, "editor.querySelector('div')")
+	app.keyboard.press("Delete")
+	assert app.evaluate("document.getElementById('editor').innerHTML") == AFTER
+	load(app, "<h2>heading</h2><hr><div><br></div><h3>next</h3>", "editor.querySelector('div')")
+	app.keyboard.press("Delete")
+	assert app.evaluate("document.getElementById('editor').innerHTML") == "<h2>heading</h2><hr><h3>next</h3>"
+
+
+def test_rule_is_one_character(app):
+	# the caret gets on the rule with the arrow keys: typing doesn't go in, Backspace takes the rule
+	load(app, "<h2>heading</h2><hr><div>text</div>", "editor.querySelector('h2').firstChild")
+	app.keyboard.press("End")
+	app.keyboard.press("ArrowDown")
+	app.keyboard.type("Z")
+	assert app.evaluate("document.getElementById('editor').innerHTML") == "<h2>heading</h2><hr><div>text</div>"
+	app.keyboard.press("Backspace")
+	assert app.evaluate("document.getElementById('editor').innerHTML") == "<h2>heading</h2><div>text</div>"
+
+
+def test_backspace_and_delete_next_to_a_rule_take_it(app):
+	load(app, '<h2>heading</h2><hr><ul><li data-checked="false">a</li></ul>', "editor.querySelector('li').firstChild")
+	app.keyboard.press("Backspace")
+	assert app.evaluate("document.getElementById('editor').innerHTML") == '<h2>heading</h2><ul><li data-checked="false">a</li></ul>'
+	load(app, '<h2>heading</h2><hr><h3>next</h3>', "editor.querySelector('h2').firstChild")
+	app.keyboard.press("End")
+	app.keyboard.press("Delete")
+	assert app.evaluate("document.getElementById('editor').innerHTML") == "<h2>heading</h2><h3>next</h3>"

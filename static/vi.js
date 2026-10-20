@@ -19,6 +19,9 @@ const operators = new Set(["d", "c", "y", ">", "<"]);
 const caseOperators = {"g~": "toggle", "gu": "lower", "gU": "upper"};
 // commands that change the text, remembered for "."
 const changeCommands = new Set(["s", "i", "a", "I", "A", "o", "O", "R"]);
+// on a rule (one character, like "-") these would type into it: it can only be deleted, or lines opened next to it
+const ruleLockedCommands = new Set(["i", "a", "I", "A", "gi", "R", "s", "S", "C", "r", "~", "J", "gJ"]);
+const ruleLockedMessage = "A rule (---) can't be edited: x or dd deletes it, o / O opens a line next to it";
 const brackets = {"(": ")", "[": "]", "{": "}", "<": ">"};
 const closingBrackets = {")": "(", "]": "[", "}": "{", ">": "<"};
 const incomplete = Symbol("incomplete");
@@ -866,6 +869,11 @@ function runNormal(editor, keys){
 		moveCaret(editor, model, i, motion, count1);
 		return
 	}
+	if ( ruleAt(model, i) && ruleLockedCommands.has(key) ) {
+		if ( key === "r" ) { r.next() }
+		showMessage(ruleLockedMessage);
+		return
+	}
 	if ( ["f", "F", "t", "T"].includes(key) || (["]", "["].includes(key) && keys.at(-1) === "Escape") ) { return }   // f<Esc>, ]<Esc>
 
 	switch ( key ) {
@@ -1067,6 +1075,16 @@ function runOperator(editor, model, i, op, count1, r, keysAfterCount, wholeLine=
 			}
 		}
 	}
+	if ( ruleAt(model, i) && (op === "c" || caseOperators[op]) ) {
+		showMessage(ruleLockedMessage);
+		return
+	}
+	if ( op === "d" && !linewise && ruleAt(model, i) ) {
+		// dw, d$, ... on a rule: the rule goes, like x (the motion would take the line under it too)
+		from = i;
+		to = i + 1;
+		linewise = true;
+	}
 	applyOperator(editor, model, op, from, to, linewise, i);
 	const change = op !== "y";
 	return change ? {change: true, count: count1, keys: keysAfterCount()} : undefined;
@@ -1145,8 +1163,14 @@ function deleteLines(editor, model, from, to){
 		if ( left?.nodeType === Node.ELEMENT_NODE && !left.previousSibling && left.textContent === "" && !left.querySelector(":not(br)") ) { left.remove() }
 		setCaret(textModel(editor), 0);
 	} else if ( above && to < text.length ) {
-		// under a rule: from its start to the next line's, so the rule stays
-		deleteRange(model, from, to + 1);
+		// under a rule: whole lines of the editor go with removeLinesAfterRule (script.js), as a delete next to a rule
+		// merges the line after them into their place; else from its start to the next line's, so the rule stays
+		const last = topBlock(editor, positionAt(model, to).node);
+		if ( above.parentNode === editor && last && last !== topBlock(editor, positionAt(model, to + 1).node) ) {
+			removeLinesAfterRule(above, last);
+		} else {
+			deleteRange(model, from, to + 1);
+		}
 		const after = textModel(editor);
 		setCaret(after, firstNonBlank(after.text, Math.min(from, after.text.length)));
 	} else if ( above ) {
@@ -1219,6 +1243,16 @@ function joinLines(editor, model, i, count, withSpace=true){
 		const text = current.text;
 		const end = lineEnd(text, i);
 		if ( end >= text.length ) { break }
+		const start = lineStart(text, i);
+		if ( ruleAt(current, start) || ruleAt(current, end + 1) ) { break }
+		const above = start > 0 ? ruleAt(current, lineStart(text, start - 1)) : null;
+		const line = topBlock(editor, positionAt(current, start).node);
+		if ( start === end && above?.parentNode === editor && line && line !== topBlock(editor, positionAt(current, end + 1).node) ) {
+			// an empty line under a rule: it goes, the line after it takes its place (see deleteLines)
+			removeLinesAfterRule(above, line);
+			setCaret(textModel(editor), start);
+			continue
+		}
 		let next = end + 1;
 		if ( withSpace ) { while ( next < text.length && isBlank(text[next]) ) { next++ } }
 		const needsSpace = withSpace && end > lineStart(text, i) && !isBlank(text[end - 1]) && text[next] !== "\n" && next < text.length && text[next] !== ")";
@@ -1809,6 +1843,12 @@ function browserMove(selection, direction, granularity){
 		const p = positionAt(after, j - 1);
 		selection.collapse(p.node, p.offset);
 	}
+}
+
+function topBlock(editor, node){
+	// the line (block) of the editor node is in, null for a node right in the editor
+	while ( node && node.parentNode !== editor ) { node = node.parentNode }
+	return node?.nodeType === Node.ELEMENT_NODE ? node : null;
 }
 
 function ruleAt(model, index){
@@ -2859,7 +2899,13 @@ function scrollCaret(editor, block="nearest"){
 	if ( !scroller || !selection.rangeCount ) { return }
 	const range = selection.getRangeAt(0).cloneRange();
 	range.collapse(selection.focusNode === range.startContainer && selection.focusOffset === range.startOffset);
-	let rect = range.getClientRects()[0] || elementOf(selection.focusNode).getBoundingClientRect();
+	// a caret between blocks (on a rule) has no rect of its own: the editor's would scroll to its top
+	let rect = range.getClientRects()[0];
+	if ( !rect ) {
+		const model = textModel(editor);
+		const index = caretIndex(model);
+		rect = (index !== null && characterRect(model, index)) || elementOf(selection.focusNode).getBoundingClientRect();
+	}
 	const box = scroller.getBoundingClientRect();
 	const margin = lineHeightOf(editor) * 2;
 	let delta = 0;

@@ -101,6 +101,7 @@ document.getElementById("editor-grid").addEventListener('paste', handlePasteList
 document.getElementById("editor-grid").addEventListener('input', updateBlockSelect);
 // Chrome's styled spans, before anything else reads the line
 document.getElementById("editor-grid").addEventListener('input', (e) => { if ( e.target.classList?.contains("editor") ) { removeInlineStyles(e.target) } }, true);
+document.getElementById("editor-grid").addEventListener("beforeinput", handleRuleInput);
 document.getElementById("editor-grid").addEventListener('beforeinput', handleListItemBackspace);
 document.getElementById("editor-grid").addEventListener('keyup', (e) => {updateCaretPosition();handleWordCounter()});
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
@@ -1793,6 +1794,116 @@ function moveRulesOutOfLines(editor){
 		moved = true;
 	}
 	if ( moved && saved && editor.contains(saved[0]) && editor.contains(saved[2]) ) { selection.setBaseAndExtent(...saved) }
+}
+
+function isEmptyLine(el){
+	return el?.nodeName === "DIV" && el.textContent === "" && !el.querySelector(":not(br)");
+}
+
+function ruleAtCaret(node, offset){
+	// the rule the caret is on: right before or after it, between the editor's lines (the browser's caret gets there
+	// with the arrow keys, vi's sits before it)
+	if ( node?.nodeType !== Node.ELEMENT_NODE ) { return null }
+	return [node.childNodes[offset], node.childNodes[offset - 1]].find((n) => n?.nodeName === "HR") || null;
+}
+
+function removeRule(rule){
+	// a rule is deleted like one character: the lines around it stay as they are
+	const range = document.createRange();
+	range.selectNode(rule);
+	const selection = window.getSelection();
+	selection.removeAllRanges();
+	selection.addRange(range);
+	document.execCommand("delete");
+}
+
+function removeLinesAfterRule(rule, last){
+	// the lines from the one under the rule to last go. execCommand("delete") next to a rule merges what follows into
+	// the deleted lines (an empty line's <br> goes into a checklist item, a heading becomes a line), so the rule goes
+	// with them and comes back with insertHTML at the end of the line over it: both stay on the browser's undo stack
+	const before = rule.previousElementSibling;
+	const html = rule.outerHTML;
+	const selection = window.getSelection();
+	const range = document.createRange();
+	if ( !before || !/^(DIV|H[1-6])$/.test(before.nodeName) || before.textContent === "" ) {
+		// no line over it the rule could come back after: the lines go by hand, out of the undo stack
+		while ( rule.nextSibling && rule.nextSibling !== last ) { rule.nextSibling.remove() }
+		last.remove();
+		return
+	}
+	range.setStartBefore(rule);
+	range.setEndAfter(last);
+	selection.removeAllRanges();
+	selection.addRange(range);
+	document.execCommand("delete");
+	range.selectNodeContents(before);
+	range.collapse(false);
+	if ( before.lastChild?.nodeName === "BR" ) { range.setStartBefore(before.lastChild) }
+	selection.removeAllRanges();
+	selection.addRange(range);
+	document.execCommand("insertHTML", false, html);
+}
+
+function atLineEdge(block, node, offset, end){
+	// the caret is at the start (or end) of block: nothing but a trailing <br> or empty text between them
+	const ignorable = (n) => n && ((n.nodeType === Node.TEXT_NODE && n.data === "") || (end && n.nodeName === "BR" && !n.nextSibling));
+	const length = node.nodeType === Node.TEXT_NODE ? node.data.length : node.childNodes.length;
+	if ( node.nodeType === Node.TEXT_NODE ? offset !== (end ? length : 0) : [...node.childNodes].slice(end ? offset : 0, end ? length : offset).some((n) => !ignorable(n)) ) { return false }
+	for ( ; node !== block; node = node.parentNode ) {
+		for ( let n = end ? node.nextSibling : node.previousSibling; n; n = end ? n.nextSibling : n.previousSibling ) {
+			if ( !ignorable(n) ) { return false }
+		}
+	}
+	return true
+}
+
+function handleRuleInput(e){
+	// a rule is one character: Backspace / Delete next to it take it, nothing can be typed on it, and the empty line
+	// under it goes without the browser merging the line after into the rule's place
+	const editor = e.target.closest?.(".editor");
+	const selection = window.getSelection();
+	if ( !editor || e.defaultPrevented || !selection.rangeCount || !selection.isCollapsed ) { return }
+	const {focusNode: node, focusOffset: offset} = selection;
+	if ( !editor.contains(node) ) { return }
+	const backward = e.inputType === "deleteContentBackward";
+	const forward = e.inputType === "deleteContentForward";
+	const onRule = ruleAtCaret(node, offset);
+	if ( onRule ) {
+		if ( !backward && !forward && !e.inputType.startsWith("insert") ) { return }
+		e.preventDefault();
+		if ( backward || forward ) {
+			removeRule(onRule);
+			performAutoSave();
+		}
+		return
+	}
+	if ( !backward && !forward ) { return }
+	let line = node;
+	while ( line.parentNode !== editor ) { line = line.parentNode }
+	if ( line.nodeType !== Node.ELEMENT_NODE || !atLineEdge(line, node, offset, forward) ) { return }
+	const caret = [node, offset];
+	if ( backward && line.previousElementSibling?.nodeName === "HR" ) {
+		e.preventDefault();
+		removeRule(line.previousElementSibling);
+	} else if ( backward && isEmptyLine(line.previousElementSibling) && line.previousElementSibling.previousElementSibling?.nodeName === "HR" ) {
+		e.preventDefault();
+		const empty = line.previousElementSibling;
+		removeLinesAfterRule(empty.previousElementSibling, empty);
+	} else if ( forward && line.nextElementSibling?.nodeName === "HR" ) {
+		e.preventDefault();
+		removeRule(line.nextElementSibling);
+	} else if ( forward && isEmptyLine(line) && line.previousElementSibling?.nodeName === "HR" && line.nextElementSibling ) {
+		e.preventDefault();
+		const next = line.nextElementSibling;
+		removeLinesAfterRule(line.previousElementSibling, line);
+		let start = next;
+		while ( start.firstChild && start.firstChild.nodeType === Node.ELEMENT_NODE && start.firstChild.nodeName !== "BR" ) { start = start.firstChild }
+		caret.splice(0, 2, start, 0);
+	} else {
+		return
+	}
+	if ( editor.contains(caret[0]) ) { selection.collapse(...caret) }
+	performAutoSave();
 }
 
 function splitLineIntoBlocks(line){
