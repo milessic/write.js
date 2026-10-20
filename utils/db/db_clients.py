@@ -46,6 +46,11 @@ class DbClient:
                 query = getattr(docs, f)
                 self._execute(query)
 
+        for f in dir(docs):
+            if f.startswith("create_index"):
+                query = getattr(docs, f)
+                self._execute(query)
+
     # USERS - users
     def create_user(self, user_details: dict):
         self._execute(
@@ -189,6 +194,72 @@ class DbClient:
     def reset_failed_login_attempts(self, user_id: int) -> None:
         self._execute(auth.reset_failed_login_attempts, user_id)
 
+    # NOTEBOOKS - user_notebooks
+    def get_notebooks(self, user_id: int) -> list[dict]:
+        rows = self._execute(docs.notebooks["get_for_user"], user_id)
+        return [
+            {"notebook_id": r[0], "name": r[1], "meta_version": r[2], "created_at": r[3]}
+            for r in (rows[0] if rows else [])
+        ]
+
+    def create_notebook_for_user(self, user_id: int, name: str) -> int:
+        return self._execute(docs.notebooks["insert"], user_id, name)[0][0][0]
+
+    def get_notebook_meta(self, notebook_id: int, user_id: int) -> tuple | None:
+        r"returns meta_content, meta_version"
+        if len(result := self._execute(docs.notebooks["get_meta"], notebook_id, user_id)):
+            return result[0][0]
+        return None
+
+    def update_notebook_meta(
+        self, notebook_id: int, user_id: int, content: str, base_version: int
+    ) -> int | None:
+        r"returns the new version, None when base_version is not the current one"
+        if len(
+            result := self._execute(
+                docs.notebooks["update_meta"], content, notebook_id, user_id, base_version
+            )
+        ):
+            return result[0][0][0]
+        return None
+
+    # DOCUMENTS - notebook_documents
+    def list_notebook_documents(self, notebook_id: int) -> list[dict]:
+        rows = self._execute(docs.notebook_documents["list"], notebook_id)
+        return [
+            {"doc_id": r[0], "name": r[1], "version": r[2], "deleted": bool(r[3]), "updated_at": r[4]}
+            for r in (rows[0] if rows else [])
+        ]
+
+    def count_notebook_documents(self, notebook_id: int) -> int:
+        return int(self._execute(docs.notebook_documents["count"], notebook_id)[0][0][0])
+
+    def get_notebook_document(self, notebook_id: int, doc_id: str) -> dict | None:
+        if not len(result := self._execute(docs.notebook_documents["get"], notebook_id, doc_id)):
+            return None
+        r = result[0][0]
+        return {
+            "doc_id": r[0], "name": r[1], "content": r[2], "version": r[3], "deleted": bool(r[4]), "updated_at": r[5],
+        }
+
+    def save_notebook_document(
+        self, notebook_id: int, doc_id: str, name: str, content: str, base_version: int
+    ) -> int | None:
+        r"creates (base_version 0) or updates a document, returns the new version, None on a version conflict"
+        if base_version == 0:
+            result = self._execute(docs.notebook_documents["insert"], notebook_id, doc_id, name, content)
+        else:
+            result = self._execute(
+                docs.notebook_documents["update"], name, content, notebook_id, doc_id, base_version
+            )
+        return result[0][0][0] if len(result) else None
+
+    def delete_notebook_document(self, notebook_id: int, doc_id: str, base_version: int) -> int | None:
+        r"leaves a tombstone, returns its version, None on a version conflict"
+        if len(result := self._execute(docs.notebook_documents["delete"], notebook_id, doc_id, base_version)):
+            return result[0][0][0]
+        return None
+
     # THESE ARE TEMPORARY THINGS!!!!!!!
     # START
     def create_notebook(self, user_id, notebook):
@@ -213,5 +284,7 @@ class DbClient:
     def delete_user_content(self, user_id: int):
         delete_notebook = {"sqlite3": "DELETE FROM notebooks WHERE user_id=(?)"}
         self._execute(delete_notebook, user_id)
+        self._execute(docs.notebook_documents["delete_for_user"], user_id)
+        self._execute(docs.notebooks["delete_for_user"], user_id)
 
     # END

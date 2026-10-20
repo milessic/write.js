@@ -53,8 +53,9 @@ class SqLite3Connector:
                     c.execute(q.removesuffix(";") + ";", arguments)
                 else:
                     c.execute(q.removesuffix(";") + ";")
-                db.commit()
+                # fetched before the commit: an INSERT/UPDATE ... RETURNING is still in progress until then
                 results.append(c.fetchall())
+                db.commit()
                 c.close()
                 db.close()
             except Exception as e:

@@ -826,6 +826,22 @@ function reloadDocumentTabs(name, discardUnsaved=false){
 	if ( reloaded.length ) { renderTabs() }
 }
 
+function renameDocumentTabs(oldName, newName){
+	// the document was renamed on another device (cloudsync.js): its tabs follow
+	const renamed = tabs.filter(t => t.savedName === oldName);
+	for ( const tab of renamed ) {
+		tab.savedName = newName;
+		// a name typed here and not saved yet stays
+		if ( tab.name !== oldName ) { continue }
+		tab.name = newName;
+		if ( tab.id === focusedPane?.tabId ) { documentNameObject.value = newName }
+	}
+	if ( !renamed.length ) { return }
+	if ( localStorage.getItem(lastOpenedKey) === oldName ) { saveAsLastOpenedDocument(newName) }
+	renderTabs();
+	saveOpenedTabs();
+}
+
 function closeTabsOfDocument(name){
 	// the document was deleted: its tabs go without asking
 	for ( const tab of tabs.filter(t => t.name === name) ) {
@@ -1469,11 +1485,7 @@ function deleteFolder(folder){
 	saveLayout();
 	writeFolders(store);
 	renderTabs();
-	if ( names.length && typeof sendNotebook !== "undefined" ) {
-		if ( remoteAutoSaveEnabled || showConfirm("Do you want to send updated Notebook to the cloud?") ) { sendNotebookForce() }
-	} else {
-		syncFolders();
-	}
+	syncFolders(); // the deleted documents go to the cloud with the folders
 }
 
 function moveDocumentsToFolder(names, folder){
@@ -1579,9 +1591,7 @@ function deleteDocuments(names){
 	}
 	clearDocumentSelection();
 	writeFolders(store);
-	if ( typeof sendNotebook !== "undefined" ) {
-		if ( remoteAutoSaveEnabled || showConfirm("Do you want to send updated Notebook to the cloud?") ) { sendNotebookForce() }
-	}
+	syncFolders(); // the deleted documents go to the cloud with the folders
 }
 
 function createNewDocumentInFolder(folder){

@@ -1718,3 +1718,99 @@ body.focus-mode:not(.apple-platform) .vi-bar {
 	align-items: center;
 	justify-content: space-between;
 }
+
+/* Settings > Cloud sync (cloudsync.js): the documents as in the tree, each with its sync status */
+.cloud-sync-modal {
+	/* filtering the list doesn't make it narrower (cloudsync.js keeps its height) */
+	width: min(640px, calc(100vw - 32px));
+}
+.cloud-sync-head {
+	justify-content: space-between;
+	align-items: center;
+}
+.cloud-sync-head p {
+	margin: 0;
+}
+.cloud-sync-legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: .25rem 1rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.cloud-sync-filter {
+	display: flex;
+	align-items: center;
+	gap: .35rem;
+	padding: .15rem .45rem;
+	font: inherit;
+	color: inherit;
+	background: none;
+	border: 1px solid transparent;
+	border-radius: 999px;
+	cursor: pointer;
+}
+.cloud-sync-filter:hover {
+	background: var(--surface-2);
+}
+.cloud-sync-filter[aria-pressed="true"] {
+	color: var(--ink);
+	background: var(--surface-2);
+	border-color: var(--line);
+}
+.cloud-sync-filter:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
+.cloud-sync-tree,
+.cloud-sync-tree ul {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.cloud-sync-tree {
+	max-height: 60vh;
+	overflow-y: auto;
+	border: 1px solid var(--line);
+	border-radius: calc(var(--radius) / 2);
+	padding: .25rem;
+}
+.cloud-sync-tree .tree-row {
+	align-items: center;
+	gap: .4rem;
+	cursor: default;
+}
+.cloud-sync-tree .tree-row:hover {
+	background: none;
+}
+.cloud-sync-tree .tree-folder {
+	color: var(--ink);
+	font-weight: 600;
+}
+.cloud-sync-tree .tree-document::before {
+	display: none;
+}
+.cloud-sync-tree .sync-status {
+	margin-left: auto;
+	padding-left: .75rem;
+}
+.sync-dot {
+	flex: none;
+	width: .6rem;
+	height: .6rem;
+	border-radius: 50%;
+	background: var(--muted);
+}
+.sync-dot[data-status="synced"] { background: var(--success-text, #2e9e4f) }
+.sync-dot[data-status="queued"] { background: #e0b020 }
+.sync-dot[data-status="progress"] { background: #2a78d6; animation: sync-pulse 1s ease-in-out infinite alternate }
+.sync-dot[data-status="error"] { background: var(--danger, #d03b3b) }
+.sync-dot[data-status="pending"] { background: var(--muted, #898781) }
+.cloud-sync-tree [data-status="error"] .sync-status { color: var(--danger) }
+@keyframes sync-pulse {
+	to { opacity: .35 }
+}
+@media (prefers-reduced-motion: reduce) {
+	.sync-dot[data-status="progress"] { animation: none }
+}

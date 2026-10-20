@@ -7,7 +7,8 @@ const autosaveKey = "__autosave__";
 const focusModeKey = "__focusMode__"; // "editors" when focus mode shows every opened tab, else only the focused document (Settings), goes with the notebook
 const headingBreaksKey = "__headingBreaks__"; // "1" when an <hr> is auto-inserted under each heading (Settings), goes with the notebook
 const syncPendingKey = "__syncPending__"; // set while there are changes that couldn't reach the cloud (offline)
-const syncBaseKey = "__syncBase__"; // {key: hash} of what the cloud held at the last sync, tells which side changed a document
+const syncBaseKey = "__syncBase__"; // {key: hash} of what the cloud held at the last sync of the notebook as a whole, before cloudsync.js
+const cloudSyncKey = "__cloudSync__"; // {notebookId, meta, docs: {id: {version, hash}}, lastSync}: what the cloud held at the last sync (cloudsync.js)
 const themeCookie = "theme";
 const viModeKey = "__viMode__"; // "1" when the vi keybindings are on (Settings), goes with the notebook
 const autoDetectKey = "__autoDetect__"; // {enabled, rules} for markdown typed into formatting (Settings, autodetect.js), goes with the notebook
@@ -367,7 +368,8 @@ function createThemeModal(){
 }
 
 function createSettingsModal(){
-	createModal("Settings", `
+	createModal("Settings", ( typeof cloudSyncSettingsHtml !== "undefined" ? cloudSyncSettingsHtml() : "" ) // logged in only (cloudsync.js)
+	+ `
 	<h3>Editor</h3>
 	<div class="stack">
 		${lineNumbersSettingsHtml()}
@@ -400,6 +402,7 @@ function createSettingsModal(){
 		${listFoldingSettingsHtml()}
 		${autoCheckParentsSettingsHtml()}
 	</div>` + autoDetectSettingsHtml());
+	if ( typeof initCloudSyncSettings !== "undefined" ) { initCloudSyncSettings() }
 	initLineNumbersSettings();
 	initTocSettings();
 	initHeadingFoldingSettings();
@@ -744,11 +747,7 @@ function deleteDocumentInLocalStorage(name){
 		forgetDocumentFolder(name);
 		closeTabsOfDocument(name);
 		refreshFileTree();
-		if ( typeof sendNotebook !== 'undefined' ) {
-			if ( remoteAutoSaveEnabled || showConfirm("Do you want to send updated Notebook to the cloud?") ){
-				sendNotebookForce();
-			}
-		}
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the delete goes to the cloud (cloudsync.js)
 		closeAllModals();
 	}
 }
@@ -1177,7 +1176,7 @@ function simulateEnter() {
 function isDeviceOnlyKey(key){
 	// state of this device that never goes to the cloud or a notebook backup
 	// (the workspace.js keys are looked up on call, that file loads after this one)
-	return [userLoggedInKey, syncPendingKey, syncBaseKey, viEscButtonKey, openedTabsKey, openedEditorsKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey].includes(key);
+	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viEscButtonKey, openedTabsKey, openedEditorsKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey].includes(key);
 }
 
 function getAllLocalStorageItems() {
@@ -1245,11 +1244,14 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 		loadLastOpenedDocument();
 	}
 	resolveSyncConflicts(conflicts, fromCloud ? "Cloud" : "Backup", fromCloud);
+	// a backup's documents and settings go to the cloud (cloudsync.js)
+	if ( !fromCloud && typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() }
 }
 
-function resolveSyncConflicts(conflicts, sourceLabel, fromCloud){
+function resolveSyncConflicts(conflicts, sourceLabel, fromCloud, onResolved=null){
 	// one document at a time: this device's version and the incoming one side by side (stacked on phones).
 	// Closing the modal keeps this device's versions of the rest; a cloud conflict is asked again on the next sync.
+	// onResolved(conflict, pick): the cloud sync (cloudsync.js) remembers what was picked
 	const conflict = conflicts.shift();
 	if ( !conflict ) { return }
 	const {key, name, local, remote} = conflict;
@@ -1265,12 +1267,12 @@ function resolveSyncConflicts(conflicts, sourceLabel, fromCloud){
 		<button class="btn" data-pick="local">Keep this device's</button>
 		<button class="btn primary" data-pick="remote">Use ${sourceLabel.toLowerCase()}'s</button>
 		<button class="btn" data-pick="both">Keep both</button>
-	</div>`);
+	</div>
+	<p class="sync-review-count muted small">You have ${conflicts.length + 1} document(s) to review</p>`);
 	const modal = document.getElementById("modal");
 	modal.classList.add("sync-compare-modal");
 	modal.querySelector(".sync-compare-info").textContent =
-		`'${name}' was changed on this device and ${fromCloud ? "in the cloud since the last sync" : "differs from the backup"}. Pick the version to keep.`
-		+ (conflicts.length ? ` ${conflicts.length} more after this one.` : "");
+		`'${name}' was changed on this device and ${fromCloud ? "in the cloud since the last sync" : "differs from the backup"}. Pick the version to keep.`;
 	const views = modal.querySelectorAll(".compare-view");
 	const diff = renderLineDiff(views[0], views[1], splitDocumentId(local).html, splitDocumentId(remote).html);
 	const summary = modal.querySelector(".diff-summary");
@@ -1295,13 +1297,13 @@ function resolveSyncConflicts(conflicts, sourceLabel, fromCloud){
 			const folder = folderOfDocument(name);
 			if ( folder ) { assignDocumentFolder(copyName, folder) }
 		}
-		if ( fromCloud ) { rememberSynced({ [key]: remote }) }
+		if ( onResolved ) { onResolved(conflict, pick) } else if ( fromCloud ) { rememberSynced({ [key]: remote }) }
 		ensureDocumentIds();
 		refreshFileTree();
-		// this device's version or the copy goes to the cloud with the next push
-		if ( pick !== "remote" && typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() }
+		// the picked version or the copy goes to the cloud with the next sync
+		if ( !onResolved && typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() }
 		closeAllModals();
-		resolveSyncConflicts(conflicts, sourceLabel, fromCloud);
+		resolveSyncConflicts(conflicts, sourceLabel, fromCloud, onResolved);
 	}));
 }
 

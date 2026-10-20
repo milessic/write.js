@@ -28,6 +28,15 @@ This is a template for [FastAPI](https://fastapi.tiangolo.com/) project with aut
 - project uses jwt access tokens + refresh tokens that are also stored in Database
 
 
+## Notebooks and cloud sync
+- every user has a ``Default`` notebook (``routers/notebooks.py``, tables ``user_notebooks`` and ``notebook_documents``); it is not shown in the UI yet
+- each document is its own row, known by the uuid the client keeps in it, with its name, its pako-compressed content and a version; deleted documents stay as tombstones
+- the folders and the settings are the notebook's ``meta``, versioned the same way
+- every write carries the version the client last saw, a stale one gets ``409`` and the client shows the conflict resolver
+- the client (``static/cloudsync.js``) auto-syncs 5 s after the last save, at most once a minute; *Settings > Cloud sync* shows each document's status and has *Resync*
+- a notebook stored as a whole before (``/api/notebooks/notebook``) is moved to documents by the first device that syncs
+
+
 ## Localizations
 - Translation files are stored as ``json`` files under ``utils/localizations/translations/``
 - to create new empty translation file, run ``utils/localizations/generate_new_translation_file.py``
