@@ -685,6 +685,8 @@ function positionAt(model, index){
 
 function indexAt(model, node, offset){
 	if ( !node || !model.editor.contains(node) ) { return null }
+	// Safari may keep a selection's offset past the end of its node for a moment after the document changed
+	offset = Math.min(offset, node.nodeType === Node.ELEMENT_NODE ? node.childNodes.length : node.length);
 	if ( node.nodeType === Node.TEXT_NODE ) {
 		const segment = model.segments.find(s => s.node === node);
 		if ( segment ) { return segment.start + offset }

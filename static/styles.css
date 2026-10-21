@@ -1405,6 +1405,10 @@ body.show-line-numbers .line-numbers {
 	background: transparent;
 	color: var(--ink);
 }
+/* while a table is replaced (tables.js): Safari puts what replaces a display: block table into its first cell */
+.editor.table-editing table {
+	display: table;
+}
 .insert-table input[type="number"] {
 	max-width: 8rem;
 }

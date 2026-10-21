@@ -1,3 +1,4 @@
+import os
 import socket
 import subprocess
 import sys
@@ -33,7 +34,8 @@ def server():
 def browser():
 	from playwright.sync_api import sync_playwright
 	with sync_playwright() as p:
-		browser = p.chromium.launch()
+		# E2E_BROWSER=webkit runs them in Safari's engine
+		browser = getattr(p, os.environ.get("E2E_BROWSER", "chromium")).launch()
 		yield browser
 		browser.close()
 
@@ -41,10 +43,12 @@ def browser():
 @pytest.fixture(scope="session")
 def app_page(browser, server):
 	# one page for all the tests: the app with storage consent, vi mode on and a saved document open
-	context = browser.new_context(viewport={"width": 1400, "height": 900}, permissions=["clipboard-read", "clipboard-write"])
+	# WebKit grants the clipboard without these permissions, and doesn't know them
+	permissions = [] if browser.browser_type.name == "webkit" else ["clipboard-read", "clipboard-write"]
+	context = browser.new_context(viewport={"width": 1400, "height": 900}, permissions=permissions)
 	page = context.new_page()
 	page.errors = []
-	page.on("pageerror", lambda e: page.errors.append(str(e)))
+	page.on("pageerror", lambda e: page.errors.append(str(e) + " @ " + (e.stack or "")))
 	page.goto(server)
 	page.evaluate("""() => {
 		localStorage.clear();

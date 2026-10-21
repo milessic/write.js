@@ -123,6 +123,10 @@ function insertOverTable(table, html){
 	// while inserting
 	const editor = table.closest(".editor");
 	editor.focus({preventScroll: true});
+	// Safari only edits a table laid out as one, not as the block that scrolls sideways (styles.css): laid out so
+	// before the selection is made
+	editor.classList.add("table-editing");
+	void table.offsetWidth;
 	const range = document.createRange();
 	range.setStartBefore(table);
 	let end = table;
@@ -139,6 +143,7 @@ function insertOverTable(table, html){
 	selection.removeAllRanges();
 	selection.addRange(range);
 	document.execCommand("insertHTML", false, html);
+	editor.classList.remove("table-editing");
 	hold?.remove();
 }
 

@@ -250,13 +250,18 @@ def test_vi_moves_inside_a_cell_first(page):
 	assert page.evaluate("[getSelection().focusNode.textContent, getSelection().focusOffset]") == ["ee", 1]
 
 
+def frames(page):
+	# the selected cells are drawn on the next frame
+	page.evaluate("new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+
+
 def select_cells(page, a, b):
 	page.evaluate("""([a, b]) => {
 		const cell = (text) => [...document.querySelectorAll("#editor td, #editor th")].find((c) => c.textContent === text).firstChild;
 		document.getElementById("editor").focus();
 		getSelection().setBaseAndExtent(cell(a), 0, cell(b), 1);
 	}""", [a, b])
-	page.wait_for_timeout(50)
+	frames(page)
 
 
 def selected(page):
@@ -264,11 +269,12 @@ def selected(page):
 
 
 def copy(page):
+	# what the copy put in the clipboard, read in the copy event (WebKit doesn't let a page read the clipboard)
+	page.evaluate("""() => window.addEventListener("copy", (e) => {
+		window.copied = [e.clipboardData.getData("text/plain"), e.clipboardData.getData("text/html")];
+	}, { once: true })""")
 	page.keyboard.press("Control+c")
-	return page.evaluate("""async () => {
-		const [item] = await navigator.clipboard.read();
-		return [await (await item.getType("text/plain")).text(), await (await item.getType("text/html")).text()];
-	}""")
+	return page.evaluate("window.copied")
 
 
 def test_selection_between_cells_is_a_rectangle(vi_insert):
@@ -279,7 +285,7 @@ def test_selection_between_cells_is_a_rectangle(vi_insert):
 	assert text == "| a | b |\n| --- | --- |\n| d | ee |\n| g | h |"
 	assert "<table><thead><tr><th>a</th><th>b</th></tr></thead>" in html
 	caret_in(vi_insert, "i")
-	vi_insert.wait_for_timeout(50)
+	frames(vi_insert)
 	assert selected(vi_insert) == 0
 
 
@@ -287,7 +293,7 @@ def test_shift_click_selects_rows_and_columns(vi_insert):
 	load(vi_insert, GRID)
 	vi_insert.click("#editor td:text-is('d')")
 	vi_insert.click("#editor td:text-is('f')", modifiers=["Shift"])
-	vi_insert.wait_for_timeout(50)
+	frames(vi_insert)
 	assert selected(vi_insert) == 3
 	assert copy(vi_insert)[0] == "|  |  |  |\n| --- | --- | --- |\n| d | ee | f |"
 
@@ -297,11 +303,11 @@ def test_ctrl_click_adds_and_removes_cells(vi_insert):
 	vi_insert.click("#editor th:text-is('a')")
 	vi_insert.click("#editor td:text-is('i')", modifiers=["Control"])
 	vi_insert.click("#editor td:text-is('ee')", modifiers=["Control"])
-	vi_insert.wait_for_timeout(50)
+	frames(vi_insert)
 	assert selected(vi_insert) == 3
 	assert copy(vi_insert)[0] == "| a |  |  |\n| --- | --- | --- |\n|  | ee |  |\n|  |  | i |"
 	vi_insert.click("#editor td:text-is('ee')", modifiers=["Control"])
-	vi_insert.wait_for_timeout(50)
+	frames(vi_insert)
 	assert selected(vi_insert) == 2
 
 
@@ -454,7 +460,7 @@ def test_twenty_rows_from_a_ctrl_click_selection(vi_insert):
 	load(vi_insert, "<table><tbody>" + "".join(f"<tr><td>r{i}</td></tr>" for i in range(20)) + "</tbody></table><div>x</div>")
 	vi_insert.click("#editor td:text-is('r0')")
 	vi_insert.click("#editor td:text-is('r19')", modifiers=["Shift"])
-	vi_insert.wait_for_timeout(50)
+	frames(vi_insert)
 	vi_insert.click("#editor td:text-is('r5')", button="right")
 	vi_insert.click("#context-menu button:text-is('Add 20 rows above')")
 	assert vi_insert.evaluate("document.querySelectorAll('#editor tr').length") == 40
