@@ -579,6 +579,7 @@ function fillEditorWithHTML(html, append=false){
 	moveListsOutOfItems(document.getElementById("editor"));
 	moveHeadingsOutOfLines(document.getElementById("editor"));
 	moveRulesOutOfLines(document.getElementById("editor"));
+	moveTablesOutOfLines(document.getElementById("editor")); // tables.js
 	removeInlineStyles(document.getElementById("editor"));
 	normalizeChecklists(document.getElementById("editor"));
 	document.getElementById("editor").closest(".pane-scroll").scrollTo(0, 1000);

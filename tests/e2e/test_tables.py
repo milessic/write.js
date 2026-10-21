@@ -469,3 +469,44 @@ def test_right_click_keeps_a_ctrl_click_selection(vi_insert):
 	assert labels(vi_insert)[:2] == ["Add 2 rows above", "Add 2 rows below"]
 	assert labels(vi_insert)[3] == "Add 2 columns left"
 	vi_insert.keyboard.press("Escape")
+
+
+T3 = "<table><tbody><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></tbody></table>"
+NEIGHBOURS = [
+	("<div>x</div>", "<div>y</div>"), ("<div>x</div>", "<div><br></div>"), ("<div><br></div>", "<div><br></div>"),
+	("", ""), ("<h2>x</h2>", "<ul><li>y</li></ul>"), ("<ul><li>x</li></ul>", "<div>y</div>"),
+	("<div>x</div>", "<pre>y</pre>"), ("<div>x</div>", "<h2>y</h2>"), ("<div>x</div>", "<ul><li>y</li></ul><div><br></div>"),
+]
+
+
+@pytest.mark.parametrize("before, after", NEIGHBOURS)
+def test_adding_rows_keeps_the_table_in_place(vi_insert, before, after):
+	html = before + T3 + after
+	load(vi_insert, html)
+	for _ in range(2):
+		select_cells(vi_insert, "a", "c")
+		vi_insert.click("#editor td:text-is('c')", button="right")
+		vi_insert.click("#context-menu button:text-is('Add 2 rows below')")
+	rows = "<tr><td><br></td><td><br></td></tr>" * 4
+	assert vi_insert.evaluate(HTML) == before + T3.replace("</tbody>", rows + "</tbody>") + after
+	undo(vi_insert)
+	undo(vi_insert)
+	assert vi_insert.evaluate(HTML) == html
+
+
+@pytest.mark.parametrize("before, after", NEIGHBOURS)
+def test_remove_table_leaves_one_empty_line(vi_insert, before, after):
+	html = before + T3 + after
+	load(vi_insert, html)
+	menu(vi_insert, "d", "Remove table")
+	vi_insert.keyboard.type("Z")
+	assert vi_insert.evaluate(HTML) == before + "<div>Z</div>" + after
+	undo(vi_insert)
+	undo(vi_insert)
+	assert vi_insert.evaluate(HTML) == html
+
+
+def test_loading_moves_wrapped_and_nested_tables_out(page):
+	inner = "<table><tbody><tr><td>i</td></tr></tbody></table>"
+	page.evaluate("(h) => fillEditorWithHTML(h)", f"<div>x</div><div>{T3}</div><table><tbody><tr><td>o{inner}</td></tr></tbody></table><div>y</div>")
+	assert page.evaluate(HTML) == f"<div>x</div>{T3}<table><tbody><tr><td>o</td></tr></tbody></table>{inner}<div>y</div>"

@@ -116,17 +116,50 @@ function revealCell(cell){
 	else if ( rect.right > box.right ) { table.scrollLeft += rect.right - box.right }
 }
 
-function replaceTable(table, model, row, column){
-	// insertHTML over the selected table: one step of the browser's undo
+function insertOverTable(table, html){
+	// insertHTML over the table: one step of the browser's undo. Chrome moves what it inserts into what follows: an
+	// empty line after the table would wrap it, a list after it take it in (or the empty line put there instead of
+	// it). So a list right after it is replaced with it, as it is, and the line after them holds a zero-width space
+	// while inserting
 	const editor = table.closest(".editor");
-	const index = [...editor.querySelectorAll("table")].indexOf(table);
 	editor.focus({preventScroll: true});
 	const range = document.createRange();
-	range.selectNode(table);
+	range.setStartBefore(table);
+	let end = table;
+	if ( table.nextElementSibling?.matches("ul, ol") ) {
+		end = table.nextElementSibling;
+		html += end.outerHTML;
+	}
+	range.setEndAfter(end);
+	const next = end.nextElementSibling;
+	const into = !next || next.nodeName === "HR" ? null
+		: next.matches("ul, ol") ? next.querySelector("li") : next.nodeName === "TABLE" ? next.querySelector("td, th") : next;
+	const hold = into ? into.insertBefore(document.createTextNode("\u200b"), into.firstChild) : null;
 	const selection = window.getSelection();
 	selection.removeAllRanges();
 	selection.addRange(range);
-	document.execCommand("insertHTML", false, tableHtml(model));
+	document.execCommand("insertHTML", false, html);
+	hold?.remove();
+}
+
+function moveTablesOutOfLines(editor){
+	// a table in a line (<div><table>…</table></div>) or in a cell of another table (both made by inserting over a
+	// table before insertOverTable) goes up to the editor's lines, the inner table after the outer one. Only for a
+	// loaded document, before any edit: nodes moved by hand would break the browser's undo
+	for ( const table of [...editor.querySelectorAll("td table, th table")].reverse() ) {
+		let outer = table.parentElement.closest("table");
+		while ( outer.parentElement.closest("td, th") ) { outer = outer.parentElement.closest("table") }
+		outer.after(table);
+	}
+	for ( const line of [...editor.children] ) {
+		if ( line.nodeName === "DIV" && line.querySelector(":scope > table") ) { splitLineIntoBlocks(line) }
+	}
+}
+
+function replaceTable(table, model, row, column){
+	const editor = table.closest(".editor");
+	const index = [...editor.querySelectorAll("table")].indexOf(table);
+	insertOverTable(table, tableHtml(model));
 	const replaced = editor.querySelectorAll("table")[index];
 	if ( replaced ) {
 		const rows = [...replaced.rows];
@@ -189,13 +222,11 @@ function addTableHeaderRow(cell){
 function removeTable(table){
 	// the table becomes an empty line, the caret on it
 	const editor = table.closest(".editor");
-	editor.focus({preventScroll: true});
-	const range = document.createRange();
-	range.selectNode(table);
-	const selection = window.getSelection();
-	selection.removeAllRanges();
-	selection.addRange(range);
-	document.execCommand("insertHTML", false, "<div><br></div>");
+	const before = table.previousElementSibling;
+	const parent = table.parentNode;
+	insertOverTable(table, "<div><br></div>");
+	const line = before ? before.nextElementSibling : parent.firstElementChild;
+	if ( line && editor.contains(line) ) { window.getSelection().collapse(line, 0) }
 	updateCaretPosition();
 	performAutoSave();
 }
