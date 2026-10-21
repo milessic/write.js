@@ -125,7 +125,8 @@ function openDocumentById(id){
 		informError("The linked document has not been found, it may have been deleted", "", "warning");
 		return false;
 	}
-	return loadDocumentFromLocalStorage(name);
+	// the document window shows only its document: another one opens in a window of its own (docwindow.js)
+	return isDocWindow ? openDocumentWindow(name) : loadDocumentFromLocalStorage(name);
 }
 
 function handleDocumentLinkClick(e){

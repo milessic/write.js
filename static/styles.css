@@ -278,6 +278,15 @@ body.app > .topbar {
 .toc-row.folded {
 	opacity: .55;
 }
+/* a top-level checklist item (Settings > Table of contents), its checkbox before it */
+.toc-task-box {
+	flex: none;
+	margin-right: .35rem;
+	color: var(--muted);
+}
+.toc-row.toc-task.checked .tree-label {
+	opacity: .6;
+}
 .toc-row.active {
 	background: color-mix(in srgb, var(--accent) 14%, transparent);
 	box-shadow: inset 2px 0 0 var(--accent);
@@ -1144,6 +1153,14 @@ body.show-line-numbers .line-numbers {
 	color: var(--ink);
 	opacity: .75;
 }
+/* a click on a number selects its line (linenumbers.js) */
+.line-numbers > span {
+	pointer-events: auto;
+	cursor: pointer;
+}
+.line-numbers > span:hover {
+	opacity: .9;
+}
 /* no hover on touch screens: the arrows are always there, faint */
 @media (hover: none) {
 	.heading-folding .editor > :is(h1, h2, h3, h4)::before {
@@ -1587,6 +1604,165 @@ body.focus-mode .focus-exit:is(:hover, :focus-visible) {
 /* the vi mode indicator moves left of the x */
 body.focus-mode:not(.apple-platform) .vi-bar {
 	margin-right: 2rem;
+}
+
+/* the document window (docwindow.js): focus mode that stays on; its x closes the window and isn't faded,
+   its menu is next to it and its table of contents opens over the side of the document away from them */
+.doc-window-menu,
+.doc-window-toc {
+	display: none;
+}
+body.doc-window .focus-exit {
+	opacity: .85;
+}
+body.doc-window .doc-window-menu {
+	display: block;
+	position: fixed;
+	top: 6px;
+	right: calc(6px + 2rem + 2px);
+	z-index: 4;
+}
+body.doc-window.apple-platform .doc-window-menu {
+	right: auto;
+	left: calc(6px + 2rem + 2px);
+}
+body.doc-window .doc-window-menu .focus-exit {
+	position: static;
+}
+body.doc-window .doc-window-menu .focus-exit:is(:hover, :focus-visible) {
+	color: var(--ink);
+	background: var(--surface-2);
+}
+#doc-window-menu-list {
+	display: none;
+	position: absolute;
+	right: 0;
+	top: calc(100% + .3rem);
+	max-height: 80vh;
+	overflow-y: auto;
+	white-space: nowrap;
+}
+body.apple-platform #doc-window-menu-list {
+	right: auto;
+	left: 0;
+}
+#doc-window-menu-list.menu-opened {
+	display: flex;
+}
+body.doc-window:not(.apple-platform) .vi-bar {
+	margin-right: calc(4rem + 2px);
+}
+body.doc-window-toc-open .doc-window-toc {
+	display: flex;
+	flex-direction: column;
+	gap: .4rem;
+	position: fixed;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	z-index: 5;
+	width: min(18rem, 85vw);
+	padding: .5rem;
+	background: var(--surface);
+	color: var(--ink);
+	border-right: 1px solid var(--line);
+	box-shadow: 0 0 24px rgba(0, 0, 0, .18);
+}
+body.apple-platform.doc-window-toc-open .doc-window-toc {
+	left: auto;
+	right: 0;
+	border-right: 0;
+	border-left: 1px solid var(--line);
+}
+/* wide enough: the document steps aside instead of being covered */
+@media (min-width: 1000px) {
+	body.doc-window-toc-open .editor-grid {
+		padding-left: min(18rem, 85vw);
+	}
+	body.apple-platform.doc-window-toc-open .editor-grid {
+		padding-left: 0;
+		padding-right: min(18rem, 85vw);
+	}
+}
+.doc-window-toc .file-tree-head {
+	cursor: default;
+}
+.doc-window-toc .toc-body {
+	display: block;
+}
+
+/* search in the document (search.js): a bar over the focused editor's top right corner, the matches highlighted */
+.find-bar {
+	position: fixed;
+	z-index: 6;
+	display: flex;
+	align-items: center;
+	gap: .25rem;
+	padding: .3rem;
+	background: var(--surface);
+	color: var(--ink);
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	box-shadow: 0 4px 16px rgba(0, 0, 0, .15);
+	max-width: calc(100vw - 32px);
+}
+.find-bar[hidden] {
+	display: none;
+}
+#find-input {
+	width: 14rem;
+	min-width: 6rem;
+	flex: 1 1 auto;
+}
+.find-bar.no-results #find-input {
+	outline: 1px solid var(--danger);
+}
+.find-count {
+	min-width: 3.5rem;
+	text-align: center;
+	white-space: nowrap;
+}
+#find-case[aria-pressed="true"] {
+	color: var(--accent);
+	box-shadow: inset 0 0 0 1px var(--accent);
+}
+::highlight(find-match) {
+	background-color: rgba(245, 196, 0, .35);
+}
+::highlight(find-current) {
+	background-color: #f5c400;
+	color: #000;
+}
+
+/* code blocks (codeblocks.js): a Copy button in the top right corner, in the editor's card outside the editor */
+.code-copy-layer {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+.code-copy {
+	position: absolute;
+	z-index: 1;
+	pointer-events: auto;
+	font-size: .75rem;
+	opacity: 0;
+	transition: opacity .15s;
+}
+.code-copy[hidden] {
+	display: none;
+}
+.code-copy.shown,
+.code-copy:focus-visible {
+	opacity: .75;
+}
+.code-copy:hover,
+.code-copy.copied {
+	opacity: 1;
+}
+@media (hover: none) {
+	.code-copy {
+		opacity: .5;
+	}
 }
 
 /* comments (comments.js): an icon in the margin right of a commented line, red while any comment is unresolved,

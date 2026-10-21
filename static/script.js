@@ -20,6 +20,10 @@ const tocHeadingsKey = "__tocHeadings__"; // the heading levels listed in the ta
 const viWrapNavigationKey = "__viWrapNavigation__"; // "0" when vi's j / k move by the lines of the text like Vim, not by the wrapped lines (Settings), goes with the notebook
 const viEscButtonKey = "__viEscButton__"; // "1" shows the vi Esc button on touch screens, this device only
 const viScriptUrl = document.currentScript?.dataset.viSrc || "static/vi.js"; // content-versioned by the server, see utils/static_files.py
+const docWindowParam = "window";
+// ?window={document id}: the document on its own, in a browser window (tab) of its own (docwindow.js)
+const docWindowId = new URLSearchParams(window.location.search).get(docWindowParam);
+const isDocWindow = Boolean(docWindowId);
 
 let autosaveEnabled = 0;
 let documentNames = [];
@@ -41,6 +45,8 @@ const softReturnText = `
 // Apple devices (iPadOS says it is a Mac) put window controls top-left: focus mode's x goes there (styles.css)
 document.body.classList.toggle("apple-platform",
 	/mac|iphone|ipad|ipod/i.test(navigator.userAgentData?.platform || navigator.platform || navigator.userAgent));
+// set before anything is drawn: the document window never shows the app around the document
+document.body.classList.toggle("doc-window", isDocWindow);
 
 let userConsent = localStorage.getItem(userConsentKey);
 
@@ -71,7 +77,7 @@ const documentNameObject = document.getElementById("doc-name");
 // set document onload
 window.addEventListener("load", function() { 
 	userConsentModal();
-	if ( userConsent ) { loadLastOpenedDocument();}
+	if ( userConsent ) { isDocWindow ? openDocWindow() : loadLastOpenedDocument() } // docwindow.js
 	applyViMode();
 	if ( wordCounterEnabled ){
 		handleWordCounter();
@@ -124,10 +130,13 @@ document.getElementById("save-btn").addEventListener("click", saveDocumentToLoca
 document.getElementById("open-btn").addEventListener("click", () => toggleFileTree());
 document.getElementById("open-doc-btn").addEventListener("click", () => showFileTree());
 document.getElementById("toc-btn").addEventListener("click", () => openTableOfContents()); // toc.js
+document.getElementById("find-btn").addEventListener("click", () => openFind()); // search.js
+document.getElementById("doc-window-btn").addEventListener("click", () => openDocumentWindow(getDocumentName())); // docwindow.js
 document.getElementById("import-doc-btn").addEventListener("click", importDocument);
 document.getElementById("toggle-format-btn").addEventListener("click", toggleFormattingBar);
 document.getElementById("focus-mode-btn").addEventListener("click", () => toggleFocusMode(true));
-document.getElementById("focus-exit-btn").addEventListener("click", () => toggleFocusMode(false));
+// the document window's x closes the window (docwindow.js)
+document.getElementById("focus-exit-btn").addEventListener("click", () => isDocWindow ? closeDocWindow() : toggleFocusMode(false));
 document.addEventListener("keydown", handleFocusModeEscape);
 // capture, and registered before vi.js loads: Esc closes the pop-ups before vi or anything else reads it
 document.addEventListener("keydown", handlePopupEscape, true);
@@ -136,6 +145,7 @@ document.getElementById("toggle-autosave-btn").addEventListener("click", toggleA
 document.getElementById("insert-or-append-html").addEventListener("click", createInsertHtmlModal);
 document.getElementById("insert-or-append-markdown").addEventListener("click", createInsertMarkdownModal);
 document.getElementById("generate-md").addEventListener("click", exportMarkdown);
+document.getElementById("export-btn-menu").addEventListener("click", exportDocument);
 document.getElementById("copy-md").addEventListener("click", copyMarkdown);
 document.getElementById("generate-pdf").addEventListener("click", generatePDF);
 document.getElementById("contact").addEventListener("click", () => createNotification("Thank you!", 'info'))
@@ -779,6 +789,7 @@ function closeAllPopups(){
 	const focusWasInPopup = popups.some((el) => el.contains(document.activeElement)) || document.activeElement === document.body;
 	closeAllModals();
 	if ( document.getElementById("menu").classList.contains("menu-opened") ) { toggleMenu() } // also brings back the word counter
+	if ( typeof closeDocWindowMenu !== "undefined" ) { closeDocWindowMenu() } // docwindow.js
 	document.querySelectorAll(".block-select-menu.menu-opened").forEach((menu) => {
 		menu.classList.remove("menu-opened");
 		menu.closest(".block-select")?.querySelector(".block-select-btn")?.setAttribute("aria-expanded", "false");
@@ -798,7 +809,8 @@ function handlePopupEscape(e){
 }
 
 function saveAsLastOpenedDocument(name=null){
-	if ( !validateUserConsent() ) { return }
+	// the document window leaves the app's last opened document as it is
+	if ( !validateUserConsent() || isDocWindow ) { return }
 	if ( name === null ) {
 		name = getDocumentName();
 	}
@@ -965,9 +977,10 @@ function toggleFocusMode(force){
 	// Settings > Focus mode: the focused document only, or every opened tab in its own editor (workspace.js)
 	const was = document.body.classList.contains("focus-mode");
 	const on = force ?? !was;
-	if ( on === was ) { return }
+	// the document window is always in focus mode, its x closes the window (docwindow.js)
+	if ( on === was || (isDocWindow && !on) ) { return }
 	if ( on ) {
-		document.body.classList.toggle("focus-editors", focusModeShowsEditors() && enterFocusEditors());
+		document.body.classList.toggle("focus-editors", !isDocWindow && focusModeShowsEditors() && enterFocusEditors());
 	} else {
 		leaveFocusEditors();
 		document.body.classList.remove("focus-editors");
@@ -1176,7 +1189,7 @@ function simulateEnter() {
 function isDeviceOnlyKey(key){
 	// state of this device that never goes to the cloud or a notebook backup
 	// (the workspace.js keys are looked up on call, that file loads after this one)
-	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viEscButtonKey, openedTabsKey, openedEditorsKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey].includes(key);
+	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viEscButtonKey, openedTabsKey, openedEditorsKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey].includes(key);
 }
 
 function getAllLocalStorageItems() {

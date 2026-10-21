@@ -557,6 +557,7 @@ function cloudSyncItem(className, label, depth, status){
 	return li;
 }
 
-setTimeout(() => { syncCloud({ onStart: true }) }, 1);
+// a document window (docwindow.js) leaves the sync on start to the app, it syncs what it saves
+if ( !isDocWindow ) { setTimeout(() => { syncCloud({ onStart: true }) }, 1) }
 window.addEventListener("online", renderCloudSyncModal);
 window.addEventListener("offline", renderCloudSyncModal);

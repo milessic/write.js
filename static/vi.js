@@ -123,6 +123,17 @@ window.WriteVi = {
 	setEscButton(show){
 		document.body.classList.toggle("vi-esc-enabled", show);
 	},
+	selectLines(editor, anchor, head){
+		// V-LINE from the line of anchor to the line of head ({node, offset}): a click on the line numbers (linenumbers.js)
+		if ( !enabled ) { return false }
+		closeCommandLine(false);
+		const model = textModel(editor);
+		visualAnchor = indexAt(model, anchor.node, anchor.offset) ?? 0;
+		visualHead = indexAt(model, head.node, head.offset) ?? visualAnchor;
+		setMode("vline");
+		renderVisual(editor);
+		return true;
+	},
 	get mode(){ return mode },
 };
 

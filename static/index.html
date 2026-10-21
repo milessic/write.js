@@ -40,6 +40,8 @@
 					<button role="menuitem" id="new-doc-btn">Create New Document</button>
 					<button role="menuitem" id="open-doc-btn">File Explorer</button>
 					<button role="menuitem" id="toc-btn">Table Of Contents</button>
+					<button role="menuitem" id="find-btn">Search in Document</button>
+					<button role="menuitem" id="doc-window-btn">Open in New Window</button>
 					<button role="menuitem" id="import-doc-btn">Import Document</button>
 					<hr>
 					{% if is_authenticated %}
@@ -167,6 +169,15 @@
 				</div>
 			</div>
 		</div>
+		<!-- search in the focused document: the menu or Ctrl+F / Cmd+F (search.js) -->
+		<div class="find-bar" id="find-bar" role="search" aria-label="Search in document" hidden>
+			<input type="search" id="find-input" placeholder="Search in document" aria-label="Search in document" autocomplete="off" spellcheck="false">
+			<span class="find-count muted small" id="find-count" aria-live="polite"></span>
+			<button class="small-btn" id="find-case" title="Match case" aria-label="Match case" aria-pressed="false">Aa</button>
+			<button class="small-btn" id="find-prev" title="Previous match (Shift+Enter)" aria-label="Previous match">↑</button>
+			<button class="small-btn" id="find-next" title="Next match (Enter)" aria-label="Next match">↓</button>
+			<button class="small-btn" id="find-close" title="Close (Esc)" aria-label="Close search">✕</button>
+		</div>
 		<!-- split view: up to 4 editors (workspace.js); the focused one's editor has id="editor" -->
 		<main class="editor-grid" id="editor-grid" data-count="1">
 			<div class="editor-pane focused" role="region" aria-label="Editor 1">
@@ -206,6 +217,28 @@
 	<!-- focus mode (script.js): only the text, the word count and a faint x to leave it -->
 	<span class="focus-word-counter muted small" id="focus-word-counter" aria-hidden="true"></span>
 	<button class="focus-exit" id="focus-exit-btn" title="Leave focus mode (Esc)" aria-label="Leave focus mode">✕</button>
+	<!-- the document window (docwindow.js): its menu next to the x, and its table of contents (toc.js) -->
+	<div class="doc-window-menu" id="doc-window-menu">
+		<button class="focus-exit doc-window-menu-btn" id="doc-window-menu-btn" title="Menu" aria-label="Menu" aria-haspopup="menu">☰</button>
+		<div class="menu" id="doc-window-menu-list" role="menu">
+			<button role="menuitem" data-action="toc">Show Table of Contents</button>
+			<button role="menuitem" data-action="find">Search in Document</button>
+			<hr>
+			<button role="menuitem" data-action="insert-html">Insert or Append HTML</button>
+			<button role="menuitem" data-action="insert-markdown">Insert or Append Markdown</button>
+			<hr>
+			<button role="menuitem" data-action="copy-md">Copy as Markdown</button>
+			<button role="menuitem" data-action="export">Export</button>
+			<button role="menuitem" data-action="export-md">Export as Markdown</button>
+		</div>
+	</div>
+	<aside class="doc-window-toc" id="doc-window-toc" aria-label="Table of contents">
+		<div class="file-tree-head">
+			<span class="file-tree-title">Contents</span>
+			<button class="small-btn" id="doc-window-toc-hide" title="Close the table of contents" aria-label="Close the table of contents">✕</button>
+		</div>
+		<nav class="toc-body" aria-label="Table of contents"><ol class="toc-list"></ol></nav>
+	</aside>
 	<div class="menu context-menu" id="context-menu" role="menu"></div>
 	<div id="notifications-container"></div>
 	<!--
@@ -222,6 +255,9 @@
     <script src="{{ static_url('linenumbers.js') }}"></script>
     <script src="{{ static_url('toc.js') }}"></script>
     <script src="{{ static_url('comments.js') }}"></script>
+    <script src="{{ static_url('codeblocks.js') }}"></script>
+    <script src="{{ static_url('search.js') }}"></script>
+    <script src="{{ static_url('docwindow.js') }}"></script>
 	{% if is_authenticated %}
     	<script src="{{ static_url('script3.js') }}"></script>
     	<script src="{{ static_url('cloudsync.js') }}"></script>

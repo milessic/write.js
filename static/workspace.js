@@ -13,6 +13,10 @@
  * Split view: up to 4 editor panes, each showing one opened tab. The focused pane's editor
  * carries id="editor" (and is editorObject), so the rest of the app works on it unchanged;
  * #doc-name shows the focused pane's document.
+ *
+ * Every opened document remembers where it was left, the editor's scroll and the caret, while it is opened and,
+ * when saved, across visits (docPositionsKey); closing its tab forgets it.
+ * The document window (docwindow.js) shows one document and keeps the app's tabs, editors and layout as they are.
  */
 const layoutKey = "__layout__";
 const openedTabsKey = "__openedTabs__";
@@ -27,6 +31,8 @@ const treeWidthMobileKey = "__treeWidthMobile__";
 // phones and tablets: a pinned tree stays open beside the editor, without the scrim, and can be resized;
 // device only as well (isDeviceOnlyKey)
 const treePinnedKey = "__treePinned__";
+// {documentName: {scroll, caret: {path, offset}}}: where each opened document was left, device only as well
+const docPositionsKey = "__docPositions__";
 const minTreeWidth = 160;
 // the pinned tree on phones and tablets can be narrower, it shares the screen with the editor
 const minTreeWidthMobile = minTreeWidth / 2;
@@ -89,6 +95,7 @@ let selectedDocuments = new Set();
 let selectionAnchor = null;
 let draggedFolder = null;
 let focusLayout = null; // focus mode with "Opened editors" (focusModeKey): the editors from before, shown again when leaving
+let positionsTimer = 0;
 
 const fileTreeList = document.getElementById("file-tree-list");
 const fileTreeSearch = document.getElementById("file-tree-search");
@@ -117,11 +124,22 @@ window.addEventListener("load", () => {
 	refreshFileTree(true);
 });
 window.addEventListener("beforeunload", (e) => {
-	// the focused document behaves as before; only warn about unsaved edits elsewhere
-	if ( tabs.some(t => t.dirty && t.id !== focusedPane.tabId) ) { e.preventDefault() }
+	// the focused document behaves as before; only warn about unsaved edits elsewhere. The document window has only
+	// its document, its x has already asked (docwindow.js)
+	if ( isDocWindow ? getActiveTab()?.dirty && !docWindowClosing : tabs.some(t => t.dirty && t.id !== focusedPane.tabId) ) { e.preventDefault() }
 });
-// documents changed in another browser tab
-window.addEventListener("storage", () => { refreshFileTree(); renderTabs() });
+window.addEventListener("pagehide", savePositions);
+// documents changed in another browser tab (a document window): tabs without unsaved edits show the new content
+window.addEventListener("storage", (e) => {
+	if ( e.key?.startsWith(docPrefix) && e.newValue !== null ) {
+		const name = e.key.slice(docPrefix.length);
+		if ( tabs.some(t => t.name === name && !t.dirty && paneOfTab(t) && splitDocumentId(e.newValue).html !== paneOfTab(t).editor.innerHTML) ) {
+			reloadDocumentTabs(name);
+		}
+	}
+	refreshFileTree();
+	renderTabs();
+});
 
 documentNameObject.addEventListener("input", () => {
 	const tab = getActiveTab();
@@ -204,7 +222,7 @@ function readJsonSetting(key){
 
 function saveLayout(){
 	applyLayout();
-	if ( validateUserConsent(false) ) { localStorage.setItem(layoutKey, JSON.stringify(layout)) }
+	if ( validateUserConsent(false) && !isDocWindow ) { localStorage.setItem(layoutKey, JSON.stringify(layout)) }
 }
 
 function applyLayout(){
@@ -326,14 +344,15 @@ function setTabsSide(side){
 }
 
 function saveOpenedTabs(){
-	if ( !validateUserConsent(false) ) { return }
+	if ( !validateUserConsent(false) || isDocWindow ) { return }
 	saveOpenedEditors();
 	const names = tabs.map(t => t.name).filter(name => name && documentExists(name));
 	localStorage.setItem(openedTabsKey, JSON.stringify([...new Set(names)]));
+	savePositions();
 }
 
 function saveOpenedEditors(){
-	if ( !validateUserConsent(false) ) { return }
+	if ( !validateUserConsent(false) || isDocWindow ) { return }
 	// in focus mode the editors from before are kept: the next visit doesn't start with every tab split
 	const shownTabIds = focusLayout ? focusLayout.tabIds : panes.map(p => p.tabId);
 	const names = shownTabIds.map(id => tabById(id)?.name || "");
@@ -343,6 +362,7 @@ function saveOpenedEditors(){
 
 function restoreEditors(){
 	// split editors of the last visit; untitled and deleted documents are left out
+	if ( isDocWindow ) { return }
 	const saved = readJsonSetting(openedEditorsKey);
 	const names = Array.isArray(saved.names) ? saved.names.slice(0, maxEditors) : [];
 	const focusedName = names[saved.focused];
@@ -357,7 +377,7 @@ function restoreEditors(){
 }
 
 function restoreOpenedTabs(){
-	if ( !validateUserConsent(false) ) { return }
+	if ( !validateUserConsent(false) || isDocWindow ) { return }
 	let names = [];
 	try {
 		names = JSON.parse(localStorage.getItem(openedTabsKey)) || [];
@@ -531,6 +551,7 @@ function treeDocumentItem(name, label, depth){
 		const count = names.length > 1 ? ` ${names.length} documents` : "";
 		openContextMenu(e, [
 			{ label: "Open" + count, action: () => names.forEach(openDocumentFromTree) },
+			{ label: "Open in new window" + (names.length > 1 ? "s" : ""), action: () => names.forEach(openDocumentWindow) },
 			{ label: "Duplicate" + count, action: () => duplicateDocuments(names) },
 			{ label: "Delete" + count, danger: true, action: () => names.length > 1 ? deleteDocuments(names) : deleteDocumentInLocalStorage(name) },
 			...(names.length > 1 ? [{ label: "Clear selection", action: clearDocumentSelection }] : []),
@@ -732,7 +753,9 @@ function paneOfTab(tab){
 function createTab(name, html=null, dirty=false){
 	// folder: where the document goes when it is first saved (or saved under a new name)
 	// savedName: the name the document is stored under, so a save under a new name renames it
+	// position: where the document was left (positions below)
 	const tab = { id: ++tabSeq, name, html, dirty, folder: name ? folderOfDocument(name) : "", savedName: name && documentExists(name) ? name : "" };
+	tab.position = tab.savedName ? readJsonSetting(docPositionsKey)[tab.savedName] || null : null;
 	const activeIndex = tabs.indexOf(getActiveTab());
 	activeIndex === -1 ? tabs.push(tab) : tabs.splice(activeIndex + 1, 0, tab);
 	return tab;
@@ -779,6 +802,8 @@ function openNewTab(name="", html="", dirty=false){
 
 function closeTab(id){
 	const tab = tabById(id);
+	// vi's :q in the document window closes the window (docwindow.js)
+	if ( tab && isDocWindow ) { closeDocWindow(); return }
 	if ( !tab || focusEditorsLocked() ) { return }
 	if ( tab.dirty && !showConfirm(`'${tab.name || untitledTabLabel}' has unsaved changes. Close it anyway?`) ) { return }
 	const pane = paneOfTab(tab);
@@ -822,7 +847,8 @@ function reloadDocumentTabs(name, discardUnsaved=false){
 		tab.dirty = false;
 		tab.html = null;
 		const pane = paneOfTab(tab);
-		if ( pane ) { loadPane(pane) }
+		// the new content opens where the old one was left
+		if ( pane ) { rememberPanePosition(pane); loadPane(pane) }
 	}
 	if ( reloaded.length ) { renderTabs() }
 }
@@ -1001,6 +1027,7 @@ function renderTabs(){
 			{ label: "Close", action: () => closeTab(tab.id) },
 			{ label: "Close others", action: () => closeOtherTabs(tab.id), disabled: tabs.length < 2 },
 			{ label: "Open to the side", action: () => splitEditor(tab), disabled: Boolean(pane) || panes.length >= maxEditors },
+			{ label: "Open in new window", action: () => openDocumentWindow(tab.name), disabled: !tab.name || !documentExists(tab.name) },
 			{ label: "Duplicate", action: () => duplicateDocuments([tab.name]), disabled: !tab.name || !documentExists(tab.name) },
 			null,
 			...tabsPanelMenuItems(),
@@ -1144,6 +1171,7 @@ function stashPane(pane){
 	// keep the editor's content only if it is unsaved; saved documents reload from localStorage
 	const tab = tabById(pane.tabId);
 	if ( tab ) { tab.html = tab.dirty ? pane.editor.innerHTML : null }
+	rememberPanePosition(pane);
 }
 
 function loadPane(pane){
@@ -1163,6 +1191,7 @@ function loadPane(pane){
 	removeInlineStyles(pane.editor);
 	if ( typeof normalizeChecklists !== "undefined" ) { normalizeChecklists(pane.editor) } // checklist.js loads after this file
 	if ( typeof applyHeadingFolds !== "undefined" ) { applyHeadingFolds(pane.editor); normalizeListFolds(pane.editor) } // folding.js loads after this file
+	restorePanePosition(pane);
 }
 
 function setPaneTab(pane, tab){
@@ -1237,6 +1266,11 @@ function closePane(pane){
 // focus mode with "Opened editors": every opened tab in its own editor (up to maxEditors), reordered by dragging
 // an editor's name onto another; documents are opened and closed after leaving
 function focusEditorsLocked(){
+	// the document window shows only its document, once it is opened (docwindow.js)
+	if ( isDocWindow && docWindowTab ) {
+		createNotification("This window shows only this document", "warning");
+		return true;
+	}
 	if ( !focusLayout ) { return false }
 	createNotification("Leave focus mode to open or close documents", "warning");
 	return true;
@@ -1296,6 +1330,86 @@ function renderPanes(){
 		pane.el.setAttribute("aria-label", `Editor ${i + 1}` + (isFocused ? " (focused)" : ""));
 	});
 }
+
+
+// positions: where each opened document was left; the caret is kept by its node's path in the editor, the document
+// opens as it was saved, so the path leads back to the same place
+function nodePath(root, node){
+	const path = [];
+	for ( ; node !== root; node = node.parentNode ) {
+		if ( !node?.parentNode ) { return null }
+		path.unshift([...node.parentNode.childNodes].indexOf(node));
+	}
+	return path;
+}
+
+function nodeAtPath(root, path){
+	let node = root;
+	for ( const i of path || [] ) { node = node?.childNodes[i] }
+	return node || null;
+}
+
+function paneOfEditor(editor){
+	return panes.find(p => p.editor === editor);
+}
+
+function rememberPanePosition(pane){
+	// the editor's scroll; the caret if it is in the editor, else where it was last seen there (rememberCaret)
+	const tab = tabById(pane.tabId);
+	if ( !tab ) { return }
+	tab.position = { scroll: pane.el.querySelector(".pane-scroll").scrollTop, caret: tab.position?.caret || null };
+	rememberCaret(pane);
+	schedulePositions();
+}
+
+function rememberCaret(pane){
+	const tab = tabById(pane.tabId);
+	const selection = window.getSelection();
+	if ( !tab || !selection.rangeCount || !pane.editor.contains(selection.focusNode) ) { return }
+	const path = nodePath(pane.editor, selection.focusNode);
+	if ( !path ) { return }
+	tab.position = { scroll: tab.position?.scroll ?? 0, caret: { path, offset: selection.focusOffset } };
+	schedulePositions();
+}
+
+function restorePanePosition(pane){
+	// the scroll goes back, and the caret in the focused editor; the focus stays where it is (the tree, a tab)
+	const tab = tabById(pane.tabId);
+	const position = tab?.position;
+	if ( !position ) { return }
+	pane.el.querySelector(".pane-scroll").scrollTop = position.scroll || 0;
+	const node = pane === focusedPane && position.caret ? nodeAtPath(pane.editor, position.caret.path) : null;
+	if ( !node ) { return }
+	const range = document.createRange();
+	range.setStart(node, Math.min(position.caret.offset, node.nodeType === Node.TEXT_NODE ? node.data.length : node.childNodes.length));
+	range.collapse(true);
+	lastEditorRange = range.cloneRange();
+	const selection = window.getSelection();
+	selection.removeAllRanges();
+	selection.addRange(range);
+}
+
+function schedulePositions(){
+	clearTimeout(positionsTimer);
+	positionsTimer = setTimeout(savePositions, 500);
+}
+
+function savePositions(){
+	// the positions of the opened saved documents: a closed one is left out, so it is forgotten. The document window
+	// keeps its own only while it is open
+	clearTimeout(positionsTimer);
+	if ( !validateUserConsent(false) || isDocWindow ) { return }
+	tabs.forEach(t => { const pane = paneOfTab(t); if ( pane ) { t.position = { scroll: pane.el.querySelector(".pane-scroll").scrollTop, caret: t.position?.caret || null } } });
+	const positions = Object.fromEntries(tabs.filter(t => t.savedName && t.position).map(t => [t.savedName, t.position]));
+	localStorage.setItem(docPositionsKey, JSON.stringify(positions));
+}
+
+document.addEventListener("selectionchange", () => {
+	const selection = window.getSelection();
+	const pane = selection.rangeCount && paneOfEditor(selection.focusNode?.parentElement?.closest(".editor") || selection.focusNode);
+	if ( pane ) { rememberCaret(pane) }
+});
+document.addEventListener("scroll", (e) => { if ( e.target.classList?.contains("pane-scroll") ) { schedulePositions() } }, true);
 
 
 // folders
