@@ -118,7 +118,7 @@ function scheduleCodeCopy(){
 // the buttons follow the blocks: edits, documents opened, folds, split editors, wrapping when the width changes
 const codeCopyResizeObserver = new ResizeObserver(scheduleCodeCopy);
 // not for the margins drawn around the editors (these buttons, the line numbers, the comments)
-const editorMargins = ".code-copy-layer, .line-numbers, .line-comments";
+const editorMargins = ".code-copy-layer, .line-numbers, .line-comments, .table-selection-layer";
 new MutationObserver((records) => {
 	if ( records.some((r) => !r.target.closest?.(editorMargins) && !r.target.parentElement?.closest(editorMargins)) ) { scheduleCodeCopy() }
 }).observe(document.getElementById("editor-grid"), {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class", "data-collapsed"]});

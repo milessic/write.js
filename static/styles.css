@@ -1366,6 +1366,48 @@ body.show-line-numbers .line-numbers {
 	overflow: auto;
 	page-break-inside: avoid;
 }
+/* tables (tables.js): bordered cells, the header row bold on a darker background. A table too wide for the editor,
+   even with its text wrapped, scrolls sideways (display: block keeps the cells in a table of their own inside it) */
+:where(.editor, #content, .compare-view) table {
+	display: block;
+	width: fit-content;
+	max-width: 100%;
+	overflow-x: auto;
+	border-collapse: collapse;
+	margin-top: .3rem;
+	page-break-inside: avoid;
+}
+:where(.editor, #content, .compare-view) :is(td, th) {
+	border: 1px solid var(--line-strong);
+	padding: .25em .6em;
+	min-width: 4em;
+	vertical-align: top;
+	text-align: left;
+}
+:where(.editor, #content, .compare-view) th {
+	font-weight: 700;
+	background: color-mix(in srgb, var(--ink) 8%, var(--surface));
+}
+/* selected cells: boxes over them, drawn outside the document; the browser's highlight of their text goes */
+.table-selection-layer {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+.table-selection-cell {
+	position: absolute;
+	background: color-mix(in srgb, var(--accent) 18%, transparent);
+	outline: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+	outline-offset: -1px;
+}
+.editor.table-cells-selected :is(td, th) ::selection,
+.editor.table-cells-selected :is(td, th)::selection {
+	background: transparent;
+	color: var(--ink);
+}
+.insert-table input[type="number"] {
+	max-width: 8rem;
+}
 
 /* modals: <dialog class="modal-container"> opened with show(); #overlay is the backdrop,
    so notifications can still show above it */

@@ -1286,6 +1286,13 @@ function openEmptyLine(editor, model, i, above){
 	const insertParagraph = () => typeof withNewTaskItemsUnchecked === "function"
 		? withNewTaskItemsUnchecked(editor, () => exec("insertParagraph"))
 		: exec("insertParagraph");
+	// in a table the whole table is the line: an empty text line goes right before or after it
+	const cell = elementOf(positionAt(model, i).node)?.closest("td, th");
+	if ( cell && editor.contains(cell) ) {
+		openLineByTable(editor, cell.closest("table"), above);
+		rememberSelection();
+		return
+	}
 	const start = lineStart(text, i);
 	const next = above ? start : lineEnd(text, i) + 1; // the line the new one goes before (past the text: none)
 	const prev = next - 1;                            // the end of the line it goes after (-1: none)
@@ -1308,6 +1315,25 @@ function openEmptyLine(editor, model, i, above){
 		window.getSelection().collapse(line, 0);
 	}
 	rememberSelection();
+}
+
+function openLineByTable(editor, table, above){
+	// not by Enter in the line next to it, which would make a heading, a list item or a code line of it: an empty
+	// line inserted between the editor's lines (one undo), by hand where the browser puts it into a list
+	let block = table;
+	while ( block.parentElement !== editor ) { block = block.parentElement }
+	const at = [...editor.childNodes].indexOf(block) + (above ? 0 : 1);
+	const selection = window.getSelection();
+	selection.collapse(editor, at);
+	exec("insertHTML", "<div><br></div>");
+	let line = above ? block.previousElementSibling : block.nextElementSibling;
+	if ( line?.nodeName !== "DIV" || line.textContent !== "" || line.querySelector(":not(br)") ) {
+		exec("undo");
+		line = document.createElement("div");
+		line.appendChild(document.createElement("br"));
+		above ? block.before(line) : block.after(line);
+	}
+	selection.collapse(line, 0);
 }
 
 function restoreRules(editor){
@@ -1625,7 +1651,68 @@ function wrappedLineEnd(model, i){
 	return end;
 }
 
+// in a table h j k l and the arrows go from cell to cell: past its top or left edge to the line before the table,
+// past its bottom or right edge to the line after it
+const tableMotions = {h: "left", ArrowLeft: "left", l: "right", ArrowRight: "right", k: "up", ArrowUp: "up", j: "down", ArrowDown: "down"};
+
+function cellSpan(model, cell){
+	// [start, end] of the cell's text in the model
+	const own = model.segments.filter((segment) => cell.contains(segment.node));
+	return own.length ? [own[0].start, own.at(-1).start + own.at(-1).length] : null;
+}
+
+function tableMotionTarget(model, i, key){
+	// the index one step takes the cursor to; undefined outside a table or when it moves inside the cell
+	const direction = tableMotions[key];
+	const node = direction && positionAt(model, i).node;
+	const cell = node && elementOf(node)?.closest("td, th");
+	if ( !cell || !model.editor.contains(cell) ) { return undefined }
+	const span = cellSpan(model, cell);
+	if ( !span ) { return undefined }
+	const text = model.text;
+	const [start, end] = span;
+	if ( direction === "left" && i > start ) { return undefined }
+	if ( direction === "right" && i < end - 1 ) { return undefined }
+	if ( direction === "up" && lineNumber(text, i) > lineNumber(text, start) ) { return undefined }
+	if ( direction === "down" && lineNumber(text, i) < lineNumber(text, end) ) { return undefined }
+	const table = cell.closest("table");
+	const rows = [...table.rows].filter((tr) => tr.closest("table") === table);
+	const row = rows.indexOf(cell.parentElement);
+	const column = [...cell.parentElement.cells].indexOf(cell);
+	const step = { left: [0, -1], right: [0, 1], up: [-1, 0], down: [1, 0] }[direction];
+	const next = rows[row + step[0]]?.cells[column + step[1]];
+	if ( next ) {
+		const [nextStart, nextEnd] = cellSpan(model, next) || [];
+		if ( nextStart === undefined ) { return null }
+		return direction === "left" ? Math.max(nextStart, nextEnd - 1) : nextStart;
+	}
+	// out of the table
+	const cells = [...table.querySelectorAll("td, th")].map((c) => cellSpan(model, c)).filter(Boolean);
+	if ( !cells.length ) { return null }
+	if ( direction === "left" || direction === "up" ) {
+		const line = lineNumber(text, cells[0][0]) - 1;
+		return line < 0 ? null : firstNonBlank(text, lineStartOfNumber(text, line));
+	}
+	const line = lineNumber(text, cells.at(-1)[1]) + 1;
+	return line >= lineCount(text) ? null : firstNonBlank(text, lineStartOfNumber(text, line));
+}
+
 function moveCaret(editor, model, i, motion, count){
+	if ( tableMotions[motion.key] && tableMotionTarget(model, i, motion.key) !== undefined ) {
+		// step by step: the steps inside a cell move like the keys do anywhere
+		let index = i;
+		for ( let n = 0; n < (count || 1); n++ ) {
+			const target = tableMotionTarget(model, index, motion.key);
+			if ( target === null ) { break }
+			if ( target === undefined ) { index = evalMotion(editor, model, index, motion, 1, true)?.index ?? index; continue }
+			index = target;
+		}
+		setCaret(model, index);
+		// a wide table scrolls sideways to the cell (tables.js)
+		revealCell(elementOf(positionAt(model, index).node)?.closest("td, th"));
+		scrollCaret(editor);
+		return
+	}
 	const browser = !byTextLines(motion.key) && browserMotions[motion.key];
 	if ( browser ) {
 		// exactly like the arrow keys: wrapped lines, the remembered column, crossing to the next line
@@ -2297,6 +2384,7 @@ const exCommands = [
 	[["split", "vsplit", "vsp", "new", "vnew"], "split the editor"],
 	[["tree", "FileExplorer"], "show the documents and go to them"],
 	[["toc", "TableOfContents"], "show the table of contents and go to it"],
+	[["table"], "add a table: :table columns rows headers", true],
 	[["focus"], "focus mode on / off"],
 	[["lines"], "line numbers on / off"],
 	[["nohlsearch", "noh"], "hide the search highlight"],
@@ -2487,6 +2575,16 @@ function runExCommand(editor, value, visual){
 		// shows the table of contents and goes to it (toc.js): j / k, Enter goes to the heading, Esc back
 		openTableOfContents(true);
 		return;
+	case "table": {
+		// :table columns rows [headers] adds the table at the cursor, :table alone opens the widget (tables.js)
+		const options = tableCommandOptions(args.filter(Boolean));
+		if ( typeof options === "string" ) { showMessage(options, "error"); return }
+		if ( !options.columns || !options.rows ) { createInsertTableModal(options); return }
+		// under the cursor's line, not splitting it
+		setCaret(model, lineEnd(text, i));
+		insertTable(options.columns, options.rows, options.headers ?? true);
+		return;
+	}
 	case "f": case "focus":
 		toggleFocusMode();
 		return;
@@ -2954,6 +3052,7 @@ const helpSections = [
 	]],
 	["Moving (with a count: 3j, 2w)", [
 		["h j k l, arrows", "like the arrow keys: j / k follow wrapped lines (lines of the text with Word-wrap navigation off in Settings)"],
+		["h j k l, arrows in a table", "from cell to cell; past the top or left edge to the line before the table, past the bottom or right edge to the line after it"],
 		["gj gk", "down / up a wrapped line"],
 		["w b e ge, W B E gE", "words, WORDS (separated by spaces only)"],
 		["0 ^ $ g_", "line start, first character, line end, last character"],
@@ -3020,6 +3119,7 @@ const helpSections = [
 		[":h0 :h1 :h2 :h3 :h4", "text, heading 1 to 4 (on the selected lines from VISUAL)"],
 		[":tree :FileExplorer", "show the documents and go to them (TREE)"],
 		[":toc :TableOfContents", "show the table of contents and go to it: j / k, Enter goes to the heading, Esc back"],
+		[":table 3 2 :table 3 2 no", "add a table: columns, rows, headers (true / false, yes / no, 1 / 0); :table alone opens the widget"],
 		[":lines", "line numbers on / off"],
 		[":f :focus", "focus mode on / off: only the text; Esc Esc in NORMAL or the faint x leaves it"],
 		[":h :help", "this help"],

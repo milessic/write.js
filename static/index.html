@@ -149,6 +149,7 @@
 				<span class="toolbar-sep desktop-btn" aria-hidden="true"></span>
 				<button id="tb-btn-hr" class="small-btn desktop-btn" title="Horizontal rule" aria-label="Horizontal rule">---</button>
 				<button id="tb-btn-code" class="small-btn desktop-btn" title="Code block" aria-label="Code block">code</button>
+				<button id="tb-btn-table" class="small-btn desktop-btn" title="Table (with the caret in one: its options)" aria-label="Table">Table</button>
 				<span class="toolbar-sep" aria-hidden="true"></span>
 				<button id="tb-btn-bold" class="small-btn" title="Bold" aria-label="Bold"><b>B</b></button>
 				<button id="tb-btn-italic" class="small-btn" title="Italic" aria-label="Italic"><i>I</i></button>
@@ -161,6 +162,7 @@
 					<div class="menu block-select-menu" role="menu" aria-label="More">
 						<button role="menuitem" data-block="hr">Horizontal rule (---)</button>
 						<button role="menuitem" data-block="code">Code block</button>
+						<button role="menuitem" data-block="table">Table</button>
 						<button role="menuitem" data-block="a">Insert Link</button>
 						<hr>
 						<button role="menuitem" data-block="softreturn">Soft Return</button>
@@ -256,6 +258,7 @@
     <script src="{{ static_url('toc.js') }}"></script>
     <script src="{{ static_url('comments.js') }}"></script>
     <script src="{{ static_url('codeblocks.js') }}"></script>
+    <script src="{{ static_url('tables.js') }}"></script>
     <script src="{{ static_url('search.js') }}"></script>
     <script src="{{ static_url('docwindow.js') }}"></script>
 	{% if is_authenticated %}

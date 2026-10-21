@@ -17,6 +17,7 @@ const listFoldingKey = "__listFolding__"; // "0" when collapsing list items with
 const autoCheckParentsKey = "__autoCheckParents__"; // "0" when a checklist item isn't checked with all its nested items (Settings, checklist.js), goes with the notebook
 const lineNumbersKey = "__lineNumbers__"; // "1" when the line numbers show left of the text (Settings, linenumbers.js), goes with the notebook
 const tocHeadingsKey = "__tocHeadings__"; // the heading levels listed in the table of contents, e.g. [1, 2] (Settings, toc.js), goes with the notebook
+const tableCopyKey = "__tableCopy__"; // "html" when a copied table's text is its HTML, else Markdown (Settings, tables.js), goes with the notebook
 const viWrapNavigationKey = "__viWrapNavigation__"; // "0" when vi's j / k move by the lines of the text like Vim, not by the wrapped lines (Settings), goes with the notebook
 const viEscButtonKey = "__viEscButton__"; // "1" shows the vi Esc button on touch screens, this device only
 const viScriptUrl = document.currentScript?.dataset.viSrc || "static/vi.js"; // content-versioned by the server, see utils/static_files.py
@@ -182,6 +183,10 @@ function formatText(command) {
 		moveRulesOutOfLines(document.getElementById("editor"));
     } else if (command === "code") {
         document.execCommand("formatBlock", false, "pre");
+    } else if (command === "table") {
+		// the widget or the table's menu keep the focus (tables.js)
+		openTableTool();
+		return
     } else if (command === "inline-code") {
         document.execCommand("formatBlock", false, "code");
     } else if (command === "a"){
@@ -411,6 +416,10 @@ function createSettingsModal(){
 	<div class="stack">
 		${listFoldingSettingsHtml()}
 		${autoCheckParentsSettingsHtml()}
+	</div>
+	<h3>Tables</h3>
+	<div class="stack">
+		${tableSettingsHtml()}
 	</div>` + autoDetectSettingsHtml());
 	if ( typeof initCloudSyncSettings !== "undefined" ) { initCloudSyncSettings() }
 	initLineNumbersSettings();
@@ -418,6 +427,7 @@ function createSettingsModal(){
 	initHeadingFoldingSettings();
 	initListFoldingSettings();
 	initAutoCheckParentsSettings();
+	initTableSettings();
 	initAutoDetectSettings();
 	document.querySelectorAll('input[name="setting-focus-mode"]').forEach((input) => input.addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
@@ -831,8 +841,8 @@ function loadLastOpenedDocument(){
 
 function markdownToHtml(markdown) {
 	// a line break in the Markdown is a line in the document, as typed
-	const converter = new showdown.Converter({ tasklists: true, simpleLineBreaks: true, noHeaderId: true });
-	return sanitizeStyles(markdownTaskItemsToChecklist(converter.makeHtml(markdown)));
+	const converter = new showdown.Converter({ tasklists: true, simpleLineBreaks: true, noHeaderId: true, tables: true });
+	return sanitizeStyles(markdownTaskItemsToChecklist(converter.makeHtml(widenMarkdownTableSeparators(markdown)))); // tables.js
 }
 
 const sanitizedRenames = { STRONG: "b", EM: "i", H5: "h4", H6: "h4" };
@@ -887,6 +897,12 @@ function sanitizeStyles(html){
 		}
 	}
 	moveListsOutOfItems(root);
+	// tables as the editor makes them (tables.js)
+	for ( const table of [...root.querySelectorAll("table")].filter((t) => !t.parentElement?.closest("table")) ) {
+		const clean = document.createElement("template");
+		clean.innerHTML = normalizedTableHtml(table);
+		table.replaceWith(clean.content);
+	}
 	if ( headingBreaksEnabled() ) {
 		for ( const heading of root.querySelectorAll("h1, h2, h3, h4") ) {
 			if ( heading.nextElementSibling?.tagName === "HR" ) { continue }
@@ -1049,8 +1065,7 @@ function createNewDocument(){
 	}
 }
 
-function getContentAsMarkdown(){
-	let content = getDocumentText();
+function getContentAsMarkdown(content = getDocumentText()){
 	const parser = new DOMParser();
     const doc = parser.parseFromString(content, "text/html");
 
@@ -1111,6 +1126,9 @@ function getContentAsMarkdown(){
                     case "ul":
                         markdown += listToMarkdown(child, 0);
                         break;
+                    case "table":
+                        markdown += tableToMarkdown(child, markdown);
+                        break;
                     case "li":
                         markdown += traverse(child) + "\n";
                         break;
@@ -1130,6 +1148,20 @@ function getContentAsMarkdown(){
         }
 
         return markdown;
+    }
+
+    function tableToMarkdown(table, before) {
+        // a blank line around it; Markdown needs a header row: an empty one for a table without headers
+        const rows = [...table.rows].filter(tr => tr.closest("table") === table);
+        if (!rows.length) { return "" }
+        const cell = (c) => traverse(c).replace(/\n+$/, "").replace(/\n/g, "<br>").replace(/\|/g, "\\|").trim();
+        const line = (cells) => `| ${cells.join(" | ")} |\n`;
+        const columns = Math.max(...rows.map(tr => tr.cells.length));
+        const fit = (cells) => [...cells, ...Array(columns - cells.length).fill("")];
+        const hasHead = rows[0].parentElement.tagName === "THEAD" || [...rows[0].cells].every(c => c.tagName === "TH");
+        const head = hasHead ? fit([...rows.shift().cells].map(cell)) : Array(columns).fill("");
+        const gap = before && !before.endsWith("\n\n") ? (before.endsWith("\n") ? "\n" : "\n\n") : "";
+        return gap + line(head) + line(Array(columns).fill("---")) + rows.map(tr => line(fit([...tr.cells].map(cell)))).join("") + "\n";
     }
 
     function listToMarkdown(list, depth) {
@@ -1692,7 +1724,8 @@ function adjustSelectionRange(n) {
 }
 
 function changeTabBehavior(e){
-	if ( e.key === "Tab" ){
+	// in a table, Tab moves between the cells (tables.js)
+	if ( e.key === "Tab" && !e.defaultPrevented ){
 		e.preventDefault();
 		e.shiftKey ? removeTab() : insertTab();
     }
@@ -2084,7 +2117,8 @@ function restoreEditorSelection(){
 	const selection = window.getSelection();
 	if ( selection.rangeCount && editor.contains(selection.anchorNode) ) { return }
 	if ( lastEditorRange && editor.contains(lastEditorRange.commonAncestorContainer) ){
-		editor.focus();
+		// focusing the editor scrolls to its top: the caret's place is where the view stays
+		editor.focus({preventScroll: true});
 		selection.removeAllRanges();
 		selection.addRange(lastEditorRange);
 	}
