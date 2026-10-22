@@ -119,6 +119,14 @@ function insertDocumentLink(name, text){
 	return true;
 }
 
+function withoutDocumentLinks(html){
+	// an exported document is read outside of the app, where its links to other documents lead nowhere: their text stays
+	const template = document.createElement("template");
+	template.innerHTML = html;
+	template.content.querySelectorAll("a[data-doc-id]").forEach((link) => link.replaceWith(...link.childNodes));
+	return template.innerHTML;
+}
+
 function openDocumentById(id){
 	const name = documentNameById(id);
 	if ( name === null ) {

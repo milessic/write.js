@@ -516,3 +516,62 @@ def test_loading_moves_wrapped_and_nested_tables_out(page):
 	inner = "<table><tbody><tr><td>i</td></tr></tbody></table>"
 	page.evaluate("(h) => fillEditorWithHTML(h)", f"<div>x</div><div>{T3}</div><table><tbody><tr><td>o{inner}</td></tr></tbody></table><div>y</div>")
 	assert page.evaluate(HTML) == f"<div>x</div>{T3}<table><tbody><tr><td>o</td></tr></tbody></table>{inner}<div>y</div>"
+
+
+ROWS = ('<table><thead><tr><th>h</th></tr></thead><tbody><tr><td>r1</td></tr><tr><td>r2</td></tr>'
+	'<tr><td>r3</td></tr><tr><td>r4</td></tr></tbody></table><div>x</div>')
+ORDER = "[...document.querySelectorAll('#editor tr')].map((r) => r.textContent)"
+
+
+@pytest.mark.parametrize("key", ["ArrowUp", "k"])
+def test_cmd_ctrl_moves_the_row_up(vi_insert, key):
+	load(vi_insert, ROWS)
+	caret_in(vi_insert, "r3")
+	vi_insert.keyboard.press(f"Meta+Control+{key}")
+	assert vi_insert.evaluate(ORDER) == ["h", "r1", "r3", "r2", "r4"]
+	vi_insert.keyboard.press(f"Meta+Control+{key}")
+	vi_insert.keyboard.press(f"Meta+Control+{key}")
+	# not above the header row
+	assert vi_insert.evaluate(ORDER) == ["h", "r3", "r1", "r2", "r4"]
+	vi_insert.keyboard.type("!")
+	assert vi_insert.evaluate(ORDER) == ["h", "r3!", "r1", "r2", "r4"]
+
+
+@pytest.mark.parametrize("key", ["ArrowDown", "j"])
+def test_cmd_ctrl_moves_the_selected_rows_down(vi_insert, key):
+	load(vi_insert, ROWS)
+	select_cells(vi_insert, "r1", "r2")
+	vi_insert.keyboard.press(f"Meta+Control+{key}")
+	assert vi_insert.evaluate(ORDER) == ["h", "r3", "r1", "r2", "r4"]
+	vi_insert.keyboard.press(f"Meta+Control+{key}")
+	vi_insert.keyboard.press(f"Meta+Control+{key}")
+	assert vi_insert.evaluate(ORDER) == ["h", "r3", "r4", "r1", "r2"]
+	frames(vi_insert)
+	assert selected(vi_insert) == 2
+
+
+def test_cmd_ctrl_in_normal_mode(page):
+	load(page, ROWS)
+	normal_in(page, "r2")
+	page.keyboard.press("Meta+Control+j")
+	assert page.evaluate(ORDER) == ["h", "r1", "r3", "r2", "r4"]
+
+
+CONTEXT_MENU = """([text, pointerType, select]) => {
+	const cell = [...document.querySelectorAll("#editor td, #editor th")].find((c) => c.textContent === text);
+	cell.closest(".editor").focus();
+	cell.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType }));
+	select ? getSelection().setBaseAndExtent(cell.firstChild, 0, cell.firstChild, 1) : getSelection().collapse(cell.firstChild, 0);
+	const rect = cell.getBoundingClientRect();
+	const e = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: rect.left + 2, clientY: rect.top + 2 });
+	cell.dispatchEvent(e);
+	return e.defaultPrevented;
+}"""
+
+
+@pytest.mark.parametrize("pointer, select, ours", [("touch", True, False), ("touch", False, True), ("mouse", True, True)])
+def test_long_press_on_selected_text_keeps_the_systems_menu(vi_insert, pointer, select, ours):
+	load(vi_insert, TABLE)
+	assert vi_insert.evaluate(CONTEXT_MENU, ["x", pointer, select]) is ours
+	vi_insert.keyboard.press("Escape")
+	vi_insert.keyboard.press("i")

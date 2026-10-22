@@ -343,13 +343,53 @@ function handleListFoldMouseDown(e){
 	toggleListFold(li);
 }
 
+function openItemAfterFold(editor, li){
+	// a new item after a collapsed one and all its hidden items, at its level, the caret in it; it stays collapsed.
+	// Made with execCommand where the browser puts it there, so undo takes it back
+	const unit = listItemUnit(li); // script.js
+	const list = li.parentElement;
+	if ( !isFoldableItem(li) || !isListElement(list) ) { return false }
+	// the browser doesn't edit hidden items as shown ones: it is open while the item is made
+	li.removeAttribute("data-collapsed");
+	const selection = window.getSelection();
+	const state = li.hasAttribute("data-checked") ? ' data-checked="false"' : "";
+	const items = new Set(editor.querySelectorAll("li"));
+	selection.collapse(list, [...list.childNodes].indexOf(unit.at(-1)) + 1);
+	document.execCommand("insertHTML", false, `<li${state}><br></li>`);
+	const made = [...editor.querySelectorAll("li")].filter((el) => !items.has(el));
+	let item = made.length === 1 && made[0].parentElement === list ? made[0] : null;
+	if ( !item ) {
+		// at the end of its list the browser puts it into the last nested list: by hand (as openLineByTable, vi.js)
+		if ( made.length ) { document.execCommand("undo") }
+		item = document.createElement("li");
+		item.appendChild(document.createElement("br"));
+		unit.at(-1).after(item);
+	}
+	// Safari leaves the caret in the item after it
+	selection.collapse(item, 0);
+	item.removeAttribute("data-collapsed");
+	// a new item of a checklist is an unchecked one (checklist.js)
+	state ? item.dataset.checked = "false" : item.removeAttribute("data-checked");
+	li.dataset.collapsed = "true";
+	editor.dispatchEvent(new Event("input", { bubbles: true }));
+	return true;
+}
+
 function handleListFoldEnter(e){
-	// a new item made in a collapsed one would land among its hidden items: Enter opens it up first
+	// Enter at the end of a collapsed item makes the next item after its hidden ones; elsewhere in it, a new item
+	// would land among its hidden items: it opens up first
 	if ( e.key !== "Enter" || e.shiftKey || e.isComposing || e.defaultPrevented ) { return }
 	if ( !document.body.classList.contains("list-folding") ) { return }
 	const editor = e.target.closest?.(".editor");
 	const caret = editor && caretItem(editor);
-	if ( caret && isCollapsedItem(caret.li) ) { caret.li.removeAttribute("data-collapsed") }
+	if ( !caret || !isCollapsedItem(caret.li) ) { return }
+	if ( caret.atEnd && !caret.atStart ) {
+		e.preventDefault();
+		e.stopImmediatePropagation();
+		openItemAfterFold(editor, caret.li);
+		return
+	}
+	caret.li.removeAttribute("data-collapsed");
 }
 
 function handleListFoldDelete(e){

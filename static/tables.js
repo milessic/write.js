@@ -8,6 +8,7 @@
  * Cells are selected like in a spreadsheet: a selection from one cell to another (a drag, Shift+click, Shift+arrows) is
  * the rectangle between them, Ctrl+click (Cmd+click on Apple devices) adds or removes a cell. Copying selected cells, or
  * a selection with tables in it, puts Markdown or HTML in the clipboard's text (Settings), and the table in its HTML.
+ * Cmd+Ctrl+Up/Down (or k/j) moves the caret's row, or the selected ones, above / below the next row, as for checklists.
  */
 const tableMaxColumns = 50;
 const tableMaxRows = 500;
@@ -530,10 +531,49 @@ function caretRangeAt(x, y){
 	return range;
 }
 
+function handleTableRowMove(e){
+	// Cmd+Ctrl+ArrowUp/ArrowDown (or k/j): the caret's row, or the rows of the selected cells, go above / below their
+	// neighbour, like list items (script.js); the header row stays the first one
+	if ( !e.metaKey || !e.ctrlKey || e.altKey || e.shiftKey ) { return }
+	const up = e.key === "ArrowUp" || e.key.toLowerCase() === "k";
+	if ( !up && e.key !== "ArrowDown" && e.key.toLowerCase() !== "j" ) { return }
+	const selection = window.getSelection();
+	const cell = selection.rangeCount ? cellOf(selection.focusNode) : null;
+	if ( !cell?.closest(".editor")?.isContentEditable ) { return }
+	e.preventDefault();
+	e.stopPropagation();
+	const { table } = cellPosition(cell);
+	const cells = tableSelection?.table === table && tableSelection.cells.has(cell) ? [...tableSelection.cells] : [cell, cellOf(selection.anchorNode)];
+	const rows = tableRows(table);
+	const indexes = cells.filter((c) => c?.closest("table") === table).map((c) => rows.indexOf(c.parentElement));
+	const moved = rows.slice(Math.min(...indexes), Math.max(...indexes) + 1);
+	if ( moved.some((tr) => tr.parentElement.nodeName === "THEAD") ) { return }
+	const neighbour = up ? moved[0].previousElementSibling : moved.at(-1).nextElementSibling;
+	if ( neighbour?.nodeName !== "TR" ) { return }
+	// moving the nodes drops the selection: it comes back on the same text
+	const kept = [selection.anchorNode, selection.anchorOffset, selection.focusNode, selection.focusOffset];
+	up ? neighbour.before(...moved) : neighbour.after(...moved);
+	selection.setBaseAndExtent(...kept);
+	updateCaretPosition();
+	moved[0].scrollIntoView({ block: "nearest" });
+	scheduleTableSelection();
+	// a change like after an edit (unsaved tab, autosave)
+	const editor = table.closest(".editor");
+	editor.dispatchEvent(new Event("input", { bubbles: true }));
+	if ( editor.id === "editor" ) { performAutoSave() }
+}
+
+let tablePointerType = "mouse"; // of the last press in the editors: a touch's long press brings the context menu too
+
 function handleTableContextMenu(e){
 	if ( e.shiftKey ) { return } // the browser's own menu
 	const cell = e.target.closest?.(tableCellSelector);
 	if ( !cell?.closest(".editor")?.isContentEditable ) { return }
+	// a long press on a touch screen selecting text: the system's menu for it (copy, paste...), the table's one is in
+	// the toolbar's "Table"
+	const selection = window.getSelection();
+	const touch = (e.pointerType || tablePointerType) === "touch";
+	if ( touch && !selection.isCollapsed && cell.contains(selection.anchorNode) && cell.contains(selection.focusNode) ) { return }
 	openContextMenu(e, tableMenuItems(cell));
 }
 
@@ -712,5 +752,8 @@ document.getElementById("editor-grid").addEventListener("input", scheduleTableSe
 // capture: before the Tab of the lines (script.js)
 document.getElementById("editor-grid").addEventListener("keydown", handleTableTab, true);
 document.getElementById("editor-grid").addEventListener("contextmenu", handleTableContextMenu);
+document.getElementById("editor-grid").addEventListener("pointerdown", (e) => { tablePointerType = e.pointerType }, true);
 document.getElementById("editor-grid").addEventListener("keydown", handleTableArrow);
+// capture: before the caret moves with the arrow
+document.getElementById("editor-grid").addEventListener("keydown", handleTableRowMove, true);
 document.getElementById("tb-btn-table").addEventListener("click", () => { formatText("table") });

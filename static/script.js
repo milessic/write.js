@@ -3,7 +3,8 @@ const userLoggedInKey = "__userLoggedIn__";
 const userConsentKey = "__userConsent__";
 const lastOpenedKey= "__lastOpened__";
 const docPrefix = "__doc__";
-const autosaveKey = "__autosave__";
+const autosaveKey = "__autosave__"; // "1" when documents are saved as they are typed (Settings), goes with the notebook
+const spellcheckKey = "__spellcheck__"; // "0" when the browser's spell check is off in the editors (Settings), goes with the notebook
 const focusModeKey = "__focusMode__"; // "editors" when focus mode shows every opened tab, else only the focused document (Settings), goes with the notebook
 const headingBreaksKey = "__headingBreaks__"; // "1" when an <hr> is auto-inserted under each heading (Settings), goes with the notebook
 const syncPendingKey = "__syncPending__"; // set while there are changes that couldn't reach the cloud (offline)
@@ -59,7 +60,6 @@ const fontStyleMark = `
 
 if ( userConsent ){
 	loadAutosaveSetting();
-	setAutosaveText();
 	documentNames = getDocumentNamesFromLocalStorage();
 }
 
@@ -67,6 +67,7 @@ let boldState = false;
 let italicState = false;
 let underlineState = false;
 let isLowWidthViewport = false;
+applySpellcheckSetting();
 handleWidth();
 
 // Setup elements
@@ -141,8 +142,6 @@ document.getElementById("focus-exit-btn").addEventListener("click", () => isDocW
 document.addEventListener("keydown", handleFocusModeEscape);
 // capture, and registered before vi.js loads: Esc closes the pop-ups before vi or anything else reads it
 document.addEventListener("keydown", handlePopupEscape, true);
-document.getElementById("spellcheck-btn").addEventListener("click", toggleSpellCheck);
-document.getElementById("toggle-autosave-btn").addEventListener("click", toggleAutosave);
 document.getElementById("insert-or-append-html").addEventListener("click", createInsertHtmlModal);
 document.getElementById("insert-or-append-markdown").addEventListener("click", createInsertMarkdownModal);
 document.getElementById("generate-md").addEventListener("click", exportMarkdown);
@@ -387,6 +386,9 @@ function createSettingsModal(){
 	+ `
 	<h3>Editor</h3>
 	<div class="stack">
+		<label class="check"><input id="setting-autosave" type="checkbox"${autosaveEnabled ? " checked" : ""}>Autosave</label>
+		<p class="muted small">Saves the document as you type; turned off, <em>Save</em> (or <kbd>:w</kbd> in vi mode) saves it.</p>
+		<label class="check"><input id="setting-spellcheck" type="checkbox"${spellcheckEnabled() ? " checked" : ""}>Spell check</label>
 		${lineNumbersSettingsHtml()}
 	</div>
 	<h3>Table of contents</h3>
@@ -436,6 +438,18 @@ function createSettingsModal(){
 		if ( document.body.classList.contains("focus-mode") ) { toggleFocusMode(false); toggleFocusMode(true) }
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	}));
+	document.getElementById("setting-autosave").addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = false; return }
+		autosaveEnabled = e.target.checked ? 1 : 0;
+		saveAutosaveSetting();
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
+	document.getElementById("setting-spellcheck").addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
+		localStorage.setItem(spellcheckKey, e.target.checked ? "1" : "0");
+		applySpellcheckSetting();
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
 	document.getElementById("setting-heading-breaks").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
 		localStorage.setItem(headingBreaksKey, e.target.checked ? "1" : "0");
@@ -515,7 +529,7 @@ function toggleMenu(){
 function getDocumntContentToExport(){
 	// same theme + skeleton as the app (class before id: stripImportToOnlyContent matches `id="content">`)
 	const theme = document.documentElement.dataset.theme;
-	return `<!DOCTYPE html><html data-theme="${theme}"><head><meta charset="UTF-8"><style>${getStyles()}</style>${fontStyleMark}</head><body><div class="container" id="content-container"><div class="card editor" id="content">${document.getElementById("editor").innerHTML}</div></div></body></html>`;
+	return `<!DOCTYPE html><html data-theme="${theme}"><head><meta charset="UTF-8"><style>${getStyles()}</style>${fontStyleMark}</head><body><div class="container" id="content-container"><div class="card editor" id="content">${withoutDocumentLinks(document.getElementById("editor").innerHTML)}</div></div></body></html>`;
 }
 function exportDocument(){
 	try {
@@ -618,12 +632,15 @@ function toggleFormattingBar(){
 	}
 }
 
-function toggleSpellCheck(){
-	const spellCheckBtn = document.getElementById("spellcheck-btn");
-	const spellcheck = !document.getElementById("editor").spellcheck;
-	document.querySelectorAll("#editor-grid .editor").forEach((editor) => { editor.spellcheck = spellcheck });
-	spellCheckBtn.innerText = spellcheck ? "Toggle Spell Check (It's on)" : "Toggle Spell Check (It's off)";
+function spellcheckEnabled(){
+	// on until turned off; stored, so the browser's own default (which iOS Safari drops) doesn't decide it
+	return !validateUserConsent(false) || localStorage.getItem(spellcheckKey) !== "0";
+}
 
+function applySpellcheckSetting(){
+	// every editor, the split ones too (addPane, workspace.js, copies it)
+	const spellcheck = spellcheckEnabled();
+	document.querySelectorAll("#editor-grid .editor").forEach((editor) => { editor.spellcheck = spellcheck });
 }
 
 function getDocumentText(withHtml=true){
@@ -926,7 +943,7 @@ function exportMarkdown(){
 	try {
 		if (!validateDocumentName()){return}
 		const docName = getDocumentName();
-		const mdContent = getContentAsMarkdown();
+		const mdContent = getContentAsMarkdown(withoutDocumentLinks(getDocumentText())); // doclinks.js
 		const blob = new Blob([mdContent], { type: "text"});
 		const link = document.createElement("a");
 		link.href = URL.createObjectURL(blob);
@@ -1024,17 +1041,6 @@ function updateWordCounter(){
 	document.getElementById("word-counter-container").innerText = countWords();
 }
 
-function toggleAutosave(){
-	if ( !validateUserConsent() ) { autosaveEnabled = 0; return}
-	if (autosaveEnabled) {
-		autosaveEnabled = 0
-	} else { 
-		autosaveEnabled = 1
-	};
-
-	setAutosaveText();
-	saveAutosaveSetting();
-}
 
 function loadAutosaveSetting(){
 	if ( !validateUserConsent() ) { return }
@@ -1049,10 +1055,6 @@ function loadAutosaveSetting(){
 function saveAutosaveSetting(){
 	if ( !validateUserConsent() ) { return }
 	localStorage.setItem(autosaveKey, autosaveEnabled);
-}
-function setAutosaveText(){
-	const autosaveBtn = document.getElementById("toggle-autosave-btn");
-	autosaveBtn.innerText = autosaveEnabled ? "Toggle Autosave (It's on now)" : "Toggle Autosave (It's off now)"
 }
 function createNewDocument(){
 	let previousAutosave = autosaveEnabled;
@@ -1979,19 +1981,20 @@ function removeInlineStyles(editor){
 	}
 }
 
-// pasting a list into a list: its items become items of that list, where the caret is (before, after, or splitting
-// its item), nested ones nested as Tab nests them; into a checklist, items without a checkbox get one
+// pasting a list (or lines of text) into a list: its items become items of that list, where the caret is (before, after,
+// or splitting its item), nested ones nested as Tab nests them; into a checklist, items without a checkbox get one
 const pastedListLine = /^([ \t]*)([-*+]|\d+[.)])[ \t]+(?:\[([ xX]?)\](?:[ \t]+|$))?(.*)$/;
 const pastedInlineTags = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "CODE", "A"]);
 
 function pastedItemsFromText(text){
-	// "- a", "* a", "1. a", "- [ ] a", "- [] a", "- [x] a" lines, nested by their indent; null if any line isn't one
+	// "- a", "* a", "1. a", "- [ ] a", "- [] a", "- [x] a" lines, nested by their indent; any other line is an item
+	// of its own too, when there is more than one line; null for one line that isn't one
 	const lines = text.replace(/\r\n?/g, "\n").split("\n").filter((line) => line.trim() !== "");
-	if ( !lines.length || !lines.every((line) => pastedListLine.test(line)) ) { return null }
+	if ( !lines.length || (lines.length === 1 && !pastedListLine.test(lines[0])) ) { return null }
 	const root = { children: [], indent: -1 };
 	const stack = [root];
 	for ( const line of lines ) {
-		const [, space, marker, box, content] = line.match(pastedListLine);
+		const [, space, marker, box, content] = line.match(pastedListLine) || [null, line.match(/^[ \t]*/)[0], "", undefined, line.trim()];
 		const indent = space.replace(/\t/g, " ".repeat(indentSize)).length;
 		while ( stack.length > 1 && stack.at(-1).indent >= indent ) { stack.pop() }
 		const parent = stack.at(-1);

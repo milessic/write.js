@@ -181,3 +181,26 @@ def test_drop_zones_cover_the_page(app):
 	assert style[1] not in ("rgba(0, 0, 0, 0)", "transparent")
 	assert int(style[2]) > 100
 	app.evaluate("document.getElementById('dock-zones').classList.remove('dragging')")
+
+
+@pytest.mark.parametrize("tree_side", ["left", "right", "top", "bottom"])
+def test_contents_zones_for_the_documents_place_are_where_they_are(app, tree_side):
+	app.evaluate("(side) => { openTableOfContents(); setTocSide('right'); setTreeSide(side) }", tree_side)
+	handle = "#toc-head"
+	app.hover(handle, position={"x": 5, "y": 5})
+	app.mouse.down()
+	box = rect(app, handle)
+	app.mouse.move(box["left"] + 40, box["top"] + 40, steps=3)
+	app.wait_for_selector("#dock-zones.dragging")
+	zone = lambda side: rect(app, f'#dock-zones .dock-zone[data-for="toc"][data-side="{side}"]')
+	tree, split, left, right, top, bottom = (zone(s) for s in ["tree", "split", "left", "right", "top", "bottom"])
+	app.mouse.up()
+	app.evaluate("document.getElementById('dock-zones').classList.remove('dragging')")
+	if tree_side == "left":
+		assert tree["right"] <= left["left"] and split["right"] <= left["left"]
+	elif tree_side == "right":
+		assert tree["left"] >= right["right"] and split["left"] >= right["right"]
+	elif tree_side == "top":
+		assert tree["bottom"] <= top["top"] and split["bottom"] <= top["top"]
+	else:
+		assert tree["top"] >= bottom["bottom"] and split["top"] >= bottom["bottom"]

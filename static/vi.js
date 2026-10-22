@@ -31,7 +31,7 @@ const textObjectKinds = new Set(["w", "W", "\"", "'", "`", "b", "(", ")", "[", "
 let enabled = false;
 let mode = "normal";
 let pending = [];                       // keys of the command being typed in NORMAL / VISUAL
-let register = {text: "", linewise: false, items: null}; // items: the lines' list items (linewise), see listItemsOf
+let register = {text: "", linewise: false, items: null}; // items: the lines' formats (linewise), see lineFormatsOf
 let lastFind = null;                    // {key: "f", char} for ; and ,
 let lastSearch = null;                  // {pattern, backward}
 let searchHighlight = false;            // hlsearch: matches of lastSearch stay highlighted until :noh
@@ -778,10 +778,11 @@ function exec(command, value=null){
 	if ( hidden ) { document.body.classList.add("vi-block-caret") }
 }
 
-function insertLines(lines){
+function insertLines(lines, items=null){
+	// with the yanked lines' formats (lineFormatsOf), a line with inline styles goes in as its HTML
 	lines.forEach((line, i) => {
 		if ( i ) { exec("insertParagraph") }
-		if ( line ) { exec("insertText", line) }
+		if ( items?.[i]?.html ) { exec("insertHTML", items[i].html) } else if ( line ) { exec("insertText", line) }
 	});
 }
 
@@ -1208,7 +1209,14 @@ function deleteLines(editor, model, from, to){
 		const after = textModel(editor);
 		setCaret(after, from < after.text.length ? firstNonBlank(after.text, from) : firstNonBlank(after.text, Math.max(0, from - 1)));
 	} else if ( to < text.length ) {
+		// the line below merges into the first line's block: it gets its own block back (a heading isn't left)
+		const block = lineListItem(model, to + 1) ? null : lineBlockTag(model, to + 1);
 		deleteRange(model, from, to + 1);
+		const after = textModel(editor);
+		if ( block && !lineListItem(after, 0) && lineBlockTag(after, 0) !== block ) {
+			setCaret(after, 0);
+			exec("formatBlock", block.toLowerCase());
+		}
 		setCaret(textModel(editor), firstNonBlank(textModel(editor).text, 0));
 	} else {
 		deleteRange(model, from, to);
@@ -1295,6 +1303,12 @@ function openEmptyLine(editor, model, i, above){
 		rememberSelection();
 		return
 	}
+	// under a collapsed item: the new one goes after its hidden items, at its level (folding.js)
+	const li = lineListItem(model, i);
+	if ( !above && isCollapsedItem(li) && document.body.classList.contains("list-folding") && openItemAfterFold(editor, li) ) {
+		rememberSelection();
+		return
+	}
 	const start = lineStart(text, i);
 	const next = above ? start : lineEnd(text, i) + 1; // the line the new one goes before (past the text: none)
 	const prev = next - 1;                            // the end of the line it goes after (-1: none)
@@ -1357,11 +1371,9 @@ function put(editor, model, i, before, count){
 	if ( register.linewise ) {
 		openEmptyLine(editor, model, i, before);
 		const first = caretIndex(textModel(editor));
-		lines.forEach((line, n) => {
-			if ( n ) { exec("insertParagraph") }
-			if ( line ) { exec("insertText", line) }
-		});
-		restoreListItems(editor, first, repeatedItems(count));
+		const items = repeatedItems(count);
+		insertLines(lines, items);
+		restoreLineFormats(editor, first, items);
 		restoreRules(editor);
 		const after = textModel(editor);
 		setCaret(after, firstNonBlank(after.text, first));
@@ -1409,8 +1421,9 @@ function replaceChar(editor, char){
 }
 
 function yank(text, linewise, model=null, from=0){
-	// whole lines keep what makes them list items (checklist state, nesting level), so p puts them back as items
-	register = {text, linewise, items: linewise && model ? listItemsOf(model, from, text.split("\n").length) : null};
+	// whole lines keep what makes them list items (checklist state, nesting level), headings or quotes, and their
+	// inline styles, so p puts them back as they were
+	register = {text, linewise, items: linewise && model ? lineFormatsOf(model, from, text.split("\n").length) : null};
 }
 
 function listDepth(editor, li){
@@ -1427,23 +1440,63 @@ function lineListItem(model, index){
 	return li && model.editor.contains(li) && li.parentElement?.nodeName === "UL" ? li : null;
 }
 
-function listItemsOf(model, from, count){
-	// per line: {depth, checked} for an item of a bulleted list (checked: "true" / "false" for a checklist item, null for a bullet)
+const formatBlockTags = new Set(["H1", "H2", "H3", "H4", "H5", "H6", "BLOCKQUOTE", "PRE"]);
+
+function lineBlockTag(model, index){
+	// the block a line is: a heading, a quote, a code block, or a plain line ("DIV")
+	let el = elementOf(positionAt(model, index).node);
+	for ( ; el && el !== model.editor; el = el.parentElement ) {
+		if ( formatBlockTags.has(el.nodeName) ) { return el.nodeName }
+		if ( el.nodeName === "LI" || el.nodeName === "TD" || el.nodeName === "TH" ) { break }
+	}
+	return "DIV";
+}
+
+function lineHTML(model, start, end){
+	// the line's inline styles (<b>, <i>, links...) as HTML, null when it is just text
+	if ( end <= start ) { return null }
+	const a = positionAt(model, start);
+	const b = positionAt(model, end);
+	const range = document.createRange();
+	range.setStart(a.node, a.offset);
+	range.setEnd(b.node, b.offset);
+	const box = document.createElement("div");
+	box.append(range.cloneContents());
+	// the blocks the line is in come along partly: only what is inside them
+	for ( let block; (block = box.querySelector([...blockTags].join(","))); ) { block.replaceWith(...block.childNodes) }
+	box.querySelectorAll("br").forEach((br) => br.remove());
+	return box.querySelector("*") ? box.innerHTML : null;
+}
+
+function lineFormatsOf(model, from, count){
+	// per line: {depth, checked} for an item of a bulleted list (checked: "true" / "false" for a checklist item, null for
+	// a bullet), {block} for any other line (lineBlockTag), and the line's html if it has inline styles
 	const first = lineNumber(model.text, from);
 	const items = [];
 	for ( let n = 0; n < count; n++ ) {
-		const li = lineListItem(model, lineStartOfNumber(model.text, first + n));
-		items.push(li ? {depth: listDepth(model.editor, li), checked: li.getAttribute("data-checked")} : null);
+		const start = lineStartOfNumber(model.text, first + n);
+		const li = lineListItem(model, start);
+		const html = lineHTML(model, start, lineEnd(model.text, start));
+		items.push(li ? {depth: listDepth(model.editor, li), checked: li.getAttribute("data-checked"), html}
+			: {block: lineBlockTag(model, start), html});
 	}
-	return items.some(Boolean) ? items : null;
+	return items;
 }
 
-function restoreListItems(editor, from, items){
-	// the pasted lines from the line at from on become the list items they were yanked from
+function restoreLineFormats(editor, from, items){
+	// the pasted lines from the line at from on become the list items, headings, quotes they were yanked from
 	if ( !items ) { return }
 	const first = lineNumber(textModel(editor).text, from);
 	items.forEach((item, n) => {
-		if ( !item ) { return }
+		if ( item.block ) {
+			const model = textModel(editor);
+			const start = lineStartOfNumber(model.text, first + n);
+			// a line put into a list stays an item of it
+			if ( lineListItem(model, start) || lineBlockTag(model, start) === item.block ) { return }
+			setCaret(model, start);
+			exec("formatBlock", item.block.toLowerCase());
+			return
+		}
 		const lineAt = () => {
 			const model = textModel(editor);
 			setCaret(model, lineStartOfNumber(model.text, first + n));
@@ -1721,7 +1774,9 @@ function moveCaret(editor, model, i, motion, count){
 		const selection = window.getSelection();
 		if ( !selection.isCollapsed ) { selection.collapseToEnd() }
 		for ( let n = 0; n < (count || 1); n++ ) { browserMove(selection, ...browser) }
-		if ( motion.key === "g$" || motion.key === "End" ) { clampCaret(editor) } else { rememberSelection() }
+		// NORMAL keeps the cursor on a character: the browser's caret stops after a line's last one (l, j / k on a
+		// longer line), where Space or an edit acts on no character, next to a collapsed item's hidden ones
+		if ( motion.key === "g$" || motion.key === "End" || mode === "normal" ) { clampCaret(editor) } else { rememberSelection() }
 		scrollCaret(editor);
 		return
 	}
@@ -2258,7 +2313,7 @@ function runVisual(editor, keys){
 		return change();
 	}
 	case "p": case "P": {
-		const replaced = {text: text.slice(from, to), linewise, items: linewise ? listItemsOf(model, from, text.slice(from, to).split("\n").length) : null};
+		const replaced = {text: text.slice(from, to), linewise, items: linewise ? lineFormatsOf(model, from, text.slice(from, to).split("\n").length) : null};
 		const pasted = register;
 		setMode("normal");
 		if ( linewise ) {
@@ -2274,8 +2329,8 @@ function runVisual(editor, keys){
 			if ( pasted.linewise ) {
 				setCaret(after, from);
 				exec("insertParagraph");
-				insertLines(pasted.text.split("\n"));
-				restoreListItems(editor, from + 1, pasted.items);
+				insertLines(pasted.text.split("\n"), pasted.items);
+				restoreLineFormats(editor, from + 1, pasted.items);
 			} else {
 				setCaret(after, from);
 				insertLines(pasted.text.split("\n"));

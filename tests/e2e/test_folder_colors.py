@@ -132,3 +132,20 @@ def test_stripes_have_every_color_of_the_chain(app):
 	# a folder in between without a color adds no stripe
 	app.evaluate("setFolderColor('work/projects', null)")
 	assert stripe_colors(folder(app, "work/projects/archive")) == ["#f6c6cc", "#f6c6cc"]
+
+
+def test_search_matches_have_their_folders_colors(app):
+	pick_color(app, "work", "Mint")
+	pick_color(app, "work/projects", "Rose")
+	app.fill("#file-tree-search", "pl")
+	match = app.locator("#file-tree-list li").filter(has=app.locator('.tree-document[data-name="plan"]'))
+	assert "colored" in match.get_attribute("class")
+	assert "striped" in match.get_attribute("class")
+	assert "gradient" in match.evaluate("el => getComputedStyle(el).backgroundImage")
+	app.fill("#file-tree-search", "li")
+	plain = app.locator("#file-tree-list li").filter(has=app.locator('.tree-document[data-name="list"]'))
+	assert "colored" not in (plain.get_attribute("class") or "")
+	app.fill("#file-tree-search", "")
+	pick_color(app, "home", "Sky")
+	app.fill("#file-tree-search", "li")
+	assert bg(plain) != "rgba(0, 0, 0, 0)"

@@ -399,6 +399,9 @@ body.app > .topbar {
 	white-space: nowrap;
 	/* Shift+click selects documents, not their names' text */
 	user-select: none;
+	-webkit-user-select: none;
+	/* a long press opens the row's menu (setupLongPressMenus, workspace.js), not Safari's callout */
+	-webkit-touch-callout: none;
 }
 /* the name is cut short, the folder mark stays visible */
 .tree-label {
@@ -465,7 +468,8 @@ body.app > .topbar {
 /* folder colors (workspace.js): a pastel tint over the theme's surface, softer in dark themes so the text stays readable;
    sub-folders without a color of their own show the one of the folder they are in.
    A folder colored inside colored folders is striped diagonally with all of their colors (built in workspace.js) */
-.tree [data-folder].colored {
+.tree [data-folder].colored,
+.tree .tree-match.colored {
 	--folder-bg: light-dark(
 		color-mix(in srgb, var(--folder-color) 75%, var(--surface)),
 		color-mix(in srgb, var(--folder-color) 18%, var(--surface))
@@ -482,12 +486,15 @@ body.app > .topbar {
 		color-mix(in srgb, var(--folder-color) 16%, var(--surface))
 	);
 }
-.tree [data-folder].colored {
+.tree [data-folder].colored,
+.tree .tree-match.colored {
 	background: var(--folder-bg);
 	border-radius: calc(var(--radius) / 3);
 }
 .tree [data-folder].colored .tree-row:not(.selected):hover,
-.tree [data-folder].colored .tree-row.active:not(.selected) {
+.tree [data-folder].colored .tree-row.active:not(.selected),
+.tree .tree-match.colored .tree-row:not(.selected):hover,
+.tree .tree-match.colored .tree-row.active:not(.selected) {
 	background: color-mix(in srgb, var(--ink) 7%, transparent);
 }
 .tab.colored {
@@ -498,6 +505,7 @@ body.app > .topbar {
 	background: var(--folder-bg-strong);
 }
 .tree [data-folder].striped,
+.tree .tree-match.striped,
 .tab.striped {
 	background: var(--folder-stripes);
 }
@@ -854,8 +862,18 @@ body.app > .topbar {
 .dock-zones[data-panel="tabs"] {
 	grid-template: "top" 1fr "bottom" 1fr / 1fr;
 }
+/* the contents' zones for the documents' place (a tab next to them, or splitting it) are where the documents are */
 .dock-zones[data-panel="toc"] {
 	grid-template: "top top top" 1fr "tree left right" 1fr "split left right" 1fr "bottom bottom bottom" 1fr / 1fr 1fr 1fr;
+}
+.dock-zones[data-panel="toc"][data-tree-side="right"] {
+	grid-template: "top top top" 1fr "left right tree" 1fr "left right split" 1fr "bottom bottom bottom" 1fr / 1fr 1fr 1fr;
+}
+.dock-zones[data-panel="toc"][data-tree-side="top"] {
+	grid-template: "tree split" 1fr "top top" 1fr "left right" 2fr "bottom bottom" 1fr / 1fr 1fr;
+}
+.dock-zones[data-panel="toc"][data-tree-side="bottom"] {
+	grid-template: "top top" 1fr "left right" 2fr "bottom bottom" 1fr "tree split" 1fr / 1fr 1fr;
 }
 .dock-zone[data-side="top"] { grid-area: top; }
 .dock-zone[data-side="bottom"] { grid-area: bottom; }

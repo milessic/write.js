@@ -371,6 +371,8 @@ function afterCloudPull(){
 	// what was pulled shows: the settings, the folders and the documents
 	applyFoldingSettings();
 	applyLineNumbersSetting();
+	applySpellcheckSetting(); // script.js
+	loadAutosaveSetting();
 	scheduleToc();
 	applyViMode();
 	renderTabs();

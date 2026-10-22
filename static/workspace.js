@@ -169,6 +169,7 @@ fileTreeSearch.addEventListener("keydown", (e) => {
 document.getElementById("file-tree").addEventListener("contextmenu", (e) => openContextMenu(e, treePanelMenuItems()));
 document.getElementById("tab-bar").addEventListener("contextmenu", (e) => openContextMenu(e, tabsPanelMenuItems()));
 setupDocking("file-tree-head", "tree");
+setupLongPressMenus(fileTreeList);
 setupTreeResizing();
 setupDocumentDropping();
 setupDocking("tab-grip", "tabs");
@@ -447,13 +448,24 @@ function refreshFileTree(force=false){
 		fileTreeList.append(treeMessage("Agree to storing data to save documents."));
 	} else if ( filter ) {
 		const matches = names.filter(name => name.toLowerCase().includes(filter));
-		matches.forEach(name => fileTreeList.append(treeDocumentItem(name, name, 0)));
+		matches.forEach(name => fileTreeList.append(treeMatchItem(name)));
 		if ( !matches.length ) { fileTreeList.append(treeMessage("No matching documents.")) }
 	} else if ( !names.length && !readFolders().folders.length ) {
 		fileTreeList.append(treeMessage("You don't have any saved documents yet. Just create one :)"));
 	} else {
 		renderFolders(fileTreeList, names);
 	}
+}
+
+function treeMatchItem(name){
+	// a search match is shown without its folders: it has their color, as it has in the tree
+	const li = treeDocumentItem(name, name, 0);
+	const owner = folderColorOwner(folderOfDocument(name));
+	if ( owner ) {
+		li.classList.add("tree-match");
+		applyFolderTint(li, owner);
+	}
+	return li;
 }
 
 function renderFolders(list, names){
@@ -1841,6 +1853,49 @@ function closeContextMenu(){
 }
 
 
+function setupLongPressMenus(container){
+	// iOS Safari has no contextmenu event for a long press: holding a finger on a row opens its right-click menu.
+	// The row can't be dragged by touch meanwhile, the drag would take the press (the menu moves documents too)
+	const delay = 500;
+	let press = null; // {timer, x, y, row, fired}
+	const cancel = () => {
+		if ( !press ) { return }
+		clearTimeout(press.timer);
+		if ( press.draggable ) { press.row.draggable = true }
+	};
+	container.addEventListener("touchstart", (e) => {
+		cancel();
+		press = null;
+		const row = e.target.closest?.(".tree-row");
+		if ( !row || e.touches.length !== 1 ) { return }
+		const { clientX: x, clientY: y } = e.touches[0];
+		press = { x, y, row, fired: false, draggable: row.draggable };
+		row.draggable = false;
+		press.timer = setTimeout(() => {
+			press.fired = true;
+			if ( press.draggable ) { press.row.draggable = true }
+			row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+		}, delay);
+	}, { passive: true });
+	container.addEventListener("touchmove", (e) => {
+		const touch = e.touches[0];
+		if ( press && !press.fired && touch && Math.hypot(touch.clientX - press.x, touch.clientY - press.y) > 10 ) { cancel() }
+	}, { passive: true });
+	container.addEventListener("touchend", (e) => {
+		cancel();
+		// the finger lifted off the opened menu's row: not a tap on it
+		if ( press?.fired && e.cancelable ) { e.preventDefault() }
+	});
+	container.addEventListener("touchcancel", cancel);
+	// where the browser has a menu event of its own for the press (Android), one menu opens
+	container.addEventListener("contextmenu", (e) => {
+		if ( !e.isTrusted || !press ) { return }
+		if ( press.fired ) { e.preventDefault(); e.stopPropagation(); return }
+		cancel();
+		press.fired = true;
+	}, true);
+}
+
 // docking by drag-and-drop: dragging a panel's handle shows drop zones for its possible sides
 function setupDocking(handleId, panel){
 	const handle = document.getElementById(handleId);
@@ -1850,6 +1905,7 @@ function setupDocking(handleId, panel){
 		e.dataTransfer.effectAllowed = "move";
 		e.dataTransfer.setData("text/plain", panel);   // Firefox only starts a drag with data
 		zones.dataset.panel = panel;
+		zones.dataset.treeSide = layout.treeSide;
 		// shown on the next frame, or the browser cancels the drag that has just started
 		requestAnimationFrame(() => zones.classList.add("dragging"));
 	});
