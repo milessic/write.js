@@ -54,6 +54,8 @@ const editorRanges = new WeakMap();     // each editor's selection, for going ba
 let escapeAt = -Infinity;               // when vi got an Esc in an editor
 let normalEscapeAt = -Infinity;         // the last Esc in NORMAL with nothing pending: Esc Esc leaves focus mode
 let pointerAt = -Infinity;              // the last click / tap: a focus change that comes after one is the user's
+let altEscTyped = [];                  // the last keys of INSERT that may start the alternate Esc (Settings): {key, char, original, at}
+let softKey = false;                    // the last key came from a phone keyboard: its character comes as beforeinput
 let lineColumn = null;                  // {editor, index, column}: j / k by the lines of the text keep the column they started from
 
 const ui = {};
@@ -297,6 +299,7 @@ function setMode(next){
 	const wasInsert = mode === "insert" || mode === "replace";
 	mode = next;
 	if ( mode !== "command" ) { pending = [] }
+	altEscTyped = [];
 	const isInsert = mode === "insert" || mode === "replace";
 	if ( isInsert !== wasInsert ) { setTypingAttributes(isInsert) }
 	render();
@@ -433,7 +436,15 @@ function onKeydown(e){
 	if ( !commandLine && e.target.closest?.("#file-tree") && !e.target.closest(".toc-body") ) { onTreeKeydown(e); return }
 	const editor = editorOf(e.target);
 	if ( !editor || commandLine ) { return }
-	if ( e.isComposing || e.keyCode === 229 ) { return }   // phone keyboard: comes as beforeinput
+	softKey = e.isComposing || e.keyCode === 229;
+	if ( softKey ) { return }   // phone keyboard: comes as beforeinput
+	const altKey = viAltEscKeyName(e);
+	if ( altKey && takeAltEsc(altKey, editor) ) {
+		e.preventDefault();
+		e.stopPropagation();
+		handleKey("Escape", editor);
+		return
+	}
 	const key = keyName(e);
 	if ( !key || e.metaKey ) { return }
 	if ( key === "Escape" ) { escapeAt = performance.now() }
@@ -445,7 +456,9 @@ function onKeydown(e){
 		} else if ( mode === "replace" && key.length === 1 && !e.ctrlKey && !e.altKey ) {
 			e.preventDefault();
 			e.stopPropagation();
-			replaceChar(editor, key);
+			rememberAltEsc(altKey, key, replaceChar(editor, key));
+		} else {
+			rememberAltEsc(altKey, key.length === 1 && !e.ctrlKey ? key : "", "");
 		}
 		return
 	}
@@ -491,6 +504,16 @@ function onBeforeInput(e){
 	const editor = editorOf(e.target);
 	if ( !editor || applying ) { return }
 	if ( mode === "insert" || mode === "replace" ) {
+		// a phone keyboard's key, one character at a time, may be the alternate Esc
+		if ( softKey && e.inputType === "insertText" && e.data?.length === 1 && e.cancelable ) {
+			const altKey = e.data === " " ? "<Space>" : e.data;
+			if ( takeAltEsc(altKey, editor) ) {
+				e.preventDefault();
+				handleKey("Escape", editor);
+				return
+			}
+			rememberAltEsc(altKey, e.data, "");
+		}
 		if ( recording && !replaying ) { recordInput(e) }
 		return
 	}
@@ -555,6 +578,44 @@ function onSelectionChange(){
 		visualHead = focus > visualAnchor ? focus - 1 : focus;
 	}
 	renderCursor();
+}
+
+// the alternate Esc (Settings, script.js): one key, or keys typed one after another like jk
+const altEscTimeout = 1000;   // ms between its keys, like Vim's timeoutlen
+
+function rememberAltEsc(key, char, original){
+	// a key of INSERT / REPLACE, char the character it typed ("" for none), over original in REPLACE
+	const keys = viAltEscKeys();
+	if ( keys.length < 2 || !key ) { altEscTyped = []; return }
+	altEscTyped.push({key, char, original, at: performance.now()});
+	altEscTyped = altEscTyped.slice(-(keys.length - 1));
+}
+
+function takeAltEsc(key, editor){
+	// true when key ends the alternate Esc; the text its keys before typed is taken out again
+	const keys = viAltEscKeys();
+	if ( !keys.length ) { return false }
+	// NORMAL / VISUAL: a single key that types nothing (Ctrl+Space), a typed one stays a vi command
+	if ( mode !== "insert" && mode !== "replace" ) { return keys.length === 1 && key.length > 1 && keys[0] === key }
+	const before = altEscTyped;
+	if ( before.length !== keys.length - 1 || keys.at(-1) !== key || before.some((k, i) => k.key !== keys[i]) ) { return false }
+	const times = [...before.map((k) => k.at), performance.now()];
+	if ( times.some((at, i) => i && at - times[i - 1] > altEscTimeout) ) { return false }
+	const typed = before.filter((k) => k.char);
+	altEscTyped = [];
+	if ( !typed.length ) { return true }
+	const text = typed.map((k) => k.char).join("");
+	const model = textModel(editor);
+	const i = caretIndex(model);
+	// the caret moved away from what was typed: it is only text
+	if ( i === null || i < text.length || model.text.slice(i - text.length, i) !== text ) { return false }
+	const original = typed.map((k) => k.original).join("");
+	selectRange(model, i - text.length, i);
+	original ? exec("insertText", original) : exec("delete");
+	setCaret(textModel(editor), i - text.length);
+	if ( recording ) { recording.text = (recording.text || "").slice(0, -text.length) }
+	changed();
+	return true
 }
 
 function pressEsc(){
@@ -1446,10 +1507,12 @@ function replaceChar(editor, char){
 	const model = textModel(editor);
 	const i = caretIndex(model);
 	if ( i === null ) { return }
-	if ( model.text[i] !== undefined && model.text[i] !== "\n" ) { selectRange(model, i, i + 1) }
+	const original = model.text[i] !== undefined && model.text[i] !== "\n" ? model.text[i] : "";
+	if ( original ) { selectRange(model, i, i + 1) }
 	exec("insertText", char);
 	if ( recording ) { recording.text = (recording.text || "") + char }
 	changed();
+	return original
 }
 
 function yank(text, linewise, model=null, from=0){

@@ -22,6 +22,7 @@ const lineNumbersKey = "__lineNumbers__"; // "1" when the line numbers show left
 const tocHeadingsKey = "__tocHeadings__"; // the heading levels listed in the table of contents, e.g. [1, 2] (Settings, toc.js), goes with the notebook
 const tableCopyKey = "__tableCopy__"; // "html" when a copied table's text is its HTML, else Markdown (Settings, tables.js), goes with the notebook
 const viWrapNavigationKey = "__viWrapNavigation__"; // "0" when vi's j / k move by the lines of the text like Vim, not by the wrapped lines (Settings), goes with the notebook
+const viAltEscKey = "__viAltEsc__"; // the keys that also work as Esc in vi, e.g. ["j", "k"] or ["<C-Space>"] (Settings), goes with the notebook
 const viEscButtonKey = "__viEscButton__"; // "1" shows the vi Esc button on touch screens, this device only
 const viScriptUrl = document.currentScript?.dataset.viSrc || "static/vi.js"; // content-versioned by the server, see utils/static_files.py
 const docWindowParam = "window";
@@ -406,6 +407,11 @@ function createSettingsModal(){
 		<label class="check"><input id="setting-vi-mode" type="checkbox"${viModeEnabled() ? " checked" : ""}>Vi keybindings (like Neovim)</label>
 		<label class="check"><input id="setting-vi-wrap" type="checkbox"${viWrapNavigationEnabled() ? " checked" : ""}${viModeEnabled() ? "" : " disabled"}>Word-wrap navigation</label>
 		<p class="muted small"><kbd>j</kbd> / <kbd>k</kbd> go through the wrapped lines; turned off, through the lines of the text, like Vim, and <kbd>gj</kbd> / <kbd>gk</kbd> through the wrapped ones.</p>
+		<div class="vi-alt-esc-setting">Alternate Esc: <span id="setting-vi-alt-esc-keys">${viAltEscLabel(viAltEscKeys())}</span>
+			<button type="button" class="btn small" id="setting-vi-alt-esc-set"${viModeEnabled() ? "" : " disabled"}>Set</button>
+			<button type="button" class="btn small" id="setting-vi-alt-esc-clear"${viModeEnabled() && viAltEscKeys().length ? "" : " hidden"}>Clear</button>
+			<button type="button" class="btn small" id="setting-vi-alt-esc-cancel" hidden>Cancel</button></div>
+		<p class="muted small">Click <em>Set</em>, press the keys, then <em>Save</em>: one key (like <kbd>Ctrl+Space</kbd>) or keys typed one after another (like <kbd>j</kbd><kbd>k</kbd>, within a second). <kbd>Backspace</kbd> takes back the last key.</p>
 		<label class="check"><input id="setting-vi-esc" type="checkbox"${localStorage.getItem(viEscButtonKey) === "1" ? " checked" : ""}${viModeEnabled() ? "" : " disabled"}>Show Esc on mobiles <span class="muted small">(this device only)</span></label>
 		<p class="muted small">Starts in NORMAL mode: <kbd>i</kbd> to type, <kbd>Esc</kbd> to go back, <kbd>v</kbd> / <kbd>V</kbd> to select, <kbd>:w</kbd> saves, <kbd>:q</kbd> closes the tab, <kbd>:help</kbd> lists all the commands. The mode is shown in the top right corner.</p>
 	</div>
@@ -476,6 +482,7 @@ function createSettingsModal(){
 		localStorage.setItem(viModeKey, e.target.checked ? "1" : "0");
 		document.getElementById("setting-vi-esc").disabled = !e.target.checked;
 		document.getElementById("setting-vi-wrap").disabled = !e.target.checked;
+		document.getElementById("setting-vi-alt-esc-set").disabled = !e.target.checked;
 		applyViMode();
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
@@ -484,11 +491,95 @@ function createSettingsModal(){
 		localStorage.setItem(viEscButtonKey, e.target.checked ? "1" : "0");
 		window.WriteVi?.setEscButton(e.target.checked);
 	});
+	initViAltEscSettings();
 	document.getElementById("setting-vi-wrap").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
 		localStorage.setItem(viWrapNavigationKey, e.target.checked ? "1" : "0");
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
+}
+
+function initViAltEscSettings(){
+	// Set: the keys pressed next are recorded (not typed), Save stores them, Cancel or Esc leaves them as they were
+	const label = document.getElementById("setting-vi-alt-esc-keys");
+	const setButton = document.getElementById("setting-vi-alt-esc-set");
+	const clearButton = document.getElementById("setting-vi-alt-esc-clear");
+	const cancelButton = document.getElementById("setting-vi-alt-esc-cancel");
+	let recorded = null;
+	const show = () => {
+		const keys = recorded ?? viAltEscKeys();
+		label.innerHTML = recorded && !recorded.length ? `<span class="muted">press the keys…</span>` : viAltEscLabel(keys);
+		setButton.textContent = recorded ? "Save" : "Set";
+		setButton.disabled = !viModeEnabled() || (recorded !== null && !recorded.length);
+		cancelButton.hidden = !recorded;
+		clearButton.hidden = Boolean(recorded) || !viAltEscKeys().length;
+	};
+	const record = (e) => {
+		if ( !label.isConnected ) { stop(); return }
+		const name = viAltEscKeyName(e);
+		if ( name === null ) { return }
+		e.preventDefault();
+		e.stopImmediatePropagation();
+		if ( name === "Escape" ) { stop(); return }
+		if ( name === "Backspace" ) { recorded.pop() } else if ( recorded.length < 4 ) { recorded.push(name) }
+		show();
+	};
+	const stop = () => {
+		recorded = null;
+		window.removeEventListener("keydown", record, true);
+		if ( label.isConnected ) { show() }
+	};
+	setButton.addEventListener("click", () => {
+		if ( !validateUserConsent() ) { return }
+		if ( recorded === null ) {
+			recorded = [];
+			// window, capture: before the pop-ups' Esc and vi's keys
+			window.addEventListener("keydown", record, true);
+			setButton.blur(); // Enter / Space don't press it again
+			show();
+			return
+		}
+		localStorage.setItem(viAltEscKey, JSON.stringify(recorded));
+		stop();
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
+	cancelButton.addEventListener("click", stop);
+	clearButton.addEventListener("click", () => {
+		if ( !validateUserConsent() ) { return }
+		localStorage.removeItem(viAltEscKey);
+		show();
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
+}
+
+function viAltEscKeys(){
+	try {
+		const keys = JSON.parse(localStorage.getItem(viAltEscKey));
+		return Array.isArray(keys) ? keys.filter((key) => typeof key === "string" && key) : [];
+	} catch {
+		return [];
+	}
+}
+
+function viAltEscKeyName(e){
+	// a key as the alternate Esc stores it: a typed character as itself ("j"), anything else Vim-like ("<C-Space>", "<F2>");
+	// null for a modifier alone and phone keyboards' keys, which don't tell the key on keydown
+	if ( ["Shift", "Control", "Alt", "Meta", "AltGraph", "Dead", "Unidentified", "Process"].includes(e.key) || e.keyCode === 229 ) { return null }
+	if ( e.key === "Escape" && !e.ctrlKey && !e.altKey && !e.metaKey ) { return "Escape" }
+	if ( e.key === "Backspace" && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey ) { return "Backspace" }
+	const base = e.key === " " ? "Space" : e.key;
+	if ( base.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey ) { return base }
+	const mods = (e.ctrlKey ? "C-" : "") + (e.altKey ? "A-" : "") + (e.metaKey ? "M-" : "") + (e.shiftKey && base.length > 1 ? "S-" : "");
+	return `<${mods}${base.length === 1 && (e.ctrlKey || e.altKey) ? base.toLowerCase() : base}>`;
+}
+
+function viAltEscLabel(keys){
+	if ( !keys.length ) { return `<span class="muted">none</span>` }
+	return keys.map((key) => {
+		const text = key.length === 1 ? key : key.slice(1, -1).replace(/^((?:[CAMS]-)*)/, (mods) =>
+			mods.replace("C-", "Ctrl+").replace("A-", "Alt+").replace("M-", "Meta+").replace("S-", "Shift+"));
+		return `<kbd>${escapeHtmlText(text)}</kbd>`;
+	}).join("");
 }
 
 function viWrapNavigationEnabled(){
