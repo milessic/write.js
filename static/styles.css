@@ -2186,3 +2186,50 @@ body.apple-platform.doc-window-toc-open .doc-window-toc {
 
 /* the document's id (Get Document Id, workspace.js): selectable to copy */
 .notification-container .document-id { user-select: all; -webkit-user-select: all; overflow-wrap: anywhere; }
+.script-notification-time { text-transform: none; letter-spacing: 0; font-weight: 400; }
+
+/* Notebook Cron (cron.js): a row of fields per job, stacked into cards on phones */
+#cron-btn[hidden] { display: none !important; }
+.cron-modal { width: min(1080px, calc(100vw - 32px)); }
+.cron-modal .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.cron-table { display: grid; gap: .3rem; overflow-x: auto; }
+.cron-rows { display: grid; gap: .3rem; }
+.cron-row {
+	display: grid;
+	grid-template-columns: 1.2rem minmax(8rem, 1.4fr) minmax(7rem, 1.2fr) minmax(7rem, 1fr) minmax(7rem, 1fr) minmax(7.5rem, .9fr) 4rem auto;
+	gap: .4rem;
+	align-items: center;
+}
+.cron-row > [role="cell"] { min-width: 0; }
+.cron-row input[type="text"] { width: 100%; min-width: 0; }
+.cron-row .cron-cron { font-family: "Cousine", ui-monospace, monospace; }
+.cron-head { font-size: .78rem; font-weight: 700; color: var(--muted); }
+.cron-executor-cell { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; }
+.cron-actions { display: flex; gap: .25rem; }
+.cron-missed {
+	display: inline-grid;
+	place-items: center;
+	width: 1.2rem;
+	height: 1.2rem;
+	border-radius: 50%;
+	background: var(--danger, #c62828);
+	color: #fff;
+	font-weight: 700;
+	font-size: .8rem;
+}
+.cron-missed[hidden], .cron-set-executor[hidden], .cron-problem[hidden] { display: none; }
+.cron-row-missed .cron-next { color: var(--danger, #c62828); }
+.cron-problem { grid-column: 2 / -1; color: var(--danger, #c62828); }
+.cron-enabled-label { display: inline-flex; align-items: center; gap: .3rem; }
+.cron-mobile-label { display: none; }
+.cron-help p { margin: .3rem 0; }
+.cron-log { margin: 0; padding: 0; list-style: none; max-height: 14rem; overflow: auto; display: grid; gap: .2rem; }
+.cron-log li { display: flex; gap: .5rem; padding: .15rem .4rem; border-left: 3px solid var(--tone-ok, var(--line)); overflow-wrap: anywhere; }
+.cron-log li.cron-log-error { border-left-color: var(--tone-fail, #c62828); }
+.cron-log-time { flex: none; font-family: "Cousine", ui-monospace, monospace; }
+@media (max-width: 760px) {
+	.cron-head { display: none; }
+	.cron-row { grid-template-columns: 1.2rem 1fr 1fr; padding: .4rem 0; border-top: 1px solid var(--line); }
+	.cron-row > [role="cell"]:nth-child(n+4) { grid-column: 2 / -1; }
+	.cron-mobile-label { display: inline; }
+}

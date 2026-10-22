@@ -240,3 +240,92 @@ create_table_legacy_notebooks = {
     );
     """
 }
+
+# NOTEBOOK CRON (static/cron.js)
+# A cron job runs a script of a document (scripting.js) on a schedule, in the one browser picked as its executor.
+# A job is one row, known by the uuid the client gives it; doc_uuid is its document's id (doclinks.js) and script the
+# display name of the script's button. Times are milliseconds since the epoch, as the client has them.
+# The log keeps the last runs of the notebook's jobs (MAX_CRON_LOG in routers/notebooks.py).
+create_table_notebook_crons = {
+    "sqlite3": """
+    CREATE TABLE IF NOT EXISTS notebook_crons (
+        notebook_id INTEGER NOT NULL,
+        cron_uuid TEXT NOT NULL,
+        doc_uuid TEXT NOT NULL,
+        script TEXT NOT NULL,
+        cron TEXT NOT NULL,
+        executor TEXT NOT NULL DEFAULT '',
+        executor_name TEXT NOT NULL DEFAULT '',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        enabled_at INTEGER,
+        last_run INTEGER,
+        missed INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (notebook_id, cron_uuid),
+        FOREIGN KEY (notebook_id) REFERENCES user_notebooks(notebook_id) ON DELETE CASCADE
+    );
+    """
+}
+
+create_table_notebook_cron_log = {
+    "sqlite3": """
+    CREATE TABLE IF NOT EXISTS notebook_cron_log (
+        log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        notebook_id INTEGER NOT NULL,
+        cron_uuid TEXT NOT NULL,
+        at INTEGER NOT NULL,
+        ok INTEGER NOT NULL,
+        message TEXT NOT NULL,
+        executor_name TEXT NOT NULL DEFAULT '',
+        FOREIGN KEY (notebook_id) REFERENCES user_notebooks(notebook_id) ON DELETE CASCADE
+    );
+    """
+}
+
+create_index_notebook_cron_log = {
+    "sqlite3": "CREATE INDEX IF NOT EXISTS idx_notebook_cron_log_notebook ON notebook_cron_log(notebook_id, log_id)"
+}
+
+notebook_crons = {
+    "list": {
+        "sqlite3": """SELECT cron_uuid, doc_uuid, script, cron, executor, executor_name, enabled, enabled_at, last_run, missed
+        FROM notebook_crons WHERE notebook_id = ? ORDER BY created_at, rowid"""
+    },
+    "get": {
+        "sqlite3": """SELECT cron_uuid, doc_uuid, script, cron, executor, executor_name, enabled, enabled_at, last_run, missed
+        FROM notebook_crons WHERE notebook_id = ? AND cron_uuid = ?"""
+    },
+    "upsert": {
+        "sqlite3": """INSERT INTO notebook_crons
+        (notebook_id, cron_uuid, doc_uuid, script, cron, executor, executor_name, enabled, enabled_at, last_run, missed)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (notebook_id, cron_uuid) DO UPDATE SET doc_uuid = excluded.doc_uuid, script = excluded.script,
+        cron = excluded.cron, executor = excluded.executor, executor_name = excluded.executor_name,
+        enabled = excluded.enabled, enabled_at = excluded.enabled_at, last_run = excluded.last_run, missed = excluded.missed"""
+    },
+    "delete": {"sqlite3": "DELETE FROM notebook_crons WHERE notebook_id = ? AND cron_uuid = ? RETURNING cron_uuid"},
+    "delete_for_user": {
+        "sqlite3": """DELETE FROM notebook_crons WHERE notebook_id IN
+        (SELECT notebook_id FROM user_notebooks WHERE user_id = ?)"""
+    },
+}
+
+notebook_cron_log = {
+    "list": {
+        "sqlite3": """SELECT cron_uuid, at, ok, message, executor_name FROM notebook_cron_log
+        WHERE notebook_id = ? ORDER BY log_id DESC LIMIT ?"""
+    },
+    "insert": {
+        "sqlite3": """INSERT INTO notebook_cron_log (notebook_id, cron_uuid, at, ok, message, executor_name)
+        VALUES (?, ?, ?, ?, ?, ?)"""
+    },
+    # only the newest entries are kept
+    "trim": {
+        "sqlite3": """DELETE FROM notebook_cron_log WHERE notebook_id = ? AND log_id NOT IN
+        (SELECT log_id FROM notebook_cron_log WHERE notebook_id = ? ORDER BY log_id DESC LIMIT ?)"""
+    },
+    "delete_for_user": {
+        "sqlite3": """DELETE FROM notebook_cron_log WHERE notebook_id IN
+        (SELECT notebook_id FROM user_notebooks WHERE user_id = ?)"""
+    },
+}

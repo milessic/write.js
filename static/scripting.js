@@ -126,11 +126,19 @@ function compileScript(code){
 	return new AsyncFunction("scope", "editor", ...scriptApiNames, ...scriptShadowed, `"use strict";\n${code}`);
 }
 
-function scriptNotification(text, type="info", timeout=notificationTimeout, result=null){
-	// headed "Script execution", the text (and what the script returned) as plain text
+function scriptNotification(text, type="info", timeout=notificationTimeout, result=null, timestamp=false){
+	// headed "Script execution" (and the time it was shown, with timestamp), the text (and what the script returned) as plain text
 	type = ["info", "warning", "warn", "error"].includes(type) ? type : "info";
 	const returned = result === null ? "" : `<div class="script-notification-result">${escapeHtmlText(result)}</div>`;
-	return createNotification(`<div class="script-notification-head">Script execution</div><div>${escapeHtmlText(text)}</div>${returned}`, type, timeout, true);
+	const time = timestamp ? ` <span class="script-notification-time">${formatTimestamp(new Date())}</span>` : "";
+	return createNotification(`<div class="script-notification-head">Script execution${time}</div><div>${escapeHtmlText(text)}</div>${returned}`, type, timeout, true);
+}
+
+function formatTimestamp(date, seconds=true){
+	// "HH:MM:SS dd-mm-YYYY", without the seconds "HH:MM dd-mm-YYYY"
+	const two = (n) => String(n).padStart(2, "0");
+	const time = [date.getHours(), date.getMinutes(), ...(seconds ? [date.getSeconds()] : [])].map(two).join(":");
+	return `${time} ${two(date.getDate())}-${two(date.getMonth() + 1)}-${date.getFullYear()}`;
 }
 
 function scriptResultText(value){
@@ -152,8 +160,35 @@ function scriptResultText(value){
 }
 
 function scriptScopeKey(editor){
+	// an editor that isn't shown (a cron job's, cron.js) has its document's id
 	const tab = tabById(paneOfEditor(editor)?.tabId);
-	return tab?.docId || `tab-${tab?.id}`;
+	return tab?.docId || editor.dataset.docId || `tab-${tab?.id}`;
+}
+
+async function executeScript(editor, code){
+	// runs the code on the editor's document: {ok, result, error}, null when a script of the document is still running
+	const key = scriptScopeKey(editor);
+	if ( key in scriptScopes ) { return null }
+	const scope = scriptScopes[key] = {};
+	const api = scriptApi(editor);
+	try {
+		return { ok: true, result: scriptResultText(await compileScript(code)(scope, editor, ...scriptApiNames.map((n) => api[n]))) };
+	} catch ( err ) {
+		return { ok: false, result: null, error: err };
+	} finally {
+		delete scriptScopes[key];
+	}
+}
+
+function afterScriptRun(editor, before, beforeKey, activatorIndex){
+	// what the script changed in the document is like an edit (unsaved tab, autosave), and can be undone; returns whether it changed
+	const changed = editor.isConnected && editor.innerHTML !== before;
+	if ( changed ) {
+		editor.dispatchEvent(new Event("input", { bubbles: true }));
+		if ( editor.id === "editor" ) { performAutoSave() }
+		rememberScriptChange(editor, { before, beforeKey, after: editor.innerHTML, afterKey: scriptHistoryKey(editor), activator: activatorIndex });
+	}
+	return changed;
 }
 
 async function runScript(activator){
@@ -169,35 +204,17 @@ async function runScript(activator){
 		scriptNotification(`'${name}' cannot run: ${problem}`, "error", notificationTimeoutLong);
 		return false;
 	}
-	const key = scriptScopeKey(editor);
-	if ( key in scriptScopes ) {
-		scriptNotification(`A script of this document is still running, '${name}' did not run`, "warning");
-		return false;
-	}
-	const scope = scriptScopes[key] = {};
-	const api = scriptApi(editor);
 	const before = editor.innerHTML;
 	const beforeKey = scriptHistoryKey(editor);
 	const activatorIndex = [...editor.querySelectorAll(".script-activator")].indexOf(activator);
-	let ok = true;
-	let result = null;
-	let error = null;
-	try {
-		result = scriptResultText(await compileScript(code)(scope, editor, ...scriptApiNames.map((n) => api[n])));
-	} catch ( err ) {
-		ok = false;
-		error = err;
-		console.error(`Script '${name}' failed`, err);
-	} finally {
-		delete scriptScopes[key];
+	const run = await executeScript(editor, code);
+	if ( !run ) {
+		scriptNotification(`A script of this document is still running, '${name}' did not run`, "warning");
+		return false;
 	}
-	// what the script changed in the document is like an edit (unsaved tab, autosave), and can be undone
-	const changed = editor.isConnected && editor.innerHTML !== before;
-	if ( changed ) {
-		editor.dispatchEvent(new Event("input", { bubbles: true }));
-		if ( editor.id === "editor" ) { performAutoSave() }
-		rememberScriptChange(editor, { before, beforeKey, after: editor.innerHTML, afterKey: scriptHistoryKey(editor), activator: activatorIndex });
-	}
+	const { ok, result, error } = run;
+	if ( !ok ) { console.error(`Script '${name}' failed`, error) }
+	const changed = afterScriptRun(editor, before, beforeKey, activatorIndex);
 	const outcome = ok ? `'${name}' executed` : `'${name}' failed: ${error?.message ?? error}`;
 	const change = changed ? `. It changed the document: ${scriptUndoHint()} undoes it` : "";
 	scriptNotification(outcome + change, ok ? "info" : "error", ok && !changed && result === null ? notificationTimeout : notificationTimeoutLong, result);

@@ -432,6 +432,10 @@ function createSettingsModal(){
 	<h3>Tables</h3>
 	<div class="stack">
 		${tableSettingsHtml()}
+	</div>
+	<h3>Notebook cron</h3>
+	<div class="stack">
+		${cronSettingsHtml()}
 	</div>` + autoDetectSettingsHtml());
 	if ( typeof initCloudSyncSettings !== "undefined" ) { initCloudSyncSettings() }
 	initLineNumbersSettings();
@@ -442,6 +446,7 @@ function createSettingsModal(){
 	initAutoCheckParentsSettings();
 	initTableSettings();
 	initAutoDetectSettings();
+	initCronSettings();
 	document.querySelectorAll('input[name="setting-focus-mode"]').forEach((input) => input.addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
 		localStorage.setItem(focusModeKey, e.target.value);
@@ -1239,7 +1244,7 @@ function simulateEnter() {
 function isDeviceOnlyKey(key){
 	// state of this device that never goes to the cloud or a notebook backup
 	// (the workspace.js keys are looked up on call, that file loads after this one)
-	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viEscButtonKey, openedTabsKey, openedEditorsKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey, tocFoldsKey].includes(key);
+	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viEscButtonKey, openedTabsKey, openedEditorsKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey, tocFoldsKey, cronExecutorKey, cronLastTickKey, cronLocalKey].includes(key);
 }
 
 function getAllLocalStorageItems() {
@@ -1302,6 +1307,7 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 	applyLineNumbersSetting();
 	scheduleToc(); // the headings it lists may have come with the notebook (toc.js)
 	applyViMode();
+	applyCronSetting(); // cron.js
 	refreshFileTree();
 	if (loadLastOpened){
 		loadLastOpenedDocument();

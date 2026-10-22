@@ -106,3 +106,56 @@ def test_other_users_notebook_is_not_found():
     other.headers["Authorization"] = f"Bearer {token}"
     assert other.get(f"{prefix}/{default_notebook_id()}/documents").status_code == 404
     assert other.get(f"{prefix}/{default_notebook_id()}/meta").status_code == 404
+
+
+cron_id = "c0ffee00-1d2a-4c3b-8e9f-a1b2c3d4e5f6"
+
+
+def test_cron_lifecycle():
+    nid = default_notebook_id()
+    url = f"{prefix}/{nid}/crons/{cron_id}"
+    assert client.get(f"{prefix}/{nid}/crons").json() == {"crons": [], "log": []}
+    # a new job needs its document, script and cron
+    assert client.put(url, json={"script": "s"}).status_code == 400
+    assert client.put(url, json={"doc_id": doc_id, "script": "s", "cron": "every day"}).status_code == 400
+    created = client.put(url, json={"doc_id": doc_id, "script": "s", "cron": "_ _ * * 2"}).json()
+    assert created == {
+        "cron_id": cron_id, "doc_id": doc_id, "script": "s", "cron": "_ _ * * 2", "executor": "", "executor_name": "",
+        "enabled": True, "enabled_at": None, "last_run": None, "missed": False,
+    }
+    # only what is sent changes
+    updated = client.put(url, json={"last_run": 123, "missed": True, "executor": "abcd1234", "executor_name": "Firefox"}).json()
+    assert (updated["cron"], updated["last_run"], updated["missed"], updated["executor"]) == ("_ _ * * 2", 123, True, "abcd1234")
+    assert client.put(url, json={"enabled": False, "cron": "*/5 9-17 * * 1-5"}).json()["enabled"] is False
+    assert [c["cron"] for c in client.get(f"{prefix}/{nid}/crons").json()["crons"]] == ["*/5 9-17 * * 1-5"]
+    # the log, newest first
+    for i in range(3):
+        assert client.post(f"{prefix}/{nid}/crons/log", json={"cron_id": cron_id, "at": i, "ok": i != 1, "message": f"run {i}"}).status_code == 200
+    log = client.get(f"{prefix}/{nid}/crons").json()["log"]
+    assert [(e["at"], e["ok"], e["message"]) for e in log] == [(2, True, "run 2"), (1, False, "run 1"), (0, True, "run 0")]
+    # deleted
+    assert client.delete(url).status_code == 200
+    assert client.delete(url).status_code == 404
+    assert client.get(f"{prefix}/{nid}/crons").json()["crons"] == []
+
+
+def test_cron_log_keeps_the_newest():
+    from routers.notebooks import MAX_CRON_LOG
+    nid = default_notebook_id()
+    for i in range(MAX_CRON_LOG + 5):
+        client.post(f"{prefix}/{nid}/crons/log", json={"cron_id": cron_id, "at": 1000 + i, "ok": True, "message": "x"})
+    log = client.get(f"{prefix}/{nid}/crons").json()["log"]
+    assert len(log) == MAX_CRON_LOG and log[0]["at"] == 1000 + MAX_CRON_LOG + 4
+
+
+def test_other_users_crons_are_not_found():
+    other = TestClient(app)
+    name = username + "cron"
+    other.post("/api/auth/register", json={"username": name, "password": password, "email": name + "@test.com"})
+    token = other.post(
+        "/api/auth/token",
+        data={"username": name, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    ).json()["access_token"]
+    other.headers["Authorization"] = f"Bearer {token}"
+    assert other.get(f"{prefix}/{default_notebook_id()}/crons").status_code == 404

@@ -1023,10 +1023,11 @@ function duplicateDocuments(names){
 	} catch ( err ) {
 		informError("Could not duplicate document!", err);
 	}
-	if ( !copies.length ) { return }
+	if ( !copies.length ) { return copies }
 	refreshFileTree();
 	syncFolders();
 	duplicatedNotification(copies);
+	return copies;
 }
 
 function duplicatedNotification(copies){

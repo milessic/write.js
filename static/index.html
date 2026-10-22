@@ -61,6 +61,8 @@
 					<hr>
 					<button role="menuitem" id="theme-btn">Theme</button>
 					<button role="menuitem" id="settings-btn">Settings</button>
+					<!-- Settings > Notebook cron (cron.js) -->
+					<button role="menuitem" id="cron-btn" hidden>Notebook Cron</button>
 					<button role="menuitem" id="focus-mode-btn">Focus Mode</button>
 					<button role="menuitem" id="toggle-format-btn">Toggle Formatting</button>
 					<hr>
@@ -267,6 +269,7 @@
     <script src="{{ static_url('docwindow.js') }}"></script>
     <script src="{{ static_url('scriptapi.js') }}"></script>
     <script src="{{ static_url('scripting.js') }}"></script>
+    <script src="{{ static_url('cron.js') }}"></script>
 	{% if is_authenticated %}
     	<script src="{{ static_url('script3.js') }}"></script>
     	<script src="{{ static_url('cloudsync.js') }}"></script>

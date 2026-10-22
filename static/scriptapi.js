@@ -73,8 +73,9 @@ function scriptApi(editor){
 	 * The document's title, its name (as in the name field, also before it is saved).
 	 */
 	function getDocTitle(){
+		// a cron job's document isn't shown (cron.js), its editor has its name
 		const tab = tabById(paneOfEditor(editor)?.tabId);
-		return tab ? tabLabelName(tab) : "";
+		return tab ? tabLabelName(tab) : editor.dataset.docName || "";
 	}
 
 	/**
@@ -113,10 +114,65 @@ function scriptApi(editor){
 	/**
 	 * Shows a notification headed "Script execution". text is shown as plain text.
 	 * type: "info" (default), "warning" or "error". timeout: milliseconds until it closes, 0 keeps it open.
+	 * timestamp: true adds the time it is shown to the heading, "HH:MM:SS dd-mm-YYYY" (e.g. for a cron job's script).
 	 */
-	function createNotification(text, type="info", timeout=notificationTimeout){
-		return scriptNotification(String(text), type, timeout);
+	function createNotification(text, type="info", timeout=notificationTimeout, timestamp=false){
+		return scriptNotification(String(text), type, timeout, null, Boolean(timestamp));
 	}
 
-	return { locateHeading, locateById, getListElements, getDocTitle, setDocTitle, getRandomFromArray, createNotification };
+	/**
+	 * Duplicates a document of the notebook, like its "Duplicate" menu item: the copy is "name (copy)", in the same folder.
+	 * documentQuery: {directory, index, doc}, what is left out is null.
+	 * directory: the folder, its path ("Work/Daily", a folder's path is its id) or its name ("Daily"); "" for the
+	 * documents outside of folders, null for all documents.
+	 * doc: the document's name or id (Copy ID in its menu), null for any document of the directory.
+	 * index: which of the matching documents, sorted by name: 0 the first, 1 the second, ..., -1 the last, -2 the
+	 * second last; null when only one document may match.
+	 * Throws when no document matches, or several do (without an index). Returns the copy's name.
+	 */
+	function duplicateDocument(documentQuery){
+		const name = queryDocument(documentQuery, "duplicateDocument");
+		const [copy] = duplicateDocuments([name]) || [];
+		if ( !copy ) { throw new Error(`duplicateDocument: could not duplicate "${name}"`) }
+		return copy;
+	}
+
+	return { locateHeading, locateById, getListElements, getDocTitle, setDocTitle, getRandomFromArray, createNotification, duplicateDocument };
+}
+
+// the notebook's documents
+function queryDocument(query, caller){
+	// the one document {directory, index, doc} picks (duplicateDocument), throws when there is none or several
+	if ( query === null || typeof query !== "object" || Array.isArray(query) ) { throw new TypeError(`${caller}: the query has to be an object {directory, index, doc}`) }
+	const { directory=null, index=null, doc=null } = query;
+	if ( directory !== null && typeof directory !== "string" ) { throw new TypeError(`${caller}: directory has to be a folder's path or name, "" or null`) }
+	if ( doc !== null && typeof doc !== "string" ) { throw new TypeError(`${caller}: doc has to be a document's name or id, or null`) }
+	if ( index !== null && !Number.isInteger(index) ) { throw new TypeError(`${caller}: index has to be a whole number (0, 1, ..., -1, -2, ...) or null`) }
+	if ( doc === null && index === null ) { throw new Error(`${caller}: the query needs doc or index`) }
+	let names = (getDocumentNamesFromLocalStorage() || []).sort((a, b) => a.localeCompare(b));
+	if ( directory !== null ) {
+		let folder = "";
+		if ( directory.trim() ) {
+			const { folders } = readFolders();
+			const path = directory.trim().split(folderSeparator).map((part) => part.trim()).join(folderSeparator);
+			const byName = folders.filter((f) => folderLabel(f) === path);
+			if ( folders.includes(path) ) {
+				folder = path;
+			} else if ( byName.length === 1 ) {
+				folder = byName[0];
+			} else {
+				throw new Error(byName.length ? `${caller}: ${byName.length} folders are named "${directory}", give its path (${byName.join(", ")})` : `${caller}: no folder "${directory}"`);
+			}
+		}
+		names = names.filter((name) => folderOfDocument(name) === folder);
+	}
+	if ( doc !== null ) { names = names.filter((name) => name === doc || documentIdOf(name) === doc) }
+	const where = `${doc === null ? "" : ` "${doc}"`}${directory === null ? "" : ` in ${directory.trim() ? `"${directory}"` : "no folder"}`}`;
+	if ( index !== null ) {
+		const name = names.at(index);
+		if ( name === undefined ) { throw new Error(`${caller}: no document${where} at index ${index} (${names.length} match)`) }
+		return name;
+	}
+	if ( names.length !== 1 ) { throw new Error(names.length ? `${caller}: ${names.length} documents${where} match, give an index` : `${caller}: no document${where}`) }
+	return names[0];
 }

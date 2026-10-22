@@ -19,6 +19,10 @@ MAX_CONTENT_LENGTH = 6 * 1024 * 1024
 MAX_NAME_LENGTH = 512
 MAX_FETCH = 200
 DOC_ID_PATTERN = re.compile(r"^[0-9a-fA-F-]{8,64}$")
+# five fields: minute hour day month weekday, each *, numbers, ranges, lists, steps or _ (static/cron.js)
+CRON_PATTERN = re.compile(r"^[0-9*,/_-]+( [0-9*,/_-]+){4}$")
+MAX_CRON_LOG = 100
+MAX_CRONS = 100
 
 
 class SaveDocumentModel(BaseModel):
@@ -34,6 +38,27 @@ class SaveMetaModel(BaseModel):
 
 class FetchDocumentsModel(BaseModel):
     doc_ids: list[str] = Field(max_length=MAX_FETCH)
+
+
+class SaveCronModel(BaseModel):
+    # what isn't given stays as it is; a new job needs doc_id, script and cron
+    doc_id: str | None = Field(default=None, max_length=64)
+    script: str | None = Field(default=None, min_length=1, max_length=MAX_NAME_LENGTH)
+    cron: str | None = Field(default=None, max_length=128)
+    executor: str | None = Field(default=None, max_length=64)
+    executor_name: str | None = Field(default=None, max_length=128)
+    enabled: bool | None = None
+    enabled_at: int | None = None
+    last_run: int | None = None
+    missed: bool | None = None
+
+
+class CronLogModel(BaseModel):
+    cron_id: str = Field(max_length=64)
+    at: int
+    ok: bool
+    message: str = Field(max_length=2048)
+    executor_name: str = Field(default="", max_length=128)
 
 
 def current_user_id(token_data: dict = Depends(get_access_token)) -> int:
@@ -154,3 +179,53 @@ async def save_meta(notebook_id: int, payload: SaveMetaModel, user_id: int = Dep
             status_code=409, content={"detail": "version conflict", "version": current_version}
         )
     return {"version": version}
+
+
+# cron jobs (static/cron.js): kept apart from the documents and the meta, they don't sync with them
+@router.get("/{notebook_id}/crons")
+async def list_crons(notebook_id: int, user_id: int = Depends(current_user_id)):
+    owned_notebook_meta(notebook_id, user_id)
+    return {
+        "crons": c.db.list_notebook_crons(notebook_id),
+        "log": c.db.list_notebook_cron_log(notebook_id, MAX_CRON_LOG),
+    }
+
+
+@router.put("/{notebook_id}/crons/{cron_id}")
+async def save_cron(
+    notebook_id: int, cron_id: str, payload: SaveCronModel, user_id: int = Depends(current_user_id)
+):
+    owned_notebook_meta(notebook_id, user_id)
+    current = c.db.get_notebook_cron(notebook_id, valid_doc_id(cron_id))
+    if current is None and len(c.db.list_notebook_crons(notebook_id)) >= MAX_CRONS:
+        raise HTTPException(400, f"a notebook can have up to {MAX_CRONS} cron jobs")
+    cron = current or {
+        "cron_id": cron_id, "doc_id": None, "script": None, "cron": None, "executor": "", "executor_name": "",
+        "enabled": True, "enabled_at": None, "last_run": None, "missed": False,
+    }
+    cron.update(payload.model_dump(exclude_unset=True))
+    if cron["doc_id"] is None or cron["script"] is None or cron["cron"] is None:
+        raise HTTPException(400, "a new cron job needs doc_id, script and cron")
+    valid_doc_id(cron["doc_id"])
+    if not CRON_PATTERN.match(cron["cron"]):
+        raise HTTPException(400, "invalid cron")
+    c.db.save_notebook_cron(notebook_id, cron)
+    return c.db.get_notebook_cron(notebook_id, cron_id)
+
+
+@router.delete("/{notebook_id}/crons/{cron_id}")
+async def delete_cron(notebook_id: int, cron_id: str, user_id: int = Depends(current_user_id)):
+    owned_notebook_meta(notebook_id, user_id)
+    if not c.db.delete_notebook_cron(notebook_id, valid_doc_id(cron_id)):
+        raise HTTPException(404, "cron job not found")
+    return {"cron_id": cron_id}
+
+
+@router.post("/{notebook_id}/crons/log")
+async def add_cron_log(notebook_id: int, payload: CronLogModel, user_id: int = Depends(current_user_id)):
+    owned_notebook_meta(notebook_id, user_id)
+    c.db.add_notebook_cron_log(
+        notebook_id, valid_doc_id(payload.cron_id), payload.at, payload.ok, payload.message,
+        payload.executor_name, MAX_CRON_LOG,
+    )
+    return {"ok": True}

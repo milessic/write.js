@@ -260,6 +260,50 @@ class DbClient:
             return result[0][0][0]
         return None
 
+    # CRON - notebook_crons, notebook_cron_log
+    CRON_FIELDS = (
+        "cron_id", "doc_id", "script", "cron", "executor", "executor_name", "enabled", "enabled_at", "last_run", "missed",
+    )
+
+    def _cron_row(self, r) -> dict:
+        cron = dict(zip(self.CRON_FIELDS, r))
+        cron["enabled"] = bool(cron["enabled"])
+        cron["missed"] = bool(cron["missed"])
+        return cron
+
+    def list_notebook_crons(self, notebook_id: int) -> list[dict]:
+        rows = self._execute(docs.notebook_crons["list"], notebook_id)
+        return [self._cron_row(r) for r in (rows[0] if rows else [])]
+
+    def get_notebook_cron(self, notebook_id: int, cron_id: str) -> dict | None:
+        if not len(result := self._execute(docs.notebook_crons["get"], notebook_id, cron_id)):
+            return None
+        return self._cron_row(result[0][0])
+
+    def save_notebook_cron(self, notebook_id: int, cron: dict) -> None:
+        r"creates or replaces a job, cron has every one of CRON_FIELDS"
+        self._execute(
+            docs.notebook_crons["upsert"],
+            notebook_id,
+            *[int(cron[f]) if f in ("enabled", "missed") else cron[f] for f in self.CRON_FIELDS],
+        )
+
+    def delete_notebook_cron(self, notebook_id: int, cron_id: str) -> bool:
+        return bool(len(self._execute(docs.notebook_crons["delete"], notebook_id, cron_id)))
+
+    def list_notebook_cron_log(self, notebook_id: int, limit: int) -> list[dict]:
+        rows = self._execute(docs.notebook_cron_log["list"], notebook_id, limit)
+        return [
+            {"cron_id": r[0], "at": r[1], "ok": bool(r[2]), "message": r[3], "executor_name": r[4]}
+            for r in (rows[0] if rows else [])
+        ]
+
+    def add_notebook_cron_log(
+        self, notebook_id: int, cron_id: str, at: int, ok: bool, message: str, executor_name: str, keep: int
+    ) -> None:
+        self._execute(docs.notebook_cron_log["insert"], notebook_id, cron_id, at, int(ok), message, executor_name)
+        self._execute(docs.notebook_cron_log["trim"], notebook_id, notebook_id, keep)
+
     # THESE ARE TEMPORARY THINGS!!!!!!!
     # START
     def create_notebook(self, user_id, notebook):
@@ -285,6 +329,8 @@ class DbClient:
         delete_notebook = {"sqlite3": "DELETE FROM notebooks WHERE user_id=(?)"}
         self._execute(delete_notebook, user_id)
         self._execute(docs.notebook_documents["delete_for_user"], user_id)
+        self._execute(docs.notebook_crons["delete_for_user"], user_id)
+        self._execute(docs.notebook_cron_log["delete_for_user"], user_id)
         self._execute(docs.notebooks["delete_for_user"], user_id)
 
     # END

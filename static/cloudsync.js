@@ -375,6 +375,7 @@ function afterCloudPull(){
 	loadAutosaveSetting();
 	scheduleToc();
 	applyViMode();
+	applyCronSetting(); // cron.js
 	renderTabs();
 	refreshFileTree();
 }
