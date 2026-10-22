@@ -197,7 +197,7 @@ def test_help_lists_the_functions_of_the_api_file(app):
 	app.click(".script-wizard .script-help-btn")
 	app.wait_for_selector(".script-help-modal .script-help-function")
 	names = app.locator(".script-help-modal .script-help-function code").all_inner_texts()
-	assert names == ["locateHeading(selector, level=null)", "locateById(id)", "getListElements(list=null, textOnly=true)", "getDocTitle()", "setDocTitle(title)", "getRandomFromArray(array)", "createNotification(text, type=\"info\", timeout=notificationTimeout, timestamp=false)", "duplicateDocument(documentQuery)"]
+	assert names == ["locateHeading(selector, level=null)", "locateById(id)", "getListElements(list=null, textOnly=true)", "checkCheckbox(target)", "uncheckCheckbox(target)", "getDocTitle()", "setDocTitle(title)", "getRandomFromArray(array)", "createNotification(text, type=\"info\", timeout=notificationTimeout, timestamp=false)", "duplicateDocument(documentQuery)"]
 	assert "localStorage" in app.locator(".script-help-modal").inner_text()
 	# closing the help leaves the wizard open
 	app.click(".script-help-modal .section-head .small-btn")
@@ -504,3 +504,31 @@ def test_help_close_button_stays_in_view(app):
 	assert 0 <= box["y"] and box["y"] + box["height"] <= 420
 	close.click()
 	assert not app.locator(".script-help-modal").count()
+
+
+def test_check_and_uncheck_checkboxes(app):
+	toggle_scripts(app)
+	checked = lambda: app.evaluate("[...document.querySelectorAll('#editor li')].map((li) => li.dataset.checked)")
+	assert checked() == ["true", "false"]
+	add_script(app, "Check", """
+		const [done, todo] = getListElements(null, false);
+		const counts = [uncheckCheckbox(done.element), checkCheckbox(todo), checkCheckbox(editor.querySelector("ul"))];
+		const errors = [];
+		for ( const bad of ["missing", locateHeading(1).element] ) {
+			try { checkCheckbox(bad) } catch ( err ) { errors.push(err.message) }
+		}
+		return counts.join(",") + " | " + errors.join(" | ");
+	""")
+	app.locator("#editor .script-activator").click()
+	app.wait_for_function("document.querySelector('#notifications-container').innerText.includes('1,1,1 | checkCheckbox: no item or list')")
+	assert "a list item or a list is needed, not <h1>" in notes(app)
+	assert checked() == ["true", "true"]
+	# a list of the document by its id: all its checkboxes
+	app.evaluate("document.querySelector('#editor ul').dataset.elementId = 'tasks'")
+	app.evaluate("document.querySelector('#editor .script-activator').dataset.script = 'return uncheckCheckbox(\"tasks\")'")
+	app.locator("#editor .script-activator").click()
+	app.wait_for_function("document.querySelector('#notifications-container').innerText.includes('changed the document')")
+	assert checked() == ["false", "false"]
+	# undone like the scripts' other changes
+	app.keyboard.press("Control+z")
+	assert checked() == ["true", "true"]

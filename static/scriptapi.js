@@ -70,6 +70,44 @@ function scriptApi(editor){
 	}
 
 	/**
+	 * Checks checkboxes: target is a checklist item (its element, its id, or an item of getListElements(list, false)),
+	 * or a list (its element or its id), whose checkboxes, nested ones too, are all checked. A parent item whose items
+	 * are all checked gets checked too, as by a click (Settings).
+	 * Throws for an item that isn't a checkbox, or a list without any. Returns how many checkboxes changed.
+	 */
+	function checkCheckbox(target){
+		return setCheckboxes(target, true, "checkCheckbox");
+	}
+
+	/**
+	 * Unchecks checkboxes: target is a checklist item (its element, its id, or an item of getListElements(list, false)),
+	 * or a list (its element or its id), whose checkboxes, nested ones too, are all unchecked. A parent item gets
+	 * unchecked too, as by a click (Settings).
+	 * Throws for an item that isn't a checkbox, or a list without any. Returns how many checkboxes changed.
+	 */
+	function uncheckCheckbox(target){
+		return setCheckboxes(target, false, "uncheckCheckbox");
+	}
+
+	const setCheckboxes = (target, checked, caller) => {
+		let el = typeof target === "string" ? locateById(target) : target?.element ?? target;
+		if ( !(el instanceof Element) || !editor.contains(el) ) { throw new Error(`${caller}: no item or list ${typeof target === "string" ? `"${target}" ` : ""}in this document`) }
+		let items;
+		if ( el.nodeName === "LI" ) {
+			if ( !isTaskItem(el) ) { throw new Error(`${caller}: "${el.textContent.trim()}" is not a checkbox`) }
+			items = [el];
+		} else if ( /^(UL|OL)$/.test(el.nodeName) ) {
+			items = [...el.querySelectorAll("li")].filter(isTaskItem);
+			if ( !items.length ) { throw new Error(`${caller}: the list has no checkboxes`) }
+		} else {
+			throw new Error(`${caller}: a list item or a list is needed, not <${el.nodeName.toLowerCase()}>`);
+		}
+		const changing = items.filter((li) => isChecked(li) !== checked);
+		if ( changing.length ) { setTaskItemsChecked(changing, checked) } // checklist.js
+		return changing.length;
+	};
+
+	/**
 	 * The document's title, its name (as in the name field, also before it is saved).
 	 */
 	function getDocTitle(){
@@ -137,7 +175,7 @@ function scriptApi(editor){
 		return copy;
 	}
 
-	return { locateHeading, locateById, getListElements, getDocTitle, setDocTitle, getRandomFromArray, createNotification, duplicateDocument };
+	return { locateHeading, locateById, getListElements, checkCheckbox, uncheckCheckbox, getDocTitle, setDocTitle, getRandomFromArray, createNotification, duplicateDocument };
 }
 
 // the notebook's documents
