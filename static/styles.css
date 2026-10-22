@@ -2118,3 +2118,71 @@ body.apple-platform.doc-window-toc-open .doc-window-toc {
 @media (prefers-reduced-motion: reduce) {
 	.sync-dot[data-status="progress"] { animation: none }
 }
+
+/* scripts (scripting.js): a script's button in the text looks like the Save button, with the border of its wizard */
+.editor .script-activator {
+	display: inline-block;
+	margin: 0 .15rem;
+	padding: .05rem .7rem;
+	border: 2px solid color-mix(in srgb, var(--accent-ink) 55%, var(--accent));
+	border-radius: 6px;
+	background: var(--accent);
+	color: var(--accent-ink);
+	font-size: .9em;
+	line-height: 1.5;
+	white-space: nowrap;
+	cursor: pointer;
+	user-select: none;
+	-webkit-user-select: none;
+}
+.editor .script-activator:hover { filter: brightness(1.08); }
+.editor .script-activator[data-script-border="dashed"] { border-style: dashed; }
+.editor .script-activator[data-script-border="dotted"] { border-style: dotted; }
+.editor .script-activator[data-script-border="double"] { border-width: 4px; border-style: double; }
+.editor .script-activator[data-script-border="none"] { border-color: transparent; }
+/* scripts disabled in the document: the buttons don't run */
+.editor:not(.scripts-enabled) .script-activator { opacity: .5; cursor: not-allowed; filter: grayscale(.5); }
+.script-tool[hidden] { display: none !important; }
+.script-wizard { width: min(640px, calc(100vw - 32px)); }
+.script-wizard .script-code-field { display: flex; flex-direction: column; gap: .3rem; flex: 1; min-height: 0; }
+.script-wizard .script-code {
+	width: 100%;
+	min-height: 14rem;
+	overflow: auto;
+	padding: .5rem .6rem;
+	border: 1px solid var(--line-strong);
+	border-radius: 6px;
+	background: var(--surface);
+	color: var(--ink);
+	outline: none;
+	font-family: "Cousine", ui-monospace, monospace;
+	font-size: .85rem;
+	tab-size: 4;
+	white-space: pre;
+	resize: vertical;
+}
+.script-wizard .script-check { color: var(--danger); white-space: pre-wrap; }
+.script-wizard .script-help-btn { margin-left: auto; }
+.script-help-modal { width: min(480px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+.script-help-modal h3 { margin: .4rem 0 0; font-size: 1rem; }
+.script-help-notes { margin: 0; padding-left: 1.2rem; }
+.script-help-function { display: grid; gap: .2rem; padding: .5rem 0; border-top: 1px solid var(--line); }
+.script-help-function code { font-weight: 700; overflow-wrap: anywhere; }
+.script-help-function p { margin: 0; }
+/* the wizard and the help are windows: moved by the title bar, resized by the corner (scripting.js) */
+.script-window { resize: both; min-width: 280px; min-height: 200px; display: flex; flex-direction: column; overflow: hidden; }
+/* only the content scrolls: the title bar and its x stay in view */
+.script-window .section-head { flex: none; }
+.script-window .modal-content { flex: 1; min-height: 0; overflow: auto; }
+.script-window .section-head { cursor: move; touch-action: none; user-select: none; -webkit-user-select: none; }
+.script-window.moving { user-select: none; -webkit-user-select: none; }
+.script-wizard { display: flex; flex-direction: column; }
+.script-wizard .modal-content { flex: 1; min-height: 0; }
+.script-wizard .script-code { flex: 1; }
+.script-wizard .script-code:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.script-wizard .script-code:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; }
+.script-notification-result { margin-top: .3rem; max-height: 12rem; overflow: auto; font-family: "Cousine", ui-monospace, monospace; font-size: .85em; white-space: pre-wrap; overflow-wrap: anywhere; }
+.script-notification-head { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; opacity: .7; }
+
+/* the document's id (Get Document Id, workspace.js): selectable to copy */
+.notification-container .document-id { user-select: all; -webkit-user-select: all; overflow-wrap: anywhere; }

@@ -192,6 +192,10 @@ function formatText(command) {
         document.execCommand("formatBlock", false, "code");
     } else if (command === "a"){
 		createInsertLinkModal();
+	} else if ( command === "script" ) {
+		// the wizard keeps the focus (scripting.js)
+		openScriptWizard();
+		return
 	} else if (command === "softreturn"){
 		injectIntoDocument(softReturnText, false);
 		adjustSelectionRange(1);
@@ -538,7 +542,7 @@ function toggleMenu(){
 function getDocumntContentToExport(){
 	// same theme + skeleton as the app (class before id: stripImportToOnlyContent matches `id="content">`)
 	const theme = document.documentElement.dataset.theme;
-	return `<!DOCTYPE html><html data-theme="${theme}"><head><meta charset="UTF-8"><style>${getStyles()}</style>${fontStyleMark}</head><body><div class="container" id="content-container"><div class="card editor" id="content">${withoutDocumentLinks(document.getElementById("editor").innerHTML)}</div></div></body></html>`;
+	return `<!DOCTYPE html><html data-theme="${theme}"><head><meta charset="UTF-8"><style>${getStyles()}</style>${fontStyleMark}</head><body><div class="container" id="content-container"><div class="card editor" id="content">${withoutScripts(withoutDocumentLinks(document.getElementById("editor").innerHTML))}</div></div></body></html>`;
 }
 function exportDocument(){
 	try {
@@ -840,6 +844,8 @@ function closeAllPopups(){
 function handlePopupEscape(e){
 	// Esc closes every open pop-up, in any vi mode; vi's own command line handles its Esc
 	if ( e.key !== "Escape" || e.isComposing || e.target.closest?.("#vi-root") || !openPopups().length ) { return }
+	// in vi, Esc in the Script wizard's code only changes the mode (scripting.js)
+	if ( viModeEnabled() && e.target.closest?.(".vi-editable") ) { return }
 	e.preventDefault();
 	e.stopImmediatePropagation(); // one Esc: vi doesn't change mode and focus mode stays on
 	closeAllPopups();
@@ -952,7 +958,7 @@ function exportMarkdown(){
 	try {
 		if (!validateDocumentName()){return}
 		const docName = getDocumentName();
-		const mdContent = getContentAsMarkdown(withoutDocumentLinks(getDocumentText())); // doclinks.js
+		const mdContent = getContentAsMarkdown(withoutScripts(withoutDocumentLinks(getDocumentText()))); // doclinks.js, scripting.js
 		const blob = new Blob([mdContent], { type: "text"});
 		const link = document.createElement("a");
 		link.href = URL.createObjectURL(blob);
@@ -2209,7 +2215,7 @@ function handleListItemBackspace(e){
 
 function copyMarkdown(){
 	navigator.clipboard.writeText(
-		getContentAsMarkdown()
+		getContentAsMarkdown(withoutScripts(getDocumentText())) // scripting.js
 	);
 }
 

@@ -154,6 +154,9 @@
 				<button id="tb-btn-underline" class="small-btn" title="Underline" aria-label="Underline"><u>U</u></button>
 				<span class="toolbar-sep desktop-btn" aria-hidden="true"></span>
 				<button id="tb-btn-link" class="small-btn desktop-btn" title="Insert link" aria-label="Insert link">Insert Link</button>
+				<!-- in a document with scripts enabled (scripting.js) -->
+				<span class="toolbar-sep desktop-btn script-tool" aria-hidden="true" hidden></span>
+				<button id="tb-btn-script" class="small-btn desktop-btn script-tool" title="Add a button that runs a script" aria-label="Script" hidden>Script</button>
 				<span class="toolbar-sep mobile-btn" aria-hidden="true"></span>
 				<div class="block-select mobile-btn" id="tb-more-select">
 					<button class="small-btn block-select-btn" title="More" aria-label="More" aria-haspopup="menu" aria-expanded="false"><span>More</span><span class="block-select-caret" aria-hidden="true">▾</span></button>
@@ -162,6 +165,7 @@
 						<button role="menuitem" data-block="code">Code block</button>
 						<button role="menuitem" data-block="table">Table</button>
 						<button role="menuitem" data-block="a">Insert Link</button>
+						<button role="menuitem" data-block="script" class="script-tool" hidden>Script</button>
 						<hr>
 						<button role="menuitem" data-block="softreturn">Soft Return</button>
 						<button role="menuitem" data-block="inserttab" title="In a list: move the item right">Insert Tab</button>
@@ -261,6 +265,8 @@
     <script src="{{ static_url('tables.js') }}"></script>
     <script src="{{ static_url('search.js') }}"></script>
     <script src="{{ static_url('docwindow.js') }}"></script>
+    <script src="{{ static_url('scriptapi.js') }}"></script>
+    <script src="{{ static_url('scripting.js') }}"></script>
 	{% if is_authenticated %}
     	<script src="{{ static_url('script3.js') }}"></script>
     	<script src="{{ static_url('cloudsync.js') }}"></script>

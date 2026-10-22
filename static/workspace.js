@@ -576,11 +576,13 @@ function treeDocumentItem(name, label, depth){
 			{ label: "Open" + count, action: () => names.forEach(openDocumentFromTree) },
 			{ label: "Open in new window" + (names.length > 1 ? "s" : ""), action: () => names.forEach(openDocumentWindow) },
 			{ label: "Duplicate" + count, action: () => duplicateDocuments(names) },
+			{ label: "Get Document Id", action: () => documentIdNotification(name), disabled: names.length > 1 },
 			{ label: "Delete" + count, danger: true, action: () => names.length > 1 ? deleteDocuments(names) : deleteDocumentInLocalStorage(name) },
 			...(names.length > 1 ? [{ label: "Clear selection", action: clearDocumentSelection }] : []),
 			null,
 			...checklistFoldMenuItems((change) => names.reduce((n, doc) => n + changeDocument(doc, change), 0)),
 			titleMenuItem(storedDocumentMeta(names[0]).showTitle, (change) => names.forEach(doc => changeDocument(doc, change))),
+			scriptsMenuItem(storedDocumentMeta(names[0]).scripts, (change) => names.forEach(doc => changeDocument(doc, change))), // scripting.js
 			null,
 			...moveToFolderMenuItems(names),
 			null,
@@ -1039,6 +1041,14 @@ function duplicatedNotification(copies){
 	}));
 }
 
+function documentIdNotification(name, id=null){
+	// stays until closed: the id (doclinks.js) is there to be selected and copied
+	ensureDocumentIds();
+	id ||= documentIdOf(name);
+	if ( !id ) { return null }
+	return createNotification(`Document '${escapeHtmlText(name || untitledTabLabel)}' ID: <code class="document-id">${escapeHtmlText(id)}</code>`, "info", 0, true);
+}
+
 // changes to a document from its menus: shown in an editor it is changed there like after an edit (unsaved tab,
 // autosave), with unsaved edits elsewhere those are changed, else the stored document is
 function changeTabDocument(tab, change){
@@ -1268,9 +1278,11 @@ function renderTabs(){
 			{ label: "Open to the side", action: () => splitEditor(tab), disabled: Boolean(pane) || panes.length >= maxEditors },
 			{ label: "Open in new window", action: () => openDocumentWindow(tab.name), disabled: !tab.name || !documentExists(tab.name) },
 			{ label: "Duplicate", action: () => duplicateDocuments([tab.name]), disabled: !tab.name || !documentExists(tab.name) },
+			{ label: "Get Document Id", action: () => documentIdNotification(tab.savedName, tab.docId), disabled: !(tab.docId || (tab.savedName && documentExists(tab.savedName))) },
 			null,
 			...checklistFoldMenuItems((change) => changeTabDocument(tab, change)),
 			titleMenuItem(tabDocumentMeta(tab).showTitle, (change) => changeTabDocument(tab, change)),
+			scriptsMenuItem(tabDocumentMeta(tab).scripts, (change) => changeTabDocument(tab, change)), // scripting.js
 			null,
 			...tabsPanelMenuItems(),
 		]));
@@ -1349,6 +1361,7 @@ function setupPane(el){
 		null,
 		...checklistFoldMenuItems((change) => tabById(pane.tabId) ? changeTabDocument(tabById(pane.tabId), change) : 0),
 		titleMenuItem(tabDocumentMeta(tabById(pane.tabId)).showTitle, (change) => tabById(pane.tabId) && changeTabDocument(tabById(pane.tabId), change)),
+		scriptsMenuItem(tabDocumentMeta(tabById(pane.tabId)).scripts, (change) => tabById(pane.tabId) && changeTabDocument(tabById(pane.tabId), change)), // scripting.js
 	]));
 	// drag an editor by its header onto another editor to swap their places
 	const head = el.querySelector(".pane-head");
@@ -1577,6 +1590,7 @@ function renderPanes(){
 		pane.el.setAttribute("aria-label", `Editor ${i + 1}` + (isFocused ? " (focused)" : ""));
 		renderPaneTitle(pane, tab);
 	});
+	if ( typeof renderScripting !== "undefined" ) { renderScripting() } // scripting.js loads after this file
 }
 
 

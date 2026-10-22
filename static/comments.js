@@ -1,7 +1,8 @@
 /*
  * Comments: hover a line and click the "+" right of it to add a comment. A line's comments are its data-comments attribute, a JSON list of
  * {id, by, date, text, resolved}, so they are saved and synced with the document. The line is the list item clicked in,
- * or else the editor's block (a <div>, a heading, ...). The right click keeps the browser's own menu (spelling etc.).
+ * or else the editor's block (a <div>, a heading, ...). The right click keeps the browser's own menu (spelling etc.);
+ * on the "+" or a line's comment icon it assigns the line an id for the scripts (scripting.js).
  * A line with comments gets a comment icon in the margin right of it: red while any comment is unresolved, green when
  * all are. The icon opens the comments, newest first; their authors can mark them resolved.
  * The icons and the comments are drawn outside the editor (like the line numbers, linenumbers.js), never in the document.
@@ -155,6 +156,11 @@ function commentsView(editor){
 		hideCommentAdd();
 		openCommentsPopover(editor, line, true);
 	});
+	// its right click assigns the line an id for the scripts (scripting.js)
+	add.addEventListener("contextmenu", (e) => {
+		if ( commentHover?.editor !== editor || !commentHover.line.isConnected ) { return }
+		openContextMenu(e, elementIdMenuItems(editor, wrapCommentLine(commentHover.line)));
+	});
 	card.append(add);
 	view = {layer, add};
 	commentViews.set(editor, view);
@@ -197,6 +203,7 @@ function renderComments(editor){
 			icon.innerHTML = commentIcon;
 			icon.addEventListener("mousedown", (e) => e.preventDefault()); // the editor keeps its caret
 			icon.addEventListener("click", () => openCommentsPopover(editor, icon.line, false));
+			icon.addEventListener("contextmenu", (e) => { if ( icon.line.isConnected ) { openContextMenu(e, elementIdMenuItems(editor, icon.line)) } });
 		}
 		icon.line = line;
 		const open = comments.filter((c) => !c.resolved).length;

@@ -9,6 +9,8 @@
  *    and indexes into that text are mapped back to DOM positions
  *  - edits go through document.execCommand, so they stay on the browser's undo stack (u / Ctrl+r)
  *  - one mode for all the split editors; the mode is shown top right, colored by mode
+ *  - a .vi-editable element outside of the editors (the Script wizard's code, scripting.js) gets vi too: its mode and
+ *    cursor show over it, q doesn't close it, and its ex commands go to it first as a cancelable "vi-command" event
  */
 (() => {
 if ( window.WriteVi ) { return }
@@ -194,7 +196,9 @@ function buildUi(){
 		@media (pointer: coarse) {
 			.vi-esc-enabled .vi-esc { display: flex; align-items: center; }
 		}
-		.vi-block-caret #editor-grid .editor { caret-color: transparent; }
+		.vi-block-caret #editor-grid .editor, .vi-block-caret .vi-editable { caret-color: transparent; }
+		/* over the window of a .vi-editable (scripting.js's windows stack up from 31) */
+		.vi-in-window :is(.vi-bar, .vi-complete, .vi-cursor) { z-index: 100000; }
 		/* focus mode: only the command line shows, and the phone Esc in gray */
 		.focus-mode .vi-mode:not([data-mode="command"]) { background: none; box-shadow: none; }
 		.focus-mode .vi-mode:not([data-mode="command"]) .vi-mode-body { display: none; }
@@ -251,12 +255,35 @@ function buildUi(){
 }
 
 function placeIndicator(){
+	// in a .vi-editable: at its top right
+	const editable = viEditable();
+	document.body.classList.toggle("vi-in-window", Boolean(editable));
+	if ( editable ) {
+		const box = editable.getBoundingClientRect();
+		ui.bar.style.top = `${Math.round(box.top + 4)}px`;
+		ui.bar.style.right = `${Math.round(window.innerWidth - box.right + 18)}px`;
+		return
+	}
 	// top right of the editors, under the editor headers of a split view and clear of the scrollbar
 	const grid = document.getElementById("editor-grid").getBoundingClientRect();
 	const head = document.querySelector("#editor-grid .pane-head");
 	const headHeight = head?.offsetHeight ? head.getBoundingClientRect().height : 0;
 	ui.bar.style.top = `${Math.round(grid.top + headHeight + 6)}px`;
 	ui.bar.style.right = `${Math.round(window.innerWidth - grid.right + 20)}px`;
+}
+
+function undoScriptChangeIn(editor){
+	return typeof undoScriptChange === "function" && undoScriptChange(editor);
+}
+
+function redoScriptChangeIn(editor){
+	return typeof redoScriptChange === "function" && redoScriptChange(editor);
+}
+
+function viEditable(){
+	// the .vi-editable vi is in, also while its command line has the focus
+	const editor = commandLine?.editor ?? focusedEditor();
+	return editor?.classList.contains("vi-editable") ? editor : null;
 }
 
 function onResize(){
@@ -309,7 +336,7 @@ function renderCursor(){
 	}
 	const rect = characterRect(model, index);
 	// scrolled out of the editor: it would be drawn over the toolbar
-	const view = editor.closest(".pane-scroll")?.getBoundingClientRect();
+	const view = (editor.closest(".pane-scroll") || (editor.classList.contains("vi-editable") ? editor : null))?.getBoundingClientRect();
 	if ( !rect || (view && (rect.bottom <= view.top || rect.top >= view.bottom)) ) {
 		ui.cursor.style.display = "none";
 		return
@@ -378,6 +405,8 @@ function setTypingAttributes(typing){
 // events
 function editorOf(node){
 	const el = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+	const editable = el?.closest(".vi-editable");
+	if ( editable ) { return editable }
 	const editor = el?.closest(".editor");
 	return editor && editor.closest("#editor-grid") ? editor : null;
 }
@@ -434,6 +463,8 @@ function closePopupsWithQ(e){
 	if ( e.key !== "q" || e.ctrlKey || e.metaKey || e.altKey || e.isComposing || commandLine ) { return false }
 	if ( typeof openPopups !== "function" || !openPopups().length ) { return false }
 	const editor = editorOf(e.target);
+	// a .vi-editable's window closes with :q
+	if ( editor?.classList.contains("vi-editable") ) { return false }
 	const typing = editor ? mode === "insert" || mode === "replace" || pending.length > 0
 		: e.target.closest?.('input:not([type=checkbox], [type=radio], [type=button], [type=submit], [type=reset], [type=range], [type=color], [type=file]), textarea, select, [contenteditable]:not([contenteditable="false"])');
 	if ( typing ) { return false }
@@ -955,8 +986,9 @@ function runNormal(editor, keys){
 	case "J": joinLines(editor, model, i, Math.max(count, 2)); changed(); return {change: true, count: count1, keys: ["J"]};
 	case "p":
 	case "P": put(editor, model, i, key === "P", count); changed(); return {change: true, count: count1, keys: [key]};
-	case "u": for ( let n = 0; n < count; n++ ) { exec("undo") } clampCaret(editor); changed(); return;
-	case "<C-r>": for ( let n = 0; n < count; n++ ) { exec("redo") } changed(); return;
+	// a script's changes to the document are undone and redone apart from the browser's (scripting.js)
+	case "u": for ( let n = 0; n < count; n++ ) { if ( !undoScriptChangeIn(editor) ) { exec("undo") } } clampCaret(editor); changed(); return;
+	case "<C-r>": for ( let n = 0; n < count; n++ ) { if ( !redoScriptChangeIn(editor) ) { exec("redo") } } changed(); return;
 	case ".": repeatLastChange(editor, count1); return;
 	case "Tab": {
 		// checks / unchecks the checklist item of the cursor's line, like Ctrl+Enter (checklist.js)
@@ -2442,6 +2474,7 @@ const exCommands = [
 	[["tree", "FileExplorer"], "show the documents and go to them"],
 	[["toc", "TableOfContents"], "show the table of contents and go to it"],
 	[["table"], "add a table: :table columns rows headers", true],
+	[["script"], "add a script's button: :script, run one: :script name", true],
 	[["focus"], "focus mode on / off"],
 	[["lines"], "line numbers on / off"],
 	[["nohlsearch", "noh"], "hide the search highlight"],
@@ -2599,6 +2632,11 @@ function runExCommand(editor, value, visual){
 	}
 	const [name, ...args] = command.split(/\s+/);
 	const arg = args.join(" ");
+	// a .vi-editable handles the commands it knows (the Script wizard's :w, :q), the others are the app's
+	if ( editor.classList.contains("vi-editable") ) {
+		const handled = !editor.dispatchEvent(new CustomEvent("vi-command", {cancelable: true, detail: {name, arg}}));
+		if ( handled ) { return }
+	}
 	switch ( name ) {
 	case "w": case "write": case "w!":
 		saveDocumentToLocalStorage();
@@ -2640,6 +2678,20 @@ function runExCommand(editor, value, visual){
 		// under the cursor's line, not splitting it
 		setCaret(model, lineEnd(text, i));
 		insertTable(options.columns, options.rows, options.headers ?? true);
+		return;
+	}
+	case "script": {
+		// :script opens the Script wizard for a button at the end of the cursor's line, :script name runs the
+		// document's script button of that name (scripting.js)
+		if ( arg ) {
+			const activator = [...editor.querySelectorAll(".script-activator")].find(el => el.textContent.trim() === arg.trim());
+			if ( activator ) { runScript(activator) } else { showMessage(`No script "${arg}"`, "error") }
+			return;
+		}
+		if ( !scriptsEnabled(editor) ) { showMessage("Scripts are disabled in this document", "error"); return }
+		setCaret(model, lineEnd(text, i));
+		const selection = window.getSelection();
+		openScriptWizard(null, selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null);
 		return;
 	}
 	case "f": case "focus":
@@ -3177,6 +3229,7 @@ const helpSections = [
 		[":tree :FileExplorer", "show the documents and go to them (TREE)"],
 		[":toc :TableOfContents", "show the table of contents and go to it: j / k, Enter goes to the heading, Esc back"],
 		[":table 3 2 :table 3 2 no", "add a table: columns, rows, headers (true / false, yes / no, 1 / 0); :table alone opens the widget"],
+		[":script :script name", "add a script's button at the end of the line with the Script wizard, run the script of that name"],
 		[":lines", "line numbers on / off"],
 		[":f :focus", "focus mode on / off: only the text; Esc Esc in NORMAL or the faint x leaves it"],
 		[":h :help", "this help"],
