@@ -17,6 +17,10 @@
  * Every opened document remembers where it was left, the editor's scroll and the caret, while it is opened and,
  * when saved, across visits (docPositionsKey); closing its tab forgets it.
  * The document window (docwindow.js) shows one document and keeps the app's tabs, editors and layout as they are.
+ *
+ * A document whose metadata (doclinks.js) has showTitle shows its name as a title above its text, line 0: not part of
+ * the text (not in the table of contents, the exports or the word count), editing it renames the document like the
+ * name field does, and the other way around. A document's menus show or hide it.
  */
 const layoutKey = "__layout__";
 const openedTabsKey = "__openedTabs__";
@@ -133,7 +137,9 @@ window.addEventListener("pagehide", savePositions);
 window.addEventListener("storage", (e) => {
 	if ( e.key?.startsWith(docPrefix) && e.newValue !== null ) {
 		const name = e.key.slice(docPrefix.length);
-		if ( tabs.some(t => t.name === name && !t.dirty && paneOfTab(t) && splitDocumentId(e.newValue).html !== paneOfTab(t).editor.innerHTML) ) {
+		const stored = splitDocumentId(e.newValue);
+		const changed = (t) => stored.html !== paneOfTab(t).editor.innerHTML || JSON.stringify(stored.meta) !== JSON.stringify(t.meta ?? {});
+		if ( tabs.some(t => t.name === name && !t.dirty && paneOfTab(t) && changed(t)) ) {
 			reloadDocumentTabs(name);
 		}
 	}
@@ -168,6 +174,11 @@ fileTreeSearch.addEventListener("keydown", (e) => {
 });
 document.getElementById("file-tree").addEventListener("contextmenu", (e) => openContextMenu(e, treePanelMenuItems()));
 document.getElementById("tab-bar").addEventListener("contextmenu", (e) => openContextMenu(e, tabsPanelMenuItems()));
+// on the bar: the first click of a double click on another tab renders the tabs anew
+tabsContainer.addEventListener("dblclick", (e) => {
+	const el = e.target.closest(".tab");
+	if ( el && !e.target.closest(".tab-close") ) { revealDocumentInTree(tabById(Number(el.dataset.tabId))?.savedName) }
+});
 setupDocking("file-tree-head", "tree");
 setupLongPressMenus(fileTreeList);
 setupTreeResizing();
@@ -568,6 +579,9 @@ function treeDocumentItem(name, label, depth){
 			{ label: "Delete" + count, danger: true, action: () => names.length > 1 ? deleteDocuments(names) : deleteDocumentInLocalStorage(name) },
 			...(names.length > 1 ? [{ label: "Clear selection", action: clearDocumentSelection }] : []),
 			null,
+			...checklistFoldMenuItems((change) => names.reduce((n, doc) => n + changeDocument(doc, change), 0)),
+			titleMenuItem(storedDocumentMeta(names[0]).showTitle, (change) => names.forEach(doc => changeDocument(doc, change))),
+			null,
 			...moveToFolderMenuItems(names),
 			null,
 			...treePanelMenuItems(),
@@ -740,6 +754,25 @@ function setupDocumentDropping(){
 
 function clearDocumentDropTargets(){
 	fileTreeList.parentElement.querySelectorAll(".drop-target").forEach(x => x.classList.remove("drop-target"));
+}
+
+function revealDocumentInTree(name){
+	// a double click on a tab: while the documents are shown, the folders the document is in open and the tree
+	// scrolls to it; a filter that hides it is cleared
+	const showingToc = document.body.classList.contains("toc-in-tree") && layout.treeTab === "toc";
+	if ( !name || !documentExists(name) || !isFileTreeVisible() || showingToc ) { return false }
+	if ( fileTreeSearch.value && !name.toLowerCase().includes(fileTreeSearch.value.trim().toLowerCase()) ) { fileTreeSearch.value = "" }
+	expandFolder(folderOfDocument(name));
+	refreshFileTree(true);
+	const row = [...fileTreeList.querySelectorAll(".tree-document")].find(r => r.dataset.name === name);
+	if ( !row ) { return false }
+	row.scrollIntoView({ block: "nearest" });
+	// a short flash, so it is found among the others
+	row.classList.remove("revealed");
+	void row.offsetWidth;
+	row.classList.add("revealed");
+	row.addEventListener("animationend", () => row.classList.remove("revealed"), { once: true });
+	return true;
 }
 
 function openDocumentFromTree(name){
@@ -978,8 +1011,10 @@ function duplicateDocuments(names){
 	try {
 		for ( const name of names.filter(documentExists) ) {
 			const copy = duplicateName(name);
-			const html = unsavedDocumentHtml(name) ?? splitDocumentId(localStorage.getItem(docPrefix + name)).html;
-			localStorage.setItem(docPrefix + copy, withDocumentId(html, newDocumentId()));
+			const stored = splitDocumentId(localStorage.getItem(docPrefix + name));
+			const html = unsavedDocumentHtml(name) ?? stored.html;
+			const meta = tabs.find(t => t.name === name && t.dirty)?.meta ?? stored.meta;
+			localStorage.setItem(docPrefix + copy, withDocumentId(html, newDocumentId(), meta));
 			assignDocumentFolder(copy, folderOfDocument(name));
 			copies.push(copy);
 		}
@@ -989,7 +1024,198 @@ function duplicateDocuments(names){
 	if ( !copies.length ) { return }
 	refreshFileTree();
 	syncFolders();
-	createNotification(copies.length === 1 ? `Document '${copies[0]}' created!` : `${copies.length} documents duplicated!`, "info");
+	duplicatedNotification(copies);
+}
+
+function duplicatedNotification(copies){
+	// stays longer than the others, with a link to each copy: a click opens it, a ctrl/middle click opens it in a new browser tab
+	const links = copies.map(copy => `'<a href="?${docLinkParam}=${documentIdOf(copy)}" data-copy="${escapeHtmlText(copy)}">${escapeHtmlText(copy)}</a>'`);
+	const text = copies.length === 1 ? `Document ${links[0]} created!` : `${copies.length} documents duplicated: ${links.join(", ")}`;
+	const notification = createNotification(text, "info", notificationTimeoutLong, true);
+	notification?.querySelectorAll("a[data-copy]").forEach(link => link.addEventListener("click", (e) => {
+		if ( e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey ) { return }
+		e.preventDefault();
+		if ( loadDocumentFromLocalStorage(link.dataset.copy) ) { closeNotification(notification) }
+	}));
+}
+
+// changes to a document from its menus: shown in an editor it is changed there like after an edit (unsaved tab,
+// autosave), with unsaved edits elsewhere those are changed, else the stored document is
+function changeTabDocument(tab, change){
+	// change(root, meta): root holds the document's content, meta is its metadata (documentMeta); returns what changed,
+	// nothing when nothing did
+	tab.meta ??= {};
+	const pane = paneOfTab(tab);
+	if ( pane ) {
+		const changed = change(pane.editor, tab.meta);
+		if ( changed && change.folds ) {
+			foldsChanged(pane.editor); // folding.js
+		} else if ( changed ) {
+			pane.editor.dispatchEvent(new Event("input", { bubbles: true }));
+			if ( pane === focusedPane ) { performAutoSave() }
+		}
+		return changed;
+	}
+	if ( tab.html === null ) { return tab.savedName ? changeStoredDocument(tab.savedName, change) : 0 }
+	const root = document.createElement("div");
+	root.innerHTML = tab.html;
+	const changed = change(root, tab.meta);
+	if ( changed ) {
+		tab.html = root.innerHTML;
+		tab.dirty = true;
+		renderTabs();
+	}
+	return changed;
+}
+
+function changeDocument(name, change){
+	const tab = tabs.find(t => t.name === name && (paneOfTab(t) || t.html !== null));
+	return tab ? changeTabDocument(tab, change) : changeStoredDocument(name, change);
+}
+
+function changeStoredDocument(name, change){
+	// folds aren't saved with documents (Settings > Save folding state): a document that isn't opened stays as it is
+	if ( !documentExists(name) || (change.folds && !documentFoldsSaved()) ) { return 0 }
+	const stored = splitDocumentId(localStorage.getItem(docPrefix + name));
+	const root = document.createElement("div");
+	root.innerHTML = stored.html;
+	const changed = change(root, stored.meta);
+	if ( !changed ) { return changed }
+	try {
+		localStorage.setItem(docPrefix + name, withDocumentId(root.innerHTML, stored.id || documentIdOf(name) || newDocumentId(), stored.meta));
+	} catch ( err ) {
+		informError("Could not save document!", err);
+		return 0;
+	}
+	if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the change goes to the cloud (cloudsync.js)
+	return changed;
+}
+
+function checklistFoldMenuItems(changeEach){
+	// changeEach(change): applies the change to the menu's documents, returns how many items it changed
+	const run = (fold, done, none) => {
+		// a change of the folds only (changeTabDocument)
+		const count = changeEach(Object.assign((root) => fold(root), { folds: true }));
+		if ( !count && !documentFoldsSaved() ) { none += " in the opened documents (folds aren't saved with documents, see Settings)" }
+		createNotification(count ? `${count} checklist item${count === 1 ? "" : "s"} ${done}` : none, "info", count ? notificationTimeoutShort : notificationTimeout);
+	};
+	return [
+		{ label: "Unfold all checkboxes", action: () => run(unfoldChecklists, "unfolded", "No folded checkboxes") },
+		{ label: "Fold all completed checkboxes", action: () => run(foldCompletedChecklists, "folded", "No completed checkboxes to fold") },
+	];
+}
+
+function storedDocumentMeta(name){
+	// the metadata of a document as its opened tab has it, else as it is stored
+	const tab = tabs.find(t => t.name === name && (paneOfTab(t) || t.html !== null));
+	if ( tab ) { return tab.meta ?? {} }
+	return documentExists(name) ? splitDocumentId(localStorage.getItem(docPrefix + name)).meta : {};
+}
+
+function tabDocumentMeta(tab){
+	if ( !tab ) { return {} }
+	if ( paneOfTab(tab) || tab.html !== null || !tab.savedName ) { return tab.meta ?? {} }
+	return storedDocumentMeta(tab.savedName);
+}
+
+function titleMenuItem(shown, changeEach){
+	// shows or hides the documents' title
+	const change = (root, meta) => {
+		if ( Boolean(meta.showTitle) === !shown ) { return 0 }
+		shown ? delete meta.showTitle : meta.showTitle = true;
+		return 1;
+	};
+	return { label: shown ? "Hide title" : "Show title", action: () => { changeEach(change); renderPanes() } };
+}
+
+// the title (line 0)
+function setupDocumentTitle(pane){
+	const title = pane.title;
+	// only text: no formatting, no line breaks (Firefox before 136 doesn't know plaintext-only)
+	try { title.contentEditable = "plaintext-only" } catch ( err ) { title.contentEditable = "true" }
+	title.addEventListener("input", () => {
+		if ( /[\r\n]/.test(title.textContent) ) { setTitleText(title, title.textContent.replace(/\s*[\r\n]+\s*/g, " ")) }
+		// renames the document as typing in the name field does
+		focusPane(pane);
+		documentNameObject.value = title.textContent;
+		documentNameObject.dispatchEvent(new Event("input"));
+		updateTitle();
+	});
+	title.addEventListener("keydown", (e) => {
+		// Enter, Esc or the arrow down go on to the text
+		if ( ["Enter", "Escape", "ArrowDown"].includes(e.key) && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey ) {
+			e.preventDefault();
+			e.stopPropagation();
+			caretToEditorStart(pane.editor);
+			return;
+		}
+		// the editors' keys (autosave on each key, which would rename the document letter by letter; lists, tabs) aren't
+		// for the title; shortcuts go on
+		if ( !e.ctrlKey && !e.metaKey && !e.altKey ) { e.stopPropagation() }
+	});
+	title.addEventListener("paste", (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		const text = e.clipboardData.getData("text/plain").replace(/\s*[\r\n]+\s*/g, " ");
+		document.execCommand("insertText", false, text);
+	});
+	title.addEventListener("drop", (e) => e.preventDefault());
+	// from the first line of the text, the arrow up goes to the title
+	pane.editor.addEventListener("keydown", (e) => {
+		if ( e.key !== "ArrowUp" || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || title.hidden || !caretOnFirstRow(pane.editor) ) { return }
+		e.preventDefault();
+		title.focus();
+		const caret = document.createRange();
+		caret.selectNodeContents(title);
+		caret.collapse(false);
+		const selection = window.getSelection();
+		selection.removeAllRanges();
+		selection.addRange(caret);
+	});
+}
+
+function setTitleText(title, text){
+	// keeps the caret at the end while it is being typed in
+	title.textContent = text;
+	if ( document.activeElement !== title ) { return }
+	const caret = document.createRange();
+	caret.selectNodeContents(title);
+	caret.collapse(false);
+	window.getSelection().removeAllRanges();
+	window.getSelection().addRange(caret);
+}
+
+function caretToEditorStart(editor){
+	editor.focus({ preventScroll: true });
+	const first = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT).nextNode();
+	const caret = document.createRange();
+	caret.setStart(first || editor, 0);
+	caret.collapse(true);
+	const selection = window.getSelection();
+	selection.removeAllRanges();
+	selection.addRange(caret);
+}
+
+function caretOnFirstRow(editor){
+	const selection = window.getSelection();
+	if ( !selection.rangeCount || !selection.isCollapsed || !editor.contains(selection.focusNode) ) { return false }
+	const range = selection.getRangeAt(0);
+	const rect = range.getClientRects()[0] || elementOf(range.startContainer)?.getBoundingClientRect();
+	const first = [...editor.children].find(el => el.getClientRects().length) || editor;
+	if ( !rect ) { return false }
+	const lineHeight = parseFloat(getComputedStyle(first).lineHeight) || parseFloat(getComputedStyle(first).fontSize) * 1.5;
+	return rect.top < first.getBoundingClientRect().top + lineHeight;
+}
+
+function renderPaneTitle(pane, tab){
+	const shown = Boolean(tab && tabDocumentMeta(tab).showTitle);
+	if ( pane.title.hidden === shown ) {
+		pane.title.hidden = !shown;
+		if ( typeof scheduleLineNumbers !== "undefined" ) { scheduleLineNumbers() } // linenumbers.js loads after this file
+	}
+	if ( !shown || document.activeElement === pane.title ) { return }
+	const name = tabLabelName(tab);
+	if ( pane.title.textContent !== name ) { pane.title.textContent = name }
 }
 
 function tabLabel(tab){
@@ -1005,6 +1231,7 @@ function renderTabs(){
 		const label = tabLabel(tab);
 		const el = document.createElement("div");
 		el.className = "tab" + (isActive ? " active" : "") + (pane && !isActive ? " shown" : "") + (tab.dirty ? " dirty" : "");
+		el.dataset.tabId = tab.id;
 		el.setAttribute("role", "tab");
 		el.setAttribute("aria-selected", String(isActive));
 		el.tabIndex = isActive ? 0 : -1;
@@ -1041,6 +1268,9 @@ function renderTabs(){
 			{ label: "Open to the side", action: () => splitEditor(tab), disabled: Boolean(pane) || panes.length >= maxEditors },
 			{ label: "Open in new window", action: () => openDocumentWindow(tab.name), disabled: !tab.name || !documentExists(tab.name) },
 			{ label: "Duplicate", action: () => duplicateDocuments([tab.name]), disabled: !tab.name || !documentExists(tab.name) },
+			null,
+			...checklistFoldMenuItems((change) => changeTabDocument(tab, change)),
+			titleMenuItem(tabDocumentMeta(tab).showTitle, (change) => changeTabDocument(tab, change)),
 			null,
 			...tabsPanelMenuItems(),
 		]));
@@ -1100,7 +1330,8 @@ function setupTabDragging(el, tab){
 
 // editors (split view)
 function setupPane(el){
-	const pane = { tabId: null, el, editor: el.querySelector(".editor") };
+	const pane = { tabId: null, el, editor: el.querySelector(".editor"), title: el.querySelector(".doc-title") };
+	setupDocumentTitle(pane);
 	// focus follows the caret or a click anywhere in the pane
 	el.addEventListener("focusin", () => focusPane(pane));
 	el.addEventListener("mousedown", () => focusPane(pane));
@@ -1115,6 +1346,9 @@ function setupPane(el){
 	el.querySelector(".pane-head").addEventListener("contextmenu", (e) => openContextMenu(e, [
 		{ label: "Close editor", action: () => closePane(pane), disabled: panes.length < 2 },
 		{ label: "Split editor", action: () => splitEditor(), disabled: panes.length >= maxEditors },
+		null,
+		...checklistFoldMenuItems((change) => tabById(pane.tabId) ? changeTabDocument(tabById(pane.tabId), change) : 0),
+		titleMenuItem(tabDocumentMeta(tabById(pane.tabId)).showTitle, (change) => tabById(pane.tabId) && changeTabDocument(tabById(pane.tabId), change)),
 	]));
 	// drag an editor by its header onto another editor to swap their places
 	const head = el.querySelector(".pane-head");
@@ -1194,6 +1428,7 @@ function loadPane(pane){
 		const stored = splitDocumentId(documentExists(tab.name) ? localStorage.getItem(docPrefix + tab.name) : "");
 		html = stored.html;
 		if ( stored.id ) { tab.docId = stored.id }
+		tab.meta = stored.meta;
 	}
 	tab.html = null;
 	pane.editor.innerHTML = html;
@@ -1340,6 +1575,7 @@ function renderPanes(){
 		paneName.textContent = (tab ? tabLabel(tab) : untitledTabLabel) + (tab?.dirty ? " ●" : "");
 		paneName.title = (tab ? tabLabel(tab) : untitledTabLabel) + (tab?.dirty ? " (unsaved)" : "");
 		pane.el.setAttribute("aria-label", `Editor ${i + 1}` + (isFocused ? " (focused)" : ""));
+		renderPaneTitle(pane, tab);
 	});
 }
 

@@ -278,6 +278,24 @@ body.app > .topbar {
 .toc-row.folded {
 	opacity: .55;
 }
+/* the arrow of an entry with entries under it, collapsing them in the list only (toc.js); an empty place on the others */
+.toc-fold {
+	flex: none;
+	width: 1em;
+	margin-left: -.2rem;
+	margin-right: .2rem;
+	color: var(--muted);
+	text-align: center;
+}
+.toc-row[aria-expanded] .toc-fold::before {
+	content: "▾";
+}
+.toc-row[aria-expanded="false"] .toc-fold::before {
+	content: "▸";
+}
+.toc-row[aria-expanded] .toc-fold:hover {
+	color: var(--ink);
+}
 /* a top-level checklist item (Settings > Table of contents), its checkbox before it */
 .toc-task-box {
 	flex: none;
@@ -428,6 +446,13 @@ body.app > .topbar {
 	background: var(--surface-2);
 	color: var(--ink);
 	font-weight: 600;
+}
+/* a document revealed from its tab (double click) */
+.tree-row.revealed {
+	animation: tree-reveal 1.2s ease-out;
+}
+@keyframes tree-reveal {
+	from, 30% { background: color-mix(in srgb, var(--accent) 30%, transparent) }
 }
 .tree-folder::before {
 	content: "▾";
@@ -1102,6 +1127,30 @@ body.app > .topbar {
 :is(.editor, #content, .compare-view) h2 { font-size: 1.6em; }
 :is(.editor, #content, .compare-view) h3 { font-size: 1.3em; }
 :is(.editor, #content, .compare-view) h4 { font-size: 1.1em; }
+/* the document's title, line 0 (workspace.js): its name, bigger than an h1 of the text */
+.doc-title {
+	margin: 0 0 .6rem;
+	font-size: 2.6em;
+	font-weight: 700;
+	line-height: 1.2;
+	color: inherit;
+	outline: none;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+.doc-title[hidden] {
+	display: none;
+}
+.doc-title:empty::before {
+	content: "Untitled";
+	color: var(--muted);
+	opacity: .6;
+	pointer-events: none;
+}
+.line-numbers > .title-number {
+	pointer-events: none;
+	cursor: default;
+}
 /* heading folding (folding.js): an arrow in the margin left of each heading, shown on hover or when collapsed */
 .heading-folding .editor > :is(h1, h2, h3, h4) {
 	position: relative;

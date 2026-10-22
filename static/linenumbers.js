@@ -3,7 +3,8 @@
  * The lines are the ones vi mode counts (textModel, vi.js), so :12 goes to the line numbered 12: every block, list item
  * and line inside them (<br>, line breaks of pasted text) is one, a rule (<hr>) too. A wrapped line keeps one number;
  * the lines of a collapsed section (folding.js) keep theirs, hidden with them.
- * The numbers are drawn in the editor's card, outside the editor, so they are never part of the document.
+ * The numbers are drawn in the editor's card, outside the editor, so they are never part of the document. A document's
+ * title (workspace.js) is line 0.
  * Settings > Editor or vi's :lines turns them on and off (lineNumbersKey, script.js); it goes to the cloud with the notebook.
  * A click on a number selects its line, with its line break, like a click on a line number in VSCode; Shift+click or
  * a drag over the numbers selects the lines in between. In vi mode that is V-LINE (vi.js).
@@ -152,7 +153,8 @@ function renderLineNumbers(editor){
 	const origin = view.gutter.getBoundingClientRect().top;
 	// the card makes room for the numbers (styles.css)
 	view.gutter.parentElement.style.setProperty("--line-number-digits", Math.max(2, String(lines.length).length));
-	const numbers = [...view.gutter.children];
+	renderTitleNumber(view);
+	const numbers = [...view.gutter.children].filter((el) => !el.classList.contains("title-number"));
 	lines.forEach((line, i) => {
 		const el = numbers[i] || view.gutter.appendChild(document.createElement("span"));
 		const rect = lineRect(line);
@@ -167,6 +169,23 @@ function renderLineNumbers(editor){
 	numbers.slice(lines.length).forEach((el) => el.remove());
 	view.lines = lines;
 	markCaretLine(editor);
+}
+
+function renderTitleNumber(view){
+	// the document's title (workspace.js), when shown, is line 0
+	const title = view.gutter.parentElement.querySelector(".doc-title");
+	let zero = view.gutter.querySelector(".title-number");
+	if ( !title || title.hidden ) { zero?.remove(); return }
+	if ( !zero ) {
+		zero = document.createElement("span");
+		zero.className = "title-number";
+		zero.textContent = "0";
+		view.gutter.prepend(zero);
+	}
+	const style = getComputedStyle(title);
+	const height = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.25;
+	zero.style.top = `${title.getBoundingClientRect().top - view.gutter.getBoundingClientRect().top}px`;
+	zero.style.height = zero.style.lineHeight = `${height}px`;
 }
 
 function markCaretLine(editor){

@@ -87,3 +87,14 @@ def test_untitled_tab_cant_be_duplicated(app):
 	app.evaluate("openNewTab()")
 	app.locator("#tabs .tab.active").click(button="right")
 	assert app.locator("#context-menu button", has_text="Duplicate").is_disabled()
+
+
+def test_notification_stays_longer_and_opens_the_copy(app):
+	duplicate_in_tree(app, "list")
+	notification = app.locator(".notification-container", has_text="list (copy)")
+	# the usual ones go after 3 s
+	app.wait_for_timeout(3500)
+	assert notification.count() == 1
+	notification.locator("a", has_text="list (copy)").click()
+	app.wait_for_function("getActiveTab()?.name === 'list (copy)'")
+	assert app.evaluate("document.getElementById('editor').innerText.trim()") == "list text"

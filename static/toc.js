@@ -11,7 +11,13 @@
  * it can list the top-level checklist items too, as headings of a level under all the others (tocChecklistLevel, "h10"):
  * each under the heading of its section.
  * The document window (docwindow.js) has a table of contents of its own, over the document (#doc-window-toc).
- * Keys in the list: arrows or j / k move, Enter goes to the heading, Esc goes back to the editor.
+ * An entry with entries under it has an arrow that collapses or expands them in the list only, independent of the
+ * document's heading folding (folding.js); the entries in a section collapsed in the document are grayed out.
+ * What is collapsed is kept for each opened document while it is opened and, with Settings > Save folding state > Contents
+ * (saveContentsFoldsKey, script.js), across visits on this device (tocFoldsKey, by the document's id); an entry is known by
+ * its level and text (and which one of the same it is).
+ * Keys in the list: arrows or j / k move, Enter goes to the heading, Esc goes back to the editor, left / right collapse and
+ * expand the heading's section.
  */
 const tocWidthKey = "__tocWidth__"; // the panel's width, a preference of this device only (isDeviceOnlyKey)
 const tocHeightKey = "__tocHeight__"; // and its height above or below the editors
@@ -23,6 +29,9 @@ let tocEditor = null;
 let tocSignature = null;
 let tocFrame = 0;
 let tocScrollFrame = 0;
+const tocFoldsKey = "__tocFolds__"; // {documentId: [entry key]}: what is collapsed in the list, a state of this device only (isDeviceOnlyKey)
+const tocFolds = new Map(); // tab id -> Set of the entry keys collapsed in the list
+let tocKeys = []; // the entry keys of tocHeadings
 
 function tocHeadingLevels(){
 	try {
@@ -177,6 +186,39 @@ function tocEntryText(el){
 	return own.textContent.replace(/\s+/g, " ").trim();
 }
 
+function contentsFoldsSaved(){
+	// on until turned off
+	return validateUserConsent(false) && localStorage.getItem(saveContentsFoldsKey) !== "0";
+}
+
+function tocEntryKeys(headings){
+	// "2:Chapter", the second entry like it "2:Chapter#2": what is collapsed is found again after the document reloads
+	const seen = new Map();
+	return headings.map((h) => {
+		const key = `${h.nodeName === "LI" ? tocChecklistLevel : h.nodeName[1]}:${tocEntryText(h)}`;
+		const n = (seen.get(key) || 0) + 1;
+		seen.set(key, n);
+		return n > 1 ? `${key}#${n}` : key;
+	});
+}
+
+function tocFoldsOf(tab){
+	// the tab's collapsed entries, the remembered ones the first time
+	if ( !tab ) { return new Set() }
+	if ( !tocFolds.has(tab.id) ) {
+		const saved = contentsFoldsSaved() && tab.docId ? readJsonSetting(tocFoldsKey)[tab.docId] : null;
+		tocFolds.set(tab.id, new Set(Array.isArray(saved) ? saved : []));
+	}
+	return tocFolds.get(tab.id);
+}
+
+function saveTocFolds(tab, folds){
+	if ( !contentsFoldsSaved() || !tab?.docId ) { return }
+	const saved = readJsonSetting(tocFoldsKey);
+	if ( folds.size ) { saved[tab.docId] = [...folds] } else { delete saved[tab.docId] }
+	localStorage.setItem(tocFoldsKey, JSON.stringify(saved));
+}
+
 function renderToc(){
 	if ( !tocShown() ) { return }
 	const editor = document.getElementById("editor");
@@ -185,7 +227,10 @@ function renderToc(){
 	const selector = [...levels.map((l) => `h${l}`), ...(checklist ? ["li[data-checked]"] : [])].join(", ");
 	const headings = editor && selector ? [...editor.querySelectorAll(selector)].filter((el) => el.nodeName !== "LI" || isTopLevelTaskItem(el)) : [];
 	// rebuilt only when the headings changed, not on every letter typed elsewhere
-	const signature = levels.join() + checklist + "\n" + headings.map((h) => `${h.nodeName}${h.dataset.checked || ""}${isFoldedAway(h) ? "-" : ""} ${tocEntryText(h)}`).join("\n");
+	const keys = tocEntryKeys(headings);
+	const folds = tocFoldsOf(getActiveTab());
+	const signature = levels.join() + checklist + "\n" + headings.map((h, i) => `${h.nodeName}${h.dataset.checked || ""}${isFoldedAway(h) ? "-" : ""}${folds.has(keys[i]) ? "+" : ""} ${tocEntryText(h)}`).join("\n");
+	tocKeys = keys;
 	// the rows go by index: the same headings in new elements (the document reloaded) keep them
 	tocHeadings = headings;
 	if ( editor === tocEditor && signature === tocSignature ) { markCurrentHeading(); return }
@@ -195,6 +240,14 @@ function renderToc(){
 	// a checklist item is one level under the heading of its section, at the top without one
 	let sectionDepth = -1;
 	const depths = headings.map((h) => h.nodeName === "LI" ? sectionDepth + 1 : (sectionDepth = Number(h.nodeName[1]) - top));
+	// an entry with deeper ones right after it can be collapsed; the ones under a collapsed entry are hidden
+	const foldable = depths.map((depth, i) => i + 1 < depths.length && depths[i + 1] > depth);
+	let hidingDepth = null;
+	const hidden = depths.map((depth, i) => {
+		if ( hidingDepth !== null && depth > hidingDepth ) { return true }
+		hidingDepth = foldable[i] && folds.has(keys[i]) ? depth : null;
+		return false;
+	});
 	for ( const list of document.querySelectorAll(".toc-list") ) {
 		const focusedIndex = [...list.children].findIndex((li) => li.contains(document.activeElement));
 		list.replaceChildren(...headings.map((heading, i) => {
@@ -208,7 +261,19 @@ function renderToc(){
 			row.dataset.level = task ? tocChecklistLevel : heading.nodeName[1];
 			row.style.setProperty("--depth", depths[i]);
 			row.classList.toggle("folded", isFoldedAway(heading));
+			li.hidden = hidden[i];
 			row.title = text;
+			if ( !task ) {
+				const fold = document.createElement("span");
+				fold.className = "toc-fold";
+				fold.setAttribute("aria-hidden", "true");
+				if ( foldable[i] ) {
+					const collapsed = folds.has(keys[i]);
+					row.setAttribute("aria-expanded", String(!collapsed));
+					fold.title = collapsed ? "Expand" : "Collapse";
+				}
+				row.append(fold);
+			}
 			if ( task ) {
 				row.classList.add("toc-task");
 				row.classList.toggle("checked", heading.dataset.checked === "true");
@@ -230,8 +295,12 @@ function renderToc(){
 			message.textContent = levels.length ? "No headings in this document." : checklist ? "No checklist items in this document." : "No heading levels are picked in Settings.";
 			list.append(message);
 		}
-		// the row that had the focus keeps it, as far as it is still there
-		if ( focusedIndex !== -1 ) { list.querySelectorAll(".toc-row")[Math.min(focusedIndex, headings.length - 1)]?.focus() }
+		// the row that had the focus keeps it, as far as it is still there (and shown)
+		if ( focusedIndex !== -1 ) {
+			const rows = [...list.querySelectorAll(".toc-row")];
+			const row = rows[Math.min(focusedIndex, headings.length - 1)];
+			(row?.parentElement.hidden ? rows.slice(0, focusedIndex).reverse().find((r) => !r.parentElement.hidden) : row)?.focus();
+		}
 	}
 	markCurrentHeading();
 }
@@ -265,10 +334,7 @@ function goToHeading(heading){
 	// a heading in a collapsed section: the section opens up first (folding.js); a checklist item by its list
 	let line = heading;
 	while ( line.parentElement && line.parentElement !== editor ) { line = line.parentElement }
-	if ( isFoldedAway(heading) && typeof unfoldAround === "function" && unfoldAround(line) ) {
-		editor.dispatchEvent(new Event("input", { bubbles: true }));
-		if ( editor.id === "editor" ) { performAutoSave() }
-	}
+	if ( isFoldedAway(heading) && typeof unfoldAround === "function" && unfoldAround(line) ) { foldsChanged(editor) }
 	const scroller = editor.closest(".pane-scroll");
 	const offset = heading.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
 	scroller.scrollTo({top: scroller.scrollTop + offset - 12, behavior: "smooth"});
@@ -307,9 +373,25 @@ function backToEditor(){
 	}
 }
 
+function toggleTocFold(row, collapse=null){
+	// collapses or expands the entries under the row, in the list only; collapse null toggles it
+	const heading = tocHeadings[row.dataset.index];
+	if ( !heading?.isConnected || !row.hasAttribute("aria-expanded") ) { return false }
+	const tab = getActiveTab();
+	const folds = tocFoldsOf(tab);
+	const key = tocKeys[row.dataset.index];
+	if ( collapse !== null && collapse === folds.has(key) ) { return false }
+	folds.has(key) ? folds.delete(key) : folds.add(key);
+	// the entries no longer there are forgotten
+	[...folds].filter((k) => !tocKeys.includes(k)).forEach((k) => folds.delete(k));
+	saveTocFolds(tab, folds);
+	renderToc();
+	return true;
+}
+
 function handleTocKeydown(e){
 	if ( e.ctrlKey || e.metaKey || e.altKey ) { return }
-	const rows = [...e.currentTarget.querySelectorAll(".toc-row")];
+	const rows = [...e.currentTarget.querySelectorAll(".toc-row")].filter((row) => !row.parentElement.hidden);
 	const i = rows.indexOf(document.activeElement);
 	const move = { ArrowDown: 1, j: 1, ArrowUp: -1, k: -1 }[e.key];
 	if ( move ) {
@@ -320,6 +402,10 @@ function handleTocKeydown(e){
 		rows.at(-1)?.focus();
 	} else if ( e.key === "l" && i !== -1 ) {
 		rows[i].click();
+	} else if ( (e.key === "ArrowLeft" || e.key === "ArrowRight") && i !== -1 ) {
+		const index = rows[i].dataset.index;
+		toggleTocFold(rows[i], e.key === "ArrowLeft");
+		e.currentTarget.querySelector(`.toc-row[data-index="${index}"]`)?.focus();
 	} else if ( e.key === "Escape" ) {
 		if ( narrowScreen.matches ) { closeTreeDrawer() }
 		if ( narrowScreen.matches && isDocWindow ) { closeTableOfContents() }
@@ -431,6 +517,11 @@ document.querySelectorAll(".toc-body").forEach((body) => {
 	body.addEventListener("keydown", handleTocKeydown);
 	body.addEventListener("click", (e) => {
 		const row = e.target.closest(".toc-row");
+		if ( row && e.target.closest(".toc-fold") && toggleTocFold(row) ) {
+			// the arrow folds without leaving the list
+			body.querySelector(`.toc-row[data-index="${row.dataset.index}"]`)?.focus();
+			return;
+		}
 		const heading = row && tocHeadings[row.dataset.index];
 		if ( heading?.isConnected ) { goToHeading(heading) }
 	});

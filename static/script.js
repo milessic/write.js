@@ -14,6 +14,8 @@ const themeCookie = "theme";
 const viModeKey = "__viMode__"; // "1" when the vi keybindings are on (Settings), goes with the notebook
 const autoDetectKey = "__autoDetect__"; // {enabled, rules} for markdown typed into formatting (Settings, autodetect.js), goes with the notebook
 const headingFoldingKey = "__headingFolding__"; // "0" when collapsing sections by their headings is off (Settings, folding.js), goes with the notebook
+const saveDocumentFoldsKey = "__saveDocumentFolds__"; // "0" when collapsed headings and list items aren't saved with the document (Settings, folding.js), goes with the notebook
+const saveContentsFoldsKey = "__saveContentsFolds__"; // "0" when what is collapsed in the table of contents isn't remembered (Settings, toc.js), goes with the notebook
 const listFoldingKey = "__listFolding__"; // "0" when collapsing list items with nested items is off (Settings, folding.js), goes with the notebook
 const autoCheckParentsKey = "__autoCheckParents__"; // "0" when a checklist item isn't checked with all its nested items (Settings, checklist.js), goes with the notebook
 const lineNumbersKey = "__lineNumbers__"; // "1" when the line numbers show left of the text (Settings, linenumbers.js), goes with the notebook
@@ -419,6 +421,10 @@ function createSettingsModal(){
 		${listFoldingSettingsHtml()}
 		${autoCheckParentsSettingsHtml()}
 	</div>
+	<h3>Save folding state</h3>
+	<div class="stack">
+		${foldStateSettingsHtml()}
+	</div>
 	<h3>Tables</h3>
 	<div class="stack">
 		${tableSettingsHtml()}
@@ -428,6 +434,7 @@ function createSettingsModal(){
 	initTocSettings();
 	initHeadingFoldingSettings();
 	initListFoldingSettings();
+	initFoldStateSettings();
 	initAutoCheckParentsSettings();
 	initTableSettings();
 	initAutoDetectSettings();
@@ -512,6 +519,8 @@ function focusEditor(e){
 	// a button over the editor (a comment icon, comments.js) keeps its own focus: focusing the editor would put
 	// the caret at its start and scroll there
 	if ( e?.target.closest?.("button") ) { return }
+	// so does the document's title (workspace.js)
+	if ( e?.target.closest?.(".doc-title") ) { return }
     document.getElementById('editor').focus({preventScroll: true});
 }
 
@@ -1224,7 +1233,7 @@ function simulateEnter() {
 function isDeviceOnlyKey(key){
 	// state of this device that never goes to the cloud or a notebook backup
 	// (the workspace.js keys are looked up on call, that file loads after this one)
-	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viEscButtonKey, openedTabsKey, openedEditorsKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey].includes(key);
+	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viEscButtonKey, openedTabsKey, openedEditorsKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey, tocFoldsKey].includes(key);
 }
 
 function getAllLocalStorageItems() {

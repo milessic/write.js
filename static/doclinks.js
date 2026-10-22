@@ -1,10 +1,13 @@
 // links between Write.JS documents (Insert Link > Write.JS doc).
-// Every stored document starts with a hidden <div style="display:none;" data-id="{uuid}"></div>. The editors
-// never show it: loading a document takes the id onto its tab (workspace.js loadPane) and saving puts it back,
-// so a link keeps pointing at its document after a rename or a move to another folder.
+// Every stored document starts with a hidden <div style="display:none;" data-id="{uuid}"></div>, and one with its
+// metadata after it if it has any. The editors never show them: loading a document takes the id and the metadata onto
+// its tab (workspace.js loadPane) and saving puts them back, so a link keeps pointing at its document after a rename or
+// a move to another folder.
 // A link is <a data-doc-id="{uuid}" href="?doc={uuid}">: a click opens the document's tab, or a new one;
 // a ctrl/middle click opens the app in a new browser tab with that document.
 const docIdPattern = /^<div style="display:none;" data-id="([^"]+)"><\/div>/;
+// right after it, a document's metadata, e.g. {"showTitle": true} (the title, workspace.js), as JSON
+const docMetaPattern = /^<div style="display:none;" data-meta="([^"]*)"><\/div>/;
 const docLinkParam = "doc";
 
 ensureDocumentIds(false);
@@ -33,13 +36,27 @@ function formatDocumentId(hex){
 }
 
 function splitDocumentId(html){
-	// {id, html}: a stored document's id (null without one) and its content
+	// {id, html, meta}: a stored document's id (null without one), its content and its metadata (documentMeta)
 	const match = (html ?? "").match(docIdPattern);
-	return match ? { id: match[1], html: html.slice(match[0].length) } : { id: null, html: html ?? "" };
+	if ( !match ) { return { id: null, html: html ?? "", meta: {} } }
+	const rest = html.slice(match[0].length);
+	const meta = rest.match(docMetaPattern);
+	if ( !meta ) { return { id: match[1], html: rest, meta: {} } }
+	let parsed = {};
+	try { parsed = JSON.parse(unescapeHtmlAttribute(meta[1])) } catch ( err ) {}
+	return { id: match[1], html: rest.slice(meta[0].length), meta: parsed && typeof parsed === "object" ? parsed : {} };
 }
 
-function withDocumentId(html, id){
-	return `<div style="display:none;" data-id="${id}"></div>` + splitDocumentId(html).html;
+function withDocumentId(html, id, meta=undefined){
+	// the metadata of html stays, unless other is given
+	const split = splitDocumentId(html);
+	meta = meta ?? split.meta;
+	const metaDiv = meta && Object.keys(meta).length ? `<div style="display:none;" data-meta="${escapeHtmlText(JSON.stringify(meta))}"></div>` : "";
+	return `<div style="display:none;" data-id="${id}"></div>` + metaDiv + split.html;
+}
+
+function unescapeHtmlAttribute(text){
+	return text.replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 }
 
 function documentIdOf(name){
@@ -87,7 +104,8 @@ function documentHtmlToStore(tab=getActiveTab(), name=getDocumentName(), html=ge
 	}
 	id ||= newDocumentId();
 	if ( tab ) { tab.docId = id }
-	return withDocumentId(html, id);
+	if ( !documentFoldsSaved() ) { html = withoutFolds(html) } // folding.js
+	return withDocumentId(html, id, tab?.meta ?? (documentExists(name) ? splitDocumentId(localStorage.getItem(docPrefix + name)).meta : {}));
 }
 
 function fillDocumentLinkOptions(datalist){

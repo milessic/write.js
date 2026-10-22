@@ -159,10 +159,7 @@ function revealFindMatch(){
 		unfolded = unfoldAround(line);
 	}
 	if ( typeof unfoldListsAround === "function" ) { unfolded = unfoldListsAround(node) || unfolded }
-	if ( unfolded ) {
-		findEditor.dispatchEvent(new Event("input", { bubbles: true }));
-		if ( findEditor.id === "editor" ) { performAutoSave() }
-	}
+	if ( unfolded ) { foldsChanged(findEditor) } // folding.js
 	const scroller = findEditor.closest(".pane-scroll");
 	const rect = match.getBoundingClientRect();
 	const view = scroller.getBoundingClientRect();
