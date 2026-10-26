@@ -72,6 +72,7 @@ async function createAccountModal(){
 			</div>
 		</div>
 	</div>
+	${notebookDataHtml()}
 	<h3>Logout</h3>
 	<div class="row">
 		<form method="GET" action="/api/auth/user/logout/">

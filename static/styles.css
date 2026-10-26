@@ -113,6 +113,37 @@ body.app > .topbar {
 .toc-split .toc-resizer {
 	display: none;
 }
+/* the documents' share of the place (--split-share, toc.js), the contents get the rest */
+.toc-split .side-dock > .file-tree {
+	flex-grow: var(--split-share, .5);
+}
+.toc-split:not(.tree-hidden) .side-dock > .toc-panel {
+	flex-grow: calc(1 - var(--split-share, .5));
+}
+/* the edge between them, dragged to share the place; over their border, it takes no room */
+.split-resizer {
+	display: none;
+}
+.toc-split:not(.tree-hidden) .split-resizer {
+	display: block;
+	flex: none;
+	position: relative;
+	z-index: 5;
+	height: 6px;
+	margin: -3px 0;
+	cursor: row-resize;
+	touch-action: none;
+}
+:is([data-tree-side="top"], [data-tree-side="bottom"]).toc-split:not(.tree-hidden) .split-resizer {
+	width: 6px;
+	height: auto;
+	margin: 0 -3px;
+	cursor: col-resize;
+}
+.split-resizer:hover,
+.tree-resizing .split-resizer:active {
+	background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
 
 /* documents tree (file explorer) */
 .file-tree {
@@ -865,7 +896,8 @@ body.app > .topbar {
 	color: var(--muted);
 }
 
-/* drop zones shown while a panel's handle is dragged, over everything else (the notifications too) */
+/* while a panel's head is dragged (workspace.js): a layer over the page, so nothing under it takes the drag, and where
+   the panel would be docked, following the pointer, like VS Code */
 .dock-zones {
 	display: none;
 	position: fixed;
@@ -873,58 +905,28 @@ body.app > .topbar {
 	z-index: 110;
 }
 .dock-zones.dragging {
-	display: grid;
-	gap: 1rem;
-	padding: 1rem;
-	/* the page dimmed and blurred behind the zones, so they stand out from it */
-	background: color-mix(in srgb, var(--surface) 55%, transparent);
-	backdrop-filter: blur(4px);
-	-webkit-backdrop-filter: blur(4px);
+	display: block;
 }
-.dock-zones[data-panel="tree"] {
-	grid-template: "top top" 1fr "left right" 2fr "bottom bottom" 1fr / 1fr 1fr;
-}
-.dock-zones[data-panel="tabs"] {
-	grid-template: "top" 1fr "bottom" 1fr / 1fr;
-}
-/* the contents' zones for the documents' place (a tab next to them, or splitting it) are where the documents are */
-.dock-zones[data-panel="toc"] {
-	grid-template: "top top top" 1fr "tree left right" 1fr "split left right" 1fr "bottom bottom bottom" 1fr / 1fr 1fr 1fr;
-}
-.dock-zones[data-panel="toc"][data-tree-side="right"] {
-	grid-template: "top top top" 1fr "left right tree" 1fr "left right split" 1fr "bottom bottom bottom" 1fr / 1fr 1fr 1fr;
-}
-.dock-zones[data-panel="toc"][data-tree-side="top"] {
-	grid-template: "tree split" 1fr "top top" 1fr "left right" 2fr "bottom bottom" 1fr / 1fr 1fr;
-}
-.dock-zones[data-panel="toc"][data-tree-side="bottom"] {
-	grid-template: "top top" 1fr "left right" 2fr "bottom bottom" 1fr "tree split" 1fr / 1fr 1fr;
-}
-.dock-zone[data-side="top"] { grid-area: top; }
-.dock-zone[data-side="bottom"] { grid-area: bottom; }
-.dock-zone[data-side="left"] { grid-area: left; }
-.dock-zone[data-side="right"] { grid-area: right; }
-.dock-zone[data-side="tree"] { grid-area: tree; }
-.dock-zone[data-side="split"] { grid-area: split; }
-.dock-zone {
+.dock-preview {
 	display: none;
+	position: fixed;
 	place-items: center;
+	padding: .5rem;
 	color: var(--ink);
 	font-weight: 600;
-	background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-	border: 2px dashed var(--accent);
-	border-radius: var(--radius);
-}
-.dock-zone > * {
+	text-align: center;
+	background: color-mix(in srgb, var(--accent) 22%, transparent);
+	border: 2px solid var(--accent);
+	border-radius: calc(var(--radius) / 2);
 	pointer-events: none;
 }
-.dock-zones[data-panel="tree"] .dock-zone[data-for="tree"],
-.dock-zones[data-panel="tabs"] .dock-zone[data-for="tabs"],
-.dock-zones[data-panel="toc"] .dock-zone[data-for="toc"] {
+.dock-preview.shown {
 	display: grid;
 }
-.dock-zone.over {
-	background: color-mix(in srgb, var(--accent) 30%, var(--surface));
+.dock-preview > span {
+	padding: .2rem .5rem;
+	background: var(--surface);
+	border-radius: calc(var(--radius) / 2);
 }
 
 /* phones and tablets: the documents tree is a drawer over the editor */
@@ -1011,10 +1013,69 @@ body.app > .topbar {
 	margin: 0 auto;
 }
 
-/* top bar: the document name takes the free space */
-#doc-name {
+/* top bar: the document name takes the free space; its v opens the document search tray under it (workspace.js) */
+.doc-name-field {
 	flex: 1 1 12rem;
 	max-width: 40rem;
+	min-width: 0;
+	position: relative;
+	display: flex;
+	align-items: center;
+}
+#doc-name {
+	flex: 1;
+	min-width: 0;
+	padding-right: 2rem;
+}
+.doc-search-btn {
+	position: absolute;
+	right: .25rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.6rem;
+	height: 1.6rem;
+	padding: 0;
+	color: var(--muted);
+	background: none;
+	border: 0;
+	border-radius: calc(var(--radius) / 3);
+	cursor: pointer;
+}
+.doc-search-btn:hover,
+.doc-search-btn[aria-expanded="true"] {
+	color: var(--ink);
+	background: var(--surface-2);
+}
+.doc-search-btn[aria-expanded="true"] svg {
+	transform: rotate(180deg);
+}
+.doc-search-tray {
+	display: none;
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: calc(100% + .3rem);
+	z-index: 25;
+	min-width: min(18rem, calc(100vw - 32px));
+	max-height: min(60vh, 28rem);
+	flex-direction: column;
+	gap: .4rem;
+	padding: .5rem;
+	border: 1px solid var(--line-strong);
+}
+.doc-search-tray.menu-opened {
+	display: flex;
+}
+#doc-search-input {
+	flex: none;
+	width: 100%;
+}
+#doc-search-list {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	margin: 0;
 }
 .topbar-end {
 	margin-left: auto;
@@ -1047,6 +1108,9 @@ body.app > .topbar {
 	flex: none;
 	padding: .75rem 16px .25rem;
 	background: var(--page);
+}
+.format-bar[hidden] {
+	display: none;
 }
 [data-editors="1"] .format-bar .toolbar-bar {
 	max-width: 960px;
@@ -1481,7 +1545,74 @@ body.show-line-numbers .line-numbers {
 }
 
 /* modals: <dialog class="modal-container"> opened with show(); #overlay is the backdrop,
-   so notifications can still show above it */
+   so notifications can still show above it. Only the content scrolls: the title and its x stay in sight */
+.modal-container[open]:has(> .modal-content) {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+.modal-container[open] > .section-head {
+	flex: none;
+	align-items: center;
+	margin-bottom: .6rem;
+}
+.modal-container[open] > .section-head > h2 {
+	margin: 0;
+}
+.modal-container[open] > .modal-content {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	/* room for focus rings at the edges of what scrolls, so they aren't cut off under the title */
+	margin: 0 -.3rem;
+	padding: .3rem .3rem .2rem;
+}
+/* Settings: tighter, with a search on top (script.js) */
+.settings-modal .modal-content {
+	gap: .4rem;
+}
+.settings-modal .modal-content > h3 {
+	margin: .7rem 0 0;
+	font-size: 1rem;
+}
+.settings-modal .modal-content .stack {
+	gap: .25rem;
+}
+.settings-modal .modal-content p.muted.small {
+	margin: 0 0 .25rem;
+	line-height: 1.35;
+}
+.settings-search {
+	width: 100%;
+}
+/* the themes scroll in a strip of their own, not over the whole of Settings */
+.settings-modal #theme-picker {
+	max-height: 13.5rem;
+	overflow-y: auto;
+	padding: .2rem;
+}
+.search-hidden {
+	display: none !important;
+}
+/* Settings > Headings > Floating headings (floatingheadings.js): a row of choices for each kind of screen */
+.floating-setting {
+	display: grid;
+	gap: .2rem;
+}
+.floating-setting-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: .1rem .8rem;
+}
+.floating-setting-device {
+	min-width: 4.2rem;
+	color: var(--muted);
+}
+.floating-setting-device.current {
+	color: var(--ink);
+	font-weight: 700;
+}
 #overlay {
 	position: fixed;
 	inset: 0;
@@ -2232,4 +2363,70 @@ body.apple-platform.doc-window-toc-open .doc-window-toc {
 	.cron-row { grid-template-columns: 1.2rem 1fr 1fr; padding: .4rem 0; border-top: 1px solid var(--line); }
 	.cron-row > [role="cell"]:nth-child(n+4) { grid-column: 2 / -1; }
 	.cron-mobile-label { display: inline; }
+}
+
+/* floating headings (floatingheadings.js): stuck at the top of the editor while the document scrolls under them;
+   the document's name above them in focus mode */
+.floating-headings {
+	position: sticky;
+	top: 0;
+	/* under focus mode's x and the document window's menu */
+	z-index: 3;
+	flex: none;
+	height: 0;
+}
+.floating-headings[hidden] {
+	display: none;
+}
+.pane-scroll {
+	scroll-padding-top: var(--floating-height, 0px);
+}
+.floating-headings-inner {
+	max-height: 40vh;
+	overflow: hidden;
+	padding: .3rem 16px;
+	background: color-mix(in srgb, var(--page) 94%, transparent);
+	backdrop-filter: blur(4px);
+	-webkit-backdrop-filter: blur(4px);
+	border-bottom: 1px solid var(--line);
+	box-shadow: 0 4px 10px -8px rgba(0, 0, 0, .35);
+}
+/* clear of focus mode's x (and the document window's menu) */
+body.focus-mode .floating-headings-inner {
+	padding-inline: 5.5rem;
+}
+.floating-headings-inner > * {
+	display: block;
+	max-width: 960px;
+	margin: 0 auto;
+}
+.floating-title {
+	font-weight: 700;
+	font-size: 1.05rem;
+	color: var(--ink);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.floating-heading {
+	width: 100%;
+	padding: .05rem 0 .05rem calc(var(--depth, 0) * 1rem);
+	overflow: hidden;
+	font: inherit;
+	font-weight: 700;
+	line-height: 1.35;
+	color: var(--ink-2, var(--ink));
+	text-align: left;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	background: none;
+	border: 0;
+	cursor: pointer;
+}
+.floating-heading[data-level="1"] { font-size: 1.1em; color: var(--ink); }
+.floating-heading[data-level="2"] { font-size: 1.02em; }
+.floating-heading[data-level="3"] { font-size: .95em; }
+.floating-heading[data-level="4"] { font-size: .9em; }
+.floating-heading:hover {
+	color: var(--accent);
 }

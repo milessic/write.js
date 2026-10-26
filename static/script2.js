@@ -2,11 +2,11 @@
  * This script file is for not-logged user
  */
 
+document.getElementById("account-btn").addEventListener('click', createGuestAccountModal);
 if ( userLoggedIn === true ) {
 	// on "load" so the consent handling there doesn't close the modal
 	window.addEventListener("load", handleSessionExpired);
 } else {
-	document.getElementById("login-btn").addEventListener('click', () => {createAccountLoginModal()});
 	window.addEventListener("load", () => {
 		if ( !userLoggedIn ){
 			const html = `<p><strong>Write.JS</strong> is much better with account!</p><p class="row"><button class="btn small primary" onclick="createRegisterModal();closeAllNotifications();">Create your own right now!</button> or <button class="btn small" onclick="createAccountLoginModalWithNotificationClose()">Login to your existing account</button>`
@@ -14,6 +14,17 @@ if ( userLoggedIn === true ) {
 		}
 	});
 }
+function createGuestAccountModal(){
+	// not logged in: logging in or registering, and the notebook in this browser
+	createModal("Account", `
+	<p class="muted">You are not logged in: documents are kept in this browser only.</p>
+	<div class="row">
+		<button class="btn primary" type="button" onclick="createAccountLoginModal()">Login</button>
+		<button class="btn" type="button" onclick="createRegisterModal()">Create account!</button>
+	</div>
+	${notebookDataHtml()}`);
+}
+
 function createAccountLoginModal(username=null){
 	closeAllModals();
 	const html = `

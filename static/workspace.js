@@ -18,6 +18,10 @@
  * when saved, across visits (docPositionsKey); closing its tab forgets it.
  * The document window (docwindow.js) shows one document and keeps the app's tabs, editors and layout as they are.
  *
+ * The top bar's name field has a v that opens a tray searching the documents, with the tree's rows (docSearch below); a right
+ * click on it, on a tab or on an editor's head opens the document's menu (documentMenuItems): search in it, insert into it,
+ * copy and export it.
+ *
  * A document whose metadata (doclinks.js) has showTitle shows its name as a title above its text, line 0: not part of
  * the text (not in the table of contents, the exports or the word count), editing it renames the document like the
  * name field does, and the other way around. A document's menus show or hide it.
@@ -102,6 +106,9 @@ let focusLayout = null; // focus mode with "Opened editors" (focusModeKey): the 
 let positionsTimer = 0;
 
 const fileTreeList = document.getElementById("file-tree-list");
+const docSearchTray = document.getElementById("doc-search-tray");
+const docSearchInput = document.getElementById("doc-search-input");
+const docSearchList = document.getElementById("doc-search-list");
 const fileTreeSearch = document.getElementById("file-tree-search");
 const tabsContainer = document.getElementById("tabs");
 const contextMenu = document.getElementById("context-menu");
@@ -180,11 +187,16 @@ tabsContainer.addEventListener("dblclick", (e) => {
 	if ( el && !e.target.closest(".tab-close") ) { revealDocumentInTree(tabById(Number(el.dataset.tabId))?.savedName) }
 });
 setupDocking("file-tree-head", "tree");
+setupDocking("documents-tab", "tree");
+setupDocking("side-tabs", () => tocGroupedWithTree() ? "group" : "tree");
 setupLongPressMenus(fileTreeList);
 setupTreeResizing();
 setupDocumentDropping();
 setupDocking("tab-grip", "tabs");
 setupNameTooltip();
+setupDocSearch();
+setupLongPressMenus(tabsContainer);
+documentNameObject.addEventListener("contextmenu", (e) => openContextMenu(e, documentMenuItems(getActiveTab())));
 
 // on press, in the capture phase: a right-click (its native menu), a drag or a button that stops its click close it too
 document.addEventListener("pointerdown", (e) => { if ( !contextMenu.contains(e.target) ) { closeContextMenu() } }, true);
@@ -454,17 +466,23 @@ function refreshFileTree(force=false){
 	// deleted documents leave the selection
 	if ( names ) { selectedDocuments = new Set([...selectedDocuments].filter(n => names.includes(n))) }
 
-	fileTreeList.replaceChildren();
+	renderDocumentTree(fileTreeList, names, filter);
+	if ( docSearchTray.classList.contains("menu-opened") ) { renderDocSearch() }
+}
+
+function renderDocumentTree(list, names, filter){
+	// the documents in their folders, or the ones matching the filter; the tree and the search tray (docSearch below)
+	list.replaceChildren();
 	if ( names === null ) {
-		fileTreeList.append(treeMessage("Agree to storing data to save documents."));
+		list.append(treeMessage("Agree to storing data to save documents."));
 	} else if ( filter ) {
 		const matches = names.filter(name => name.toLowerCase().includes(filter));
-		matches.forEach(name => fileTreeList.append(treeMatchItem(name)));
-		if ( !matches.length ) { fileTreeList.append(treeMessage("No matching documents.")) }
+		matches.forEach(name => list.append(treeMatchItem(name)));
+		if ( !matches.length ) { list.append(treeMessage("No matching documents.")) }
 	} else if ( !names.length && !readFolders().folders.length ) {
-		fileTreeList.append(treeMessage("You don't have any saved documents yet. Just create one :)"));
+		list.append(treeMessage("You don't have any saved documents yet. Just create one :)"));
 	} else {
-		renderFolders(fileTreeList, names);
+		renderFolders(list, names);
 	}
 }
 
@@ -780,6 +798,82 @@ function revealDocumentInTree(name){
 function openDocumentFromTree(name){
 	loadDocumentFromLocalStorage(name);
 	closeTreeDrawer();
+}
+
+
+// the document search tray, under the name field in the top bar: the tree's rows (and their menus), filtered by its search
+function setupDocSearch(){
+	const button = document.getElementById("doc-search-btn");
+	button.addEventListener("click", (e) => {
+		e.stopPropagation();
+		docSearchTray.classList.contains("menu-opened") ? closeDocSearch() : openDocSearch();
+	});
+	docSearchInput.addEventListener("input", renderDocSearch);
+	docSearchInput.addEventListener("keydown", (e) => {
+		const rows = () => [...docSearchList.querySelectorAll(".tree-row")];
+		if ( e.key === "ArrowDown" ) {
+			e.preventDefault();
+			rows()[0]?.focus();
+		} else if ( e.key === "Enter" ) {
+			// the first matching document
+			e.preventDefault();
+			docSearchList.querySelector(".tree-document")?.click();
+		}
+	});
+	docSearchList.addEventListener("keydown", (e) => {
+		const rows = [...docSearchList.querySelectorAll(".tree-row")];
+		const i = rows.indexOf(document.activeElement);
+		const move = { ArrowDown: 1, ArrowUp: -1 }[e.key];
+		if ( !move || i === -1 ) { return }
+		e.preventDefault();
+		i + move < 0 ? docSearchInput.focus() : rows[Math.min(rows.length - 1, i + move)].focus();
+	});
+	// a document opened from the tray closes it (the row's own click opens it first); a folder opens or closes
+	docSearchList.addEventListener("click", (e) => {
+		const row = e.target.closest(".tree-document");
+		if ( row && !(e.ctrlKey || e.metaKey || e.shiftKey) ) { closeDocSearch() }
+	});
+	document.addEventListener("pointerdown", (e) => {
+		if ( !e.target.closest("#doc-name-field, #context-menu") ) { closeDocSearch() }
+	}, true);
+}
+
+function openDocSearch(){
+	docSearchTray.classList.add("menu-opened");
+	document.getElementById("doc-search-btn").setAttribute("aria-expanded", "true");
+	docSearchInput.value = "";
+	renderDocSearch();
+	docSearchInput.focus();
+}
+
+function closeDocSearch(){
+	if ( !docSearchTray.classList.contains("menu-opened") ) { return }
+	docSearchTray.classList.remove("menu-opened");
+	document.getElementById("doc-search-btn").setAttribute("aria-expanded", "false");
+}
+
+function renderDocSearch(){
+	const names = validateUserConsent(false) ? getDocumentNamesFromLocalStorage().sort((a, b) => a.localeCompare(b)) : null;
+	renderDocumentTree(docSearchList, names, docSearchInput.value.trim().toLowerCase());
+}
+
+
+// the document's menu: what is done with one document, on its tab, its editor's head and the name field
+function documentMenuItems(tab){
+	// acts on the tab's document: it is shown in the focused editor first (the actions work on that one)
+	const run = (action) => () => {
+		if ( tab && tab.id !== focusedPane?.tabId ) { switchToTab(tab.id) }
+		if ( !tab || tab.id === focusedPane?.tabId ) { action() }
+	};
+	return [
+		{ label: "Search in Document", action: run(() => openFind()) }, // search.js
+		{ label: "Insert or Append HTML", action: run(createInsertHtmlModal) },
+		{ label: "Insert or Append Markdown", action: run(createInsertMarkdownModal) },
+		{ label: "Copy as Markdown", action: run(() => { copyMarkdown(); createNotification("Copied as Markdown!", "info", notificationTimeoutShort) }) },
+		{ label: "Export", action: run(exportDocument) },
+		{ label: "Export as Markdown", action: run(exportMarkdown) },
+		{ label: "Export as PDF", action: run(generatePDF), disabled: true },
+	];
 }
 
 
@@ -1281,6 +1375,8 @@ function renderTabs(){
 			{ label: "Duplicate", action: () => duplicateDocuments([tab.name]), disabled: !tab.name || !documentExists(tab.name) },
 			{ label: "Get Document Id", action: () => documentIdNotification(tab.savedName, tab.docId), disabled: !(tab.docId || (tab.savedName && documentExists(tab.savedName))) },
 			null,
+			...documentMenuItems(tab),
+			null,
 			...checklistFoldMenuItems((change) => changeTabDocument(tab, change)),
 			titleMenuItem(tabDocumentMeta(tab).showTitle, (change) => changeTabDocument(tab, change)),
 			scriptsMenuItem(tabDocumentMeta(tab).scripts, (change) => changeTabDocument(tab, change)), // scripting.js
@@ -1344,6 +1440,7 @@ function setupTabDragging(el, tab){
 // editors (split view)
 function setupPane(el){
 	const pane = { tabId: null, el, editor: el.querySelector(".editor"), title: el.querySelector(".doc-title") };
+	el.querySelector(".floating-headings").hidden = true;
 	setupDocumentTitle(pane);
 	// focus follows the caret or a click anywhere in the pane
 	el.addEventListener("focusin", () => focusPane(pane));
@@ -1359,6 +1456,9 @@ function setupPane(el){
 	el.querySelector(".pane-head").addEventListener("contextmenu", (e) => openContextMenu(e, [
 		{ label: "Close editor", action: () => closePane(pane), disabled: panes.length < 2 },
 		{ label: "Split editor", action: () => splitEditor(), disabled: panes.length >= maxEditors },
+		{ label: "Open in new window", action: () => openDocumentWindow(tabById(pane.tabId)?.name), disabled: !tabById(pane.tabId)?.name || !documentExists(tabById(pane.tabId).name) },
+		null,
+		...documentMenuItems(tabById(pane.tabId)),
 		null,
 		...checklistFoldMenuItems((change) => tabById(pane.tabId) ? changeTabDocument(tabById(pane.tabId), change) : 0),
 		titleMenuItem(tabDocumentMeta(tabById(pane.tabId)).showTitle, (change) => tabById(pane.tabId) && changeTabDocument(tabById(pane.tabId), change)),
@@ -1592,6 +1692,7 @@ function renderPanes(){
 		renderPaneTitle(pane, tab);
 	});
 	if ( typeof renderScripting !== "undefined" ) { renderScripting() } // scripting.js loads after this file
+	if ( typeof scheduleFloatingHeadings !== "undefined" ) { scheduleFloatingHeadings() } // floatingheadings.js loads after this file
 }
 
 
@@ -2105,7 +2206,7 @@ function closeContextMenu(){
 
 
 function setupLongPressMenus(container){
-	// iOS Safari has no contextmenu event for a long press: holding a finger on a row opens its right-click menu.
+	// iOS Safari has no contextmenu event for a long press: holding a finger on a row (or a tab) opens its right-click menu.
 	// The row can't be dragged by touch meanwhile, the drag would take the press (the menu moves documents too)
 	const delay = 500;
 	let press = null; // {timer, x, y, row, fired}
@@ -2117,7 +2218,7 @@ function setupLongPressMenus(container){
 	container.addEventListener("touchstart", (e) => {
 		cancel();
 		press = null;
-		const row = e.target.closest?.(".tree-row");
+		const row = e.target.closest?.(".tree-row, .tab");
 		if ( !row || e.touches.length !== 1 ) { return }
 		const { clientX: x, clientY: y } = e.touches[0];
 		press = { x, y, row, fired: false, draggable: row.draggable };
@@ -2147,35 +2248,161 @@ function setupLongPressMenus(container){
 	}, true);
 }
 
-// docking by drag-and-drop: dragging a panel's handle shows drop zones for its possible sides
-function setupDocking(handleId, panel){
+// docking by drag-and-drop, like VS Code: while a panel is dragged by its head, where it would be docked is shown over
+// the page (#dock-preview) and follows the pointer: the side of the editors it is nearest to; over the other panel, the
+// documents and the contents go together (dockTargetAt). The same for both panels, and for the tabs bar (top or bottom).
+// Together (the contents a tab next to the documents, or splitting their place), neither is the master: held between the
+// tabs (.side-tabs), both move ("group"); a tab (.side-tab) or a panel's head moves only its panel
+let dockDrag = null; // {panel, target: {side, rect, label}}
+
+function setupDocking(handleId, panelOf){
+	// panelOf: the panel, or a function telling it when the drag starts
 	const handle = document.getElementById(handleId);
 	const zones = document.getElementById("dock-zones");
 	handle.addEventListener("dragstart", (e) => {
+		// the tabs are in the documents' head: the head (or the tabs' strip) doesn't take a tab's drag
 		if ( e.target !== handle ) { return }
+		const panel = typeof panelOf === "function" ? panelOf() : panelOf;
 		e.dataTransfer.effectAllowed = "move";
 		e.dataTransfer.setData("text/plain", panel);   // Firefox only starts a drag with data
+		dockDrag = { panel, target: null };
 		zones.dataset.panel = panel;
 		zones.dataset.treeSide = layout.treeSide;
-		// shown on the next frame, or the browser cancels the drag that has just started
-		requestAnimationFrame(() => zones.classList.add("dragging"));
+		// the layer goes over the page on the next frame, or the browser cancels the drag that has just started
+		requestAnimationFrame(() => { if ( dockDrag ) { zones.classList.add("dragging") } });
 	});
-	handle.addEventListener("dragend", () => {
-		zones.classList.remove("dragging");
-		zones.querySelectorAll(".dock-zone").forEach(z => z.classList.remove("over"));
-	});
+	handle.addEventListener("dragend", endDocking);
 }
 
-document.querySelectorAll("#dock-zones .dock-zone").forEach((zone) => {
+function endDocking(){
+	dockDrag = null;
 	const zones = document.getElementById("dock-zones");
-	zone.addEventListener("dragover", (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move" });
-	zone.addEventListener("dragenter", () => zone.classList.add("over"));
-	zone.addEventListener("dragleave", () => zone.classList.remove("over"));
-	zone.addEventListener("drop", (e) => {
-		e.preventDefault();
-		const side = zone.dataset.side;
-		if ( zones.dataset.panel === "tree" ) { setTreeSide(side) }
-		else if ( zones.dataset.panel === "toc" ) { setTocSide(side) } // toc.js
-		else { setTabsSide(side) }
-	});
-});
+	zones.classList.remove("dragging");
+	delete zones.dataset.target;
+	document.getElementById("dock-preview").classList.remove("shown");
+}
+
+function visibleRect(id){
+	const el = document.getElementById(id);
+	const rect = el?.getBoundingClientRect();
+	return rect && rect.width && rect.height && el.checkVisibility?.() !== false ? rect : null;
+}
+
+function isInside(rect, x, y){
+	return rect && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
+
+function dockTargetAt(x, y){
+	// {side, rect, label}: the side the panel goes to, the place it takes there, what the preview says
+	const panel = dockDrag.panel;
+	const outer = panel === "tree" || panel === "group";
+	const area = (outer ? document.getElementById("app-body") : document.querySelector(".editor-area")).getBoundingClientRect();
+	const name = { tree: "documents", group: "documents and contents", toc: "contents", tabs: "opened documents" }[panel];
+	if ( panel === "tabs" ) {
+		const side = y < area.top + area.height / 2 ? "top" : "bottom";
+		const height = Math.min(area.height / 3, 48);
+		return { side, label: `Dock ${name} at the ${side}`, rect: { left: area.left, width: area.width, height, top: side === "top" ? area.top : area.bottom - height } };
+	}
+	if ( panel === "toc" && !document.body.classList.contains("tree-hidden") ) {
+		// over the documents: a tab next to them, or (in their far half) splitting their place
+		const tree = visibleRect(document.body.classList.contains("toc-split") ? "side-dock" : "file-tree");
+		if ( isInside(tree, x, y) ) {
+			const rows = dockedInRows(layout.treeSide);
+			const far = rows ? x > tree.left + tree.width / 2 : y > tree.top + tree.height / 2;
+			if ( far ) {
+				const half = rows ? { left: tree.left + tree.width / 2, top: tree.top, width: tree.width / 2, height: tree.height }
+					: { left: tree.left, top: tree.top + tree.height / 2, width: tree.width, height: tree.height / 2 };
+				return { side: "split", rect: half, label: "Split the documents' place with contents" };
+			}
+			return { side: "tree", rect: tree, label: "Show contents as a tab next to the documents" };
+		}
+	}
+	if ( panel === "tree" && tocGroupedWithTree() ) {
+		// dropped where they are together, the documents stay with the contents
+		const place = visibleRect(document.body.classList.contains("toc-split") ? "side-dock" : "file-tree");
+		if ( isInside(place, x, y) ) { return { side: "keep", rect: place, label: "Keep documents with the contents" } }
+	}
+	if ( panel === "tree" && document.body.classList.contains("toc-separate") && !document.body.classList.contains("toc-split") ) {
+		// over the contents: they become a tab next to the documents, where the contents are
+		const toc = visibleRect("toc-panel");
+		if ( isInside(toc, x, y) ) { return { side: "with-toc", rect: toc, label: "Show documents with the contents" } }
+	}
+	// the nearest edge, in proportion to the area's size: the area is cut along its diagonals
+	const distances = {
+		left: (x - area.left) / area.width,
+		right: (area.right - x) / area.width,
+		top: (y - area.top) / area.height,
+		bottom: (area.bottom - y) / area.height,
+	};
+	const side = Object.keys(distances).reduce((a, b) => distances[b] < distances[a] ? b : a);
+	const rows = dockedInRows(side);
+	// as big as the panel is now, if it is docked the same way (beside or above / below the editors)
+	const current = document.getElementById(panel === "group" && document.body.classList.contains("toc-split") ? "side-dock"
+		: outer ? "file-tree" : "toc-panel").getBoundingClientRect();
+	const sameWay = dockedInRows(outer ? layout.treeSide : layout.tocSide) === rows;
+	const size = Math.min((rows ? area.height : area.width) * .4, (sameWay && (rows ? current.height : current.width)) || (rows ? 192 : 240));
+	const rect = rows ? { left: area.left, width: area.width, height: size, top: side === "top" ? area.top : area.bottom - size }
+		: { top: area.top, height: area.height, width: size, left: side === "left" ? area.left : area.right - size };
+	return { side, rect, label: `Dock ${name} ${rows ? `at the ${side}` : side}` };
+}
+
+function showDockTarget(target){
+	const preview = document.getElementById("dock-preview");
+	const zones = document.getElementById("dock-zones");
+	zones.dataset.target = target.side;
+	preview.classList.add("shown");
+	Object.assign(preview.style, { left: target.rect.left + "px", top: target.rect.top + "px", width: target.rect.width + "px", height: target.rect.height + "px" });
+	preview.firstElementChild.textContent = target.label;
+}
+
+function tocGroupedWithTree(){
+	// the contents are a tab next to the documents, or split their place with them
+	return !layout.tocHidden && !document.body.classList.contains("tree-hidden")
+		&& (document.body.classList.contains("toc-in-tree") || document.body.classList.contains("toc-split"));
+}
+
+function dockPanel(panel, side){
+	if ( side === "keep" ) { return }
+	if ( panel === "tree" && tocGroupedWithTree() ) {
+		// only the documents go: the contents stay where the two were, as a panel of their own
+		layout.tocSide = layout.treeSide;
+		layout.treeSide = side;
+		layout.treeTab = "documents";
+		saveLayout();
+	} else if ( panel === "group" ) {
+		setTreeSide(side);
+	} else if ( panel === "tree" && side === "with-toc" ) {
+		// the documents take the contents' place, with the contents as their tab
+		layout.treeSide = layout.tocSide;
+		layout.tocSide = "tree";
+		layout.treeTab = "documents";
+		layout.treeHidden = false;
+		saveLayout();
+	} else if ( panel === "tree" ) {
+		setTreeSide(side);
+	} else if ( panel === "toc" ) {
+		setTocSide(side); // toc.js
+	} else {
+		setTabsSide(side);
+	}
+}
+
+// in the capture phase, before the editors and the panels: nothing under the dragged panel takes it (an editor would
+// insert its name), and the layer over the page makes sure of it once it is there
+window.addEventListener("dragover", (e) => {
+	if ( !dockDrag ) { return }
+	e.preventDefault();
+	e.stopPropagation();
+	e.dataTransfer.dropEffect = "move";
+	dockDrag.target = dockTargetAt(e.clientX, e.clientY);
+	showDockTarget(dockDrag.target);
+}, true);
+window.addEventListener("drop", (e) => {
+	if ( !dockDrag ) { return }
+	e.preventDefault();
+	e.stopPropagation();
+	const { panel } = dockDrag;
+	const target = dockTargetAt(e.clientX, e.clientY);
+	endDocking();
+	dockPanel(panel, target.side);
+}, true);

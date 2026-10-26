@@ -82,5 +82,7 @@ def test_matches_follow_edits(find):
 
 def test_from_the_menu(find):
 	find.load(["menu"])
-	find.page.evaluate("document.getElementById('find-btn').click()")
+	# the document's menu, on its tab
+	find.page.click(".tab.active", button="right")
+	find.page.click("#context-menu button:text-is('Search in Document')")
 	assert find.page.is_visible("#find-bar")

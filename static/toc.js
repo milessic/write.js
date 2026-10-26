@@ -3,7 +3,7 @@
  * and the heading of the part being read is marked as the document scrolls.
  * It is a tab next to the documents in the tree (layout.tocSide "tree"), a panel of its own left, right, above or below
  * the editors ("left" / "right" / "top" / "bottom"), or splits the documents' place with them ("split": under them, or
- * beside them docked above or below), moved by dragging its tab or head onto a dock zone, or from its right-click menu. On phones and tablets
+ * beside them docked above or below; the edge between them is dragged to share the place), moved by dragging its tab or head onto a dock zone, or from its right-click menu. On phones and tablets
  * it is always a tab of the documents drawer. Menu > Table Of Contents and vi's :TableOfContents open it; the panel's x or, as a tab, the tree's
  * little menu (☰, which then also has the tree's buttons) closes it;
  * it is remembered open or closed and where with the layout (workspace.js, this device only).
@@ -21,6 +21,8 @@
  */
 const tocWidthKey = "__tocWidth__"; // the panel's width, a preference of this device only (isDeviceOnlyKey)
 const tocHeightKey = "__tocHeight__"; // and its height above or below the editors
+const tocSplitKey = "__tocSplit__"; // splitting the documents' place: the documents' share of it, 0.5 even, this device only (isDeviceOnlyKey)
+const minSplitShare = .15;
 const tocLevels = [1, 2, 3, 4];
 const tocChecklistLevel = 10; // stored with the heading levels when the top-level checklist items are listed
 const narrowScreen = matchMedia("(max-width: 999px)");
@@ -75,6 +77,7 @@ function applyTocLayout(){
 	const showingToc = tocInTree() && layout.treeTab === "toc";
 	body.dataset.tocSide = layout.tocSide;
 	document.getElementById("toc-resizer").setAttribute("aria-orientation", dockedInRows(layout.tocSide) ? "horizontal" : "vertical");
+	document.getElementById("split-resizer").setAttribute("aria-orientation", dockedInRows(layout.treeSide) ? "vertical" : "horizontal");
 	body.dataset.treeTab = showingToc ? "toc" : "documents";
 	body.classList.toggle("toc-in-tree", tocInTree());
 	body.classList.toggle("toc-separate", !layout.tocHidden && !tocInTree());
@@ -145,17 +148,17 @@ function tocPanelMenuItems(){
 
 function sideMenuItems(){
 	// the tree's little menu while the table of contents is a tab in it: its buttons with their icons, and closing the tab shown
-	const toc = layout.treeTab === "toc";
+	const toc = tocInTree() && layout.treeTab === "toc";
 	const icon = (id) => document.getElementById(id).innerHTML;
 	return [
 		{ label: "New document", icon: icon("file-tree-new"), action: createNewDocument },
 		{ label: "New folder", icon: icon("file-tree-new-folder"), action: () => createFolder() },
 		// pinning only matters where the tree is a drawer (phones and tablets)
-		narrowScreen.matches ? { label: treePinned ? "Unpin documents" : "Pin documents open", icon: icon("file-tree-pin"), action: toggleTreePinned } : null,
+		...(narrowScreen.matches ? [{ label: treePinned ? "Unpin documents" : "Pin documents open", icon: icon("file-tree-pin"), action: toggleTreePinned }] : []),
 		null,
-		toc ? { label: "Close Table of Contents", icon: icon("file-tree-hide"), action: closeTableOfContents }
-			: { label: "Close File Explorer", icon: icon("file-tree-hide"), action: hideFileTree },
-	].filter((item, i, items) => item || items[i - 1]);
+		...(toc ? [{ label: "Close Table of Contents", icon: icon("file-tree-hide"), action: closeTableOfContents }] : []),
+		...(!toc ? [{ label: "Close File Explorer", icon: icon("file-tree-hide"), action: hideFileTree }] : []),
+	];
 }
 
 function openSideMenu(e){
@@ -469,6 +472,47 @@ function setupTocResizing(){
 	});
 }
 
+// splitting the documents' place: the edge between the two panels (#split-resizer) shares it
+function applySplitShare(share){
+	const style = document.getElementById("side-dock").style;
+	if ( !share ) { style.removeProperty("--split-share"); return }
+	style.setProperty("--split-share", Math.min(1 - minSplitShare, Math.max(minSplitShare, share)));
+}
+
+function setupSplitResizing(){
+	const dock = document.getElementById("side-dock");
+	const resizer = document.getElementById("split-resizer");
+	applySplitShare(Number(localStorage.getItem(tocSplitKey)) || null);
+	resizer.addEventListener("pointerdown", (e) => {
+		if ( e.button !== 0 ) { return }
+		e.preventDefault();
+		resizer.setPointerCapture(e.pointerId);
+		// the documents above the contents, or beside them when the place is above or below the editors
+		const rows = !dockedInRows(layout.treeSide);
+		document.body.classList.add("tree-resizing");
+		document.body.classList.toggle("resizing-rows", rows);
+		const move = (ev) => {
+			const rect = dock.getBoundingClientRect();
+			applySplitShare(rows ? (ev.clientY - rect.top) / rect.height : (ev.clientX - rect.left) / rect.width);
+		};
+		const end = () => {
+			resizer.removeEventListener("pointermove", move);
+			resizer.removeEventListener("pointerup", end);
+			resizer.removeEventListener("pointercancel", end);
+			document.body.classList.remove("tree-resizing", "resizing-rows");
+			const share = dock.style.getPropertyValue("--split-share");
+			if ( share && validateUserConsent(false) ) { localStorage.setItem(tocSplitKey, String(Number(share).toFixed(3))) }
+		};
+		resizer.addEventListener("pointermove", move);
+		resizer.addEventListener("pointerup", end);
+		resizer.addEventListener("pointercancel", end);
+	});
+	resizer.addEventListener("dblclick", () => {
+		applySplitShare(null);
+		localStorage.removeItem(tocSplitKey);
+	});
+}
+
 
 // Settings
 function tocSettingsHtml(){
@@ -529,6 +573,7 @@ document.querySelectorAll(".toc-body").forEach((body) => {
 setupDocking("toc-tab", "toc");
 setupDocking("toc-head", "toc");
 setupTocResizing();
+setupSplitResizing();
 // the list follows the focused document: edits, other documents opened, another editor focused (its id="editor"),
 // checklist items checked
 new MutationObserver(scheduleToc).observe(document.getElementById("editor-grid"),

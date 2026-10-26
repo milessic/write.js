@@ -6,6 +6,7 @@ const docPrefix = "__doc__";
 const autosaveKey = "__autosave__"; // "1" when documents are saved as they are typed (Settings), goes with the notebook
 const spellcheckKey = "__spellcheck__"; // "0" when the browser's spell check is off in the editors (Settings), goes with the notebook
 const focusModeKey = "__focusMode__"; // "editors" when focus mode shows every opened tab, else only the focused document (Settings), goes with the notebook
+const formattingBarKey = "__formattingBar__"; // "0" when the formatting toolbar is hidden (Settings), goes with the notebook
 const headingBreaksKey = "__headingBreaks__"; // "1" when an <hr> is auto-inserted under each heading (Settings), goes with the notebook
 const syncPendingKey = "__syncPending__"; // set while there are changes that couldn't reach the cloud (offline)
 const syncBaseKey = "__syncBase__"; // {key: hash} of what the cloud held at the last sync of the notebook as a whole, before cloudsync.js
@@ -118,7 +119,6 @@ document.getElementById("editor-grid").addEventListener('beforeinput', handleLis
 document.getElementById("editor-grid").addEventListener('keyup', (e) => {updateCaretPosition();handleWordCounter()});
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
 document.getElementById('editor-grid').addEventListener('click', focusEditor);
-document.getElementById("theme-btn").addEventListener("click", createThemeModal);
 document.getElementById("settings-btn").addEventListener("click", createSettingsModal);
 document.getElementById("offline-btn").addEventListener("click", createOfflineModal);
 document.addEventListener("selectionchange", () => {
@@ -132,25 +132,16 @@ document.getElementById("hamburger-menu").addEventListener("click", toggleMenu);
 // document.getElementById("export-btn").addEventListener("click", exportDocument);
 document.getElementById("save-btn").addEventListener("click", saveDocumentToLocalStorage);
 // workspace.js loads after this file, so its functions are looked up on click
-document.getElementById("open-btn").addEventListener("click", () => toggleFileTree());
 document.getElementById("open-doc-btn").addEventListener("click", () => showFileTree());
 document.getElementById("toc-btn").addEventListener("click", () => openTableOfContents()); // toc.js
-document.getElementById("find-btn").addEventListener("click", () => openFind()); // search.js
-document.getElementById("doc-window-btn").addEventListener("click", () => openDocumentWindow(getDocumentName())); // docwindow.js
 document.getElementById("import-doc-btn").addEventListener("click", importDocument);
-document.getElementById("toggle-format-btn").addEventListener("click", toggleFormattingBar);
+applyFormattingBarSetting();
 document.getElementById("focus-mode-btn").addEventListener("click", () => toggleFocusMode(true));
 // the document window's x closes the window (docwindow.js)
 document.getElementById("focus-exit-btn").addEventListener("click", () => isDocWindow ? closeDocWindow() : toggleFocusMode(false));
 document.addEventListener("keydown", handleFocusModeEscape);
 // capture, and registered before vi.js loads: Esc closes the pop-ups before vi or anything else reads it
 document.addEventListener("keydown", handlePopupEscape, true);
-document.getElementById("insert-or-append-html").addEventListener("click", createInsertHtmlModal);
-document.getElementById("insert-or-append-markdown").addEventListener("click", createInsertMarkdownModal);
-document.getElementById("generate-md").addEventListener("click", exportMarkdown);
-document.getElementById("export-btn-menu").addEventListener("click", exportDocument);
-document.getElementById("copy-md").addEventListener("click", copyMarkdown);
-document.getElementById("generate-pdf").addEventListener("click", generatePDF);
 document.getElementById("contact").addEventListener("click", () => createNotification("Thank you!", 'info'))
 documentNameObject.addEventListener("change", updateTitle);
 // toolbar
@@ -372,30 +363,40 @@ function handleCodeBlockArrowDown(e){
 	performAutoSave();
 }
 
-function createThemeModal(){
-	if ( typeof MilessicThemes === "undefined" ) {
-		createNotification("Themes are unavailable right now, using the default Write.js theme.", "warning");
-		return
-	}
+function themeSettingsHtml(){
 	// milessic-themes license: the styling must credit milessic-themes with a link to its server
-	const themesOrigin = document.getElementById("themes-attribution")?.href;
-	createModal("Theme", `<div id="theme-picker"></div>`
-		+ (themesOrigin ? `<p class="muted small">Themes from <a href="${themesOrigin}" target="_blank" rel="noopener">milessic-themes</a></p>` : ""));
-	MilessicThemes.mountPicker(document.getElementById("theme-picker"), {onChange: saveTheme})
-		.catch(() => {
-			closeAllModals();
-			createNotification("Could not load themes!", "error");
-		});
+	const themesOrigin = document.body.dataset.themesUrl;
+	if ( typeof MilessicThemes === "undefined" ) {
+		return `<p class="muted small">Themes are unavailable right now, using the default Write.js theme.</p>`;
+	}
+	return `<div id="theme-picker"></div>`
+		+ (themesOrigin ? `<p class="muted small">Themes from <a id="themes-attribution" href="${themesOrigin}" target="_blank" rel="noopener">milessic-themes</a></p>` : "");
+}
+
+function initThemeSettings(){
+	const picker = document.getElementById("theme-picker");
+	if ( !picker ) { return }
+	MilessicThemes.mountPicker(picker, {onChange: saveTheme})
+		.catch(() => { picker.replaceWith(Object.assign(document.createElement("p"), { className: "muted small", textContent: "Could not load themes!" })) });
 }
 
 function createSettingsModal(){
-	createModal("Settings", ( typeof cloudSyncSettingsHtml !== "undefined" ? cloudSyncSettingsHtml() : "" ) // logged in only (cloudsync.js)
+	// a search at the top hides the settings that don't match it (filterSettings)
+	const modal = createModal("Settings", `<input type="search" id="settings-search" class="settings-search" placeholder="Search settings" aria-label="Search settings" autocomplete="off" spellcheck="false">
+	<p class="muted small settings-empty" hidden>No settings match.</p>`
+	+ ( typeof cloudSyncSettingsHtml !== "undefined" ? cloudSyncSettingsHtml() : "" ) // logged in only (cloudsync.js)
 	+ `
+	<h3>Theme</h3>
+	<div class="stack">
+		${themeSettingsHtml()}
+	</div>
 	<h3>Editor</h3>
 	<div class="stack">
 		<label class="check"><input id="setting-autosave" type="checkbox"${autosaveEnabled ? " checked" : ""}>Autosave</label>
 		<p class="muted small">Saves the document as you type; turned off, <em>Save</em> (or <kbd>:w</kbd> in vi mode) saves it.</p>
 		<label class="check"><input id="setting-spellcheck" type="checkbox"${spellcheckEnabled() ? " checked" : ""}>Spell check</label>
+		<label class="check"><input id="setting-formatting-bar" type="checkbox"${formattingBarEnabled() ? " checked" : ""}>Formatting toolbar</label>
+		<p class="muted small">The bar with text styles, lists and the like above the editors; turned off, the keyboard shortcuts still format.</p>
 		${lineNumbersSettingsHtml()}
 	</div>
 	<h3>Table of contents</h3>
@@ -420,9 +421,11 @@ function createSettingsModal(){
 		<label class="check"><input type="radio" name="setting-focus-mode" value="single"${focusModeShowsEditors() ? "" : " checked"}>Single document</label>
 		<label class="check"><input type="radio" name="setting-focus-mode" value="editors"${focusModeShowsEditors() ? " checked" : ""}>Opened editors</label>
 		<p class="muted small">Single document shows only the document you are in. Opened editors shows every opened document side by side (up to 4); drag an editor's name onto another to swap them. Documents are opened and closed after leaving focus mode.</p>
+		${focusTitleSettingsHtml()}
 	</div>
 	<h3>Headings</h3>
 	<div class="stack">
+		${floatingHeadingsSettingsHtml()}
 		<label class="check"><input id="setting-heading-breaks" type="checkbox"${headingBreaksEnabled() ? " checked" : ""}>Auto-insert break lines under headings</label>
 		${headingFoldingSettingsHtml()}
 	</div>
@@ -443,6 +446,10 @@ function createSettingsModal(){
 	<div class="stack">
 		${cronSettingsHtml()}
 	</div>` + autoDetectSettingsHtml());
+	modal.classList.add("settings-modal");
+	initSettingsSearch(modal);
+	initThemeSettings();
+	initFloatingHeadingsSettings(); // floatingheadings.js
 	if ( typeof initCloudSyncSettings !== "undefined" ) { initCloudSyncSettings() }
 	initLineNumbersSettings();
 	initTocSettings();
@@ -472,6 +479,12 @@ function createSettingsModal(){
 		applySpellcheckSetting();
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
+	document.getElementById("setting-formatting-bar").addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
+		localStorage.setItem(formattingBarKey, e.target.checked ? "1" : "0");
+		applyFormattingBarSetting();
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
 	document.getElementById("setting-heading-breaks").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
 		localStorage.setItem(headingBreaksKey, e.target.checked ? "1" : "0");
@@ -497,6 +510,60 @@ function createSettingsModal(){
 		localStorage.setItem(viWrapNavigationKey, e.target.checked ? "1" : "0");
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
+}
+
+function initSettingsSearch(modal){
+	const input = modal.querySelector("#settings-search");
+	input.addEventListener("input", () => filterSettings(modal, input.value));
+	input.addEventListener("keydown", (e) => {
+		// Esc clears the search first, then closes Settings (handlePopupEscape)
+		if ( e.key === "Escape" && input.value ) { e.preventDefault(); e.stopPropagation(); input.value = ""; filterSettings(modal, "") }
+	});
+	input.focus({ preventScroll: true });
+}
+
+function filterSettings(modal, query){
+	// a section (an h3 and what follows it) whose title matches is shown whole; otherwise only its settings that match,
+	// each with the help text right after it. Hidden by the search with .search-hidden, so what is hidden for other
+	// reasons stays hidden
+	query = query.trim().toLowerCase();
+	const matches = (el) => el.textContent.toLowerCase().includes(query);
+	const hide = (el, hidden) => el.classList.toggle("search-hidden", hidden);
+	const content = modal.querySelector(".modal-content");
+	const sections = [];
+	for ( const el of content.children ) {
+		if ( el.nodeName === "H3" ) { sections.push({ heading: el, parts: [] }) }
+		else if ( sections.length ) { sections.at(-1).parts.push(el) }
+	}
+	let anyShown = false;
+	for ( const { heading, parts } of sections ) {
+		const whole = !query || matches(heading);
+		let sectionShown = whole;
+		// a help text goes with the setting before it
+		const show = (item, previousShown) => whole || matches(item) || (item.matches("p.muted") && previousShown);
+		let previousShown = false;
+		for ( const part of parts ) {
+			let partShown = false;
+			if ( part.classList.contains("stack") ) {
+				// a .stack holds the settings, each of its children is one
+				let previous = false;
+				for ( const item of part.children ) {
+					const shown = show(item, previous);
+					if ( !item.matches("p.muted") ) { previous = shown }
+					hide(item, !shown);
+					partShown ||= shown;
+				}
+			} else {
+				partShown = show(part, previousShown);
+			}
+			if ( !part.matches("p.muted") ) { previousShown = partShown }
+			hide(part, !partShown);
+			sectionShown ||= partShown;
+		}
+		hide(heading, !sectionShown);
+		anyShown ||= sectionShown;
+	}
+	content.querySelector(".settings-empty").hidden = anyShown;
 }
 
 function initViAltEscSettings(){
@@ -730,15 +797,13 @@ function insertHTMLAtLastCaret(html){
 	handleWordCounter();
 }
 
-function toggleFormattingBar(){
-    const subBar = document.getElementById("sub-bar");
-	const toggleFormatBtn = document.getElementById("toggle-format-btn");
-    subBar.style.display = subBar.style.display === "none" ? "" : "none";
-	if (subBar.style.display === "none"){
-		toggleFormatBtn.innerText = "Toggle Formatting (It's off now)";
-	} else {
-		toggleFormatBtn.innerText = "Toggle Formatting (It's on now)";
-	}
+function formattingBarEnabled(){
+	// on until turned off
+	return localStorage.getItem(formattingBarKey) !== "0";
+}
+
+function applyFormattingBarSetting(){
+	document.getElementById("sub-bar").hidden = !formattingBarEnabled();
 }
 
 function spellcheckEnabled(){
@@ -779,6 +844,7 @@ function createModal(title, html){
 	createOverlay();
 	document.body.appendChild(modalContainer)
 	modalContainer.show();
+	return modalContainer;
 }
 function saveDocumentToLocalStorage(){
 	if ( !validateUserConsent() ) { return }
@@ -927,6 +993,7 @@ function closeAllPopups(){
 	closeAllModals();
 	if ( document.getElementById("menu").classList.contains("menu-opened") ) { toggleMenu() } // also brings back the word counter
 	if ( typeof closeDocWindowMenu !== "undefined" ) { closeDocWindowMenu() } // docwindow.js
+	if ( typeof closeDocSearch !== "undefined" ) { closeDocSearch() } // workspace.js
 	document.querySelectorAll(".block-select-menu.menu-opened").forEach((menu) => {
 		menu.classList.remove("menu-opened");
 		menu.closest(".block-select")?.querySelector(".block-select-btn")?.setAttribute("aria-expanded", "false");
@@ -1335,7 +1402,7 @@ function simulateEnter() {
 function isDeviceOnlyKey(key){
 	// state of this device that never goes to the cloud or a notebook backup
 	// (the workspace.js keys are looked up on call, that file loads after this one)
-	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viEscButtonKey, openedTabsKey, openedEditorsKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey, tocFoldsKey, cronExecutorKey, cronLastTickKey, cronLocalKey].includes(key);
+	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viEscButtonKey, openedTabsKey, openedEditorsKey, tocSplitKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey, tocFoldsKey, cronExecutorKey, cronLastTickKey, cronLocalKey].includes(key);
 }
 
 function getAllLocalStorageItems() {
@@ -1396,6 +1463,7 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 	// the settings may have come with the notebook
 	applyFoldingSettings();
 	applyLineNumbersSetting();
+	applyFormattingBarSetting();
 	scheduleToc(); // the headings it lists may have come with the notebook (toc.js)
 	applyViMode();
 	applyCronSetting(); // cron.js
@@ -1561,6 +1629,20 @@ function rememberSynced(entries, replace=false){
 	localStorage.setItem(syncBaseKey, JSON.stringify(base));
 }
 
+
+function notebookDataHtml(){
+	// in Account, logged in or not (script2.js / script3.js): the notebook in this browser
+	return `
+	<h3>Notebook data</h3>
+	<div class="stack">
+		<div class="row">
+			<button class="btn" type="button" id="backup-btn" onclick="saveBackup()">Export Notebook</button>
+			<button class="btn" type="button" id="restore-btn" onclick="loadBackup()">Import Notebook</button>
+			<button class="btn danger" type="button" id="clearall-btn" onclick="purgeLocalStorage()">Clear localStorage</button>
+		</div>
+		<p class="muted small">Export saves every document and setting of this browser to a <em>.writejs</em> file, Import replaces them with one. Clear deletes them from this browser.</p>
+	</div>`;
+}
 
 function purgeLocalStorage(doConfirm=true){
 	if ( !doConfirm ){
