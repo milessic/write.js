@@ -9,6 +9,8 @@
  *    and indexes into that text are mapped back to DOM positions
  *  - edits go through document.execCommand, so they stay on the browser's undo stack (u / Ctrl+r)
  *  - one mode for all the split editors; the mode is shown top right, colored by mode
+ *  - a .vi-editable element outside of the editors (the Script wizard's code, scripting.js) gets vi too: its mode and
+ *    cursor show over it, q doesn't close it, and its ex commands go to it first as a cancelable "vi-command" event
  */
 (() => {
 if ( window.WriteVi ) { return }
@@ -31,7 +33,7 @@ const textObjectKinds = new Set(["w", "W", "\"", "'", "`", "b", "(", ")", "[", "
 let enabled = false;
 let mode = "normal";
 let pending = [];                       // keys of the command being typed in NORMAL / VISUAL
-let register = {text: "", linewise: false, items: null}; // items: the lines' list items (linewise), see listItemsOf
+let register = {text: "", linewise: false, items: null}; // items: the lines' formats (linewise), see lineFormatsOf
 let lastFind = null;                    // {key: "f", char} for ; and ,
 let lastSearch = null;                  // {pattern, backward}
 let searchHighlight = false;            // hlsearch: matches of lastSearch stay highlighted until :noh
@@ -52,6 +54,8 @@ const editorRanges = new WeakMap();     // each editor's selection, for going ba
 let escapeAt = -Infinity;               // when vi got an Esc in an editor
 let normalEscapeAt = -Infinity;         // the last Esc in NORMAL with nothing pending: Esc Esc leaves focus mode
 let pointerAt = -Infinity;              // the last click / tap: a focus change that comes after one is the user's
+let altEscTyped = [];                  // the last keys of INSERT that may start the alternate Esc (Settings): {key, char, original, at}
+let softKey = false;                    // the last key came from a phone keyboard: its character comes as beforeinput
 let lineColumn = null;                  // {editor, index, column}: j / k by the lines of the text keep the column they started from
 
 const ui = {};
@@ -123,6 +127,17 @@ window.WriteVi = {
 	setEscButton(show){
 		document.body.classList.toggle("vi-esc-enabled", show);
 	},
+	selectLines(editor, anchor, head){
+		// V-LINE from the line of anchor to the line of head ({node, offset}): a click on the line numbers (linenumbers.js)
+		if ( !enabled ) { return false }
+		closeCommandLine(false);
+		const model = textModel(editor);
+		visualAnchor = indexAt(model, anchor.node, anchor.offset) ?? 0;
+		visualHead = indexAt(model, head.node, head.offset) ?? visualAnchor;
+		setMode("vline");
+		renderVisual(editor);
+		return true;
+	},
 	get mode(){ return mode },
 };
 
@@ -183,7 +198,9 @@ function buildUi(){
 		@media (pointer: coarse) {
 			.vi-esc-enabled .vi-esc { display: flex; align-items: center; }
 		}
-		.vi-block-caret #editor-grid .editor { caret-color: transparent; }
+		.vi-block-caret #editor-grid .editor, .vi-block-caret .vi-editable { caret-color: transparent; }
+		/* over the window of a .vi-editable (scripting.js's windows stack up from 31) */
+		.vi-in-window :is(.vi-bar, .vi-complete, .vi-cursor) { z-index: 100000; }
 		/* focus mode: only the command line shows, and the phone Esc in gray */
 		.focus-mode .vi-mode:not([data-mode="command"]) { background: none; box-shadow: none; }
 		.focus-mode .vi-mode:not([data-mode="command"]) .vi-mode-body { display: none; }
@@ -240,12 +257,35 @@ function buildUi(){
 }
 
 function placeIndicator(){
+	// in a .vi-editable: at its top right
+	const editable = viEditable();
+	document.body.classList.toggle("vi-in-window", Boolean(editable));
+	if ( editable ) {
+		const box = editable.getBoundingClientRect();
+		ui.bar.style.top = `${Math.round(box.top + 4)}px`;
+		ui.bar.style.right = `${Math.round(window.innerWidth - box.right + 18)}px`;
+		return
+	}
 	// top right of the editors, under the editor headers of a split view and clear of the scrollbar
 	const grid = document.getElementById("editor-grid").getBoundingClientRect();
 	const head = document.querySelector("#editor-grid .pane-head");
 	const headHeight = head?.offsetHeight ? head.getBoundingClientRect().height : 0;
 	ui.bar.style.top = `${Math.round(grid.top + headHeight + 6)}px`;
 	ui.bar.style.right = `${Math.round(window.innerWidth - grid.right + 20)}px`;
+}
+
+function undoScriptChangeIn(editor){
+	return typeof undoScriptChange === "function" && undoScriptChange(editor);
+}
+
+function redoScriptChangeIn(editor){
+	return typeof redoScriptChange === "function" && redoScriptChange(editor);
+}
+
+function viEditable(){
+	// the .vi-editable vi is in, also while its command line has the focus
+	const editor = commandLine?.editor ?? focusedEditor();
+	return editor?.classList.contains("vi-editable") ? editor : null;
 }
 
 function onResize(){
@@ -259,6 +299,7 @@ function setMode(next){
 	const wasInsert = mode === "insert" || mode === "replace";
 	mode = next;
 	if ( mode !== "command" ) { pending = [] }
+	altEscTyped = [];
 	const isInsert = mode === "insert" || mode === "replace";
 	if ( isInsert !== wasInsert ) { setTypingAttributes(isInsert) }
 	render();
@@ -298,7 +339,7 @@ function renderCursor(){
 	}
 	const rect = characterRect(model, index);
 	// scrolled out of the editor: it would be drawn over the toolbar
-	const view = editor.closest(".pane-scroll")?.getBoundingClientRect();
+	const view = (editor.closest(".pane-scroll") || (editor.classList.contains("vi-editable") ? editor : null))?.getBoundingClientRect();
 	if ( !rect || (view && (rect.bottom <= view.top || rect.top >= view.bottom)) ) {
 		ui.cursor.style.display = "none";
 		return
@@ -367,6 +408,8 @@ function setTypingAttributes(typing){
 // events
 function editorOf(node){
 	const el = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+	const editable = el?.closest(".vi-editable");
+	if ( editable ) { return editable }
 	const editor = el?.closest(".editor");
 	return editor && editor.closest("#editor-grid") ? editor : null;
 }
@@ -393,7 +436,15 @@ function onKeydown(e){
 	if ( !commandLine && e.target.closest?.("#file-tree") && !e.target.closest(".toc-body") ) { onTreeKeydown(e); return }
 	const editor = editorOf(e.target);
 	if ( !editor || commandLine ) { return }
-	if ( e.isComposing || e.keyCode === 229 ) { return }   // phone keyboard: comes as beforeinput
+	softKey = e.isComposing || e.keyCode === 229;
+	if ( softKey ) { return }   // phone keyboard: comes as beforeinput
+	const altKey = viAltEscKeyName(e);
+	if ( altKey && takeAltEsc(altKey, editor) ) {
+		e.preventDefault();
+		e.stopPropagation();
+		handleKey("Escape", editor);
+		return
+	}
 	const key = keyName(e);
 	if ( !key || e.metaKey ) { return }
 	if ( key === "Escape" ) { escapeAt = performance.now() }
@@ -405,7 +456,9 @@ function onKeydown(e){
 		} else if ( mode === "replace" && key.length === 1 && !e.ctrlKey && !e.altKey ) {
 			e.preventDefault();
 			e.stopPropagation();
-			replaceChar(editor, key);
+			rememberAltEsc(altKey, key, replaceChar(editor, key));
+		} else {
+			rememberAltEsc(altKey, key.length === 1 && !e.ctrlKey ? key : "", "");
 		}
 		return
 	}
@@ -423,6 +476,8 @@ function closePopupsWithQ(e){
 	if ( e.key !== "q" || e.ctrlKey || e.metaKey || e.altKey || e.isComposing || commandLine ) { return false }
 	if ( typeof openPopups !== "function" || !openPopups().length ) { return false }
 	const editor = editorOf(e.target);
+	// a .vi-editable's window closes with :q
+	if ( editor?.classList.contains("vi-editable") ) { return false }
 	const typing = editor ? mode === "insert" || mode === "replace" || pending.length > 0
 		: e.target.closest?.('input:not([type=checkbox], [type=radio], [type=button], [type=submit], [type=reset], [type=range], [type=color], [type=file]), textarea, select, [contenteditable]:not([contenteditable="false"])');
 	if ( typing ) { return false }
@@ -449,6 +504,16 @@ function onBeforeInput(e){
 	const editor = editorOf(e.target);
 	if ( !editor || applying ) { return }
 	if ( mode === "insert" || mode === "replace" ) {
+		// a phone keyboard's key, one character at a time, may be the alternate Esc
+		if ( softKey && e.inputType === "insertText" && e.data?.length === 1 && e.cancelable ) {
+			const altKey = e.data === " " ? "<Space>" : e.data;
+			if ( takeAltEsc(altKey, editor) ) {
+				e.preventDefault();
+				handleKey("Escape", editor);
+				return
+			}
+			rememberAltEsc(altKey, e.data, "");
+		}
 		if ( recording && !replaying ) { recordInput(e) }
 		return
 	}
@@ -513,6 +578,44 @@ function onSelectionChange(){
 		visualHead = focus > visualAnchor ? focus - 1 : focus;
 	}
 	renderCursor();
+}
+
+// the alternate Esc (Settings, script.js): one key, or keys typed one after another like jk
+const altEscTimeout = 1000;   // ms between its keys, like Vim's timeoutlen
+
+function rememberAltEsc(key, char, original){
+	// a key of INSERT / REPLACE, char the character it typed ("" for none), over original in REPLACE
+	const keys = viAltEscKeys();
+	if ( keys.length < 2 || !key ) { altEscTyped = []; return }
+	altEscTyped.push({key, char, original, at: performance.now()});
+	altEscTyped = altEscTyped.slice(-(keys.length - 1));
+}
+
+function takeAltEsc(key, editor){
+	// true when key ends the alternate Esc; the text its keys before typed is taken out again
+	const keys = viAltEscKeys();
+	if ( !keys.length ) { return false }
+	// NORMAL / VISUAL: a single key that types nothing (Ctrl+Space), a typed one stays a vi command
+	if ( mode !== "insert" && mode !== "replace" ) { return keys.length === 1 && key.length > 1 && keys[0] === key }
+	const before = altEscTyped;
+	if ( before.length !== keys.length - 1 || keys.at(-1) !== key || before.some((k, i) => k.key !== keys[i]) ) { return false }
+	const times = [...before.map((k) => k.at), performance.now()];
+	if ( times.some((at, i) => i && at - times[i - 1] > altEscTimeout) ) { return false }
+	const typed = before.filter((k) => k.char);
+	altEscTyped = [];
+	if ( !typed.length ) { return true }
+	const text = typed.map((k) => k.char).join("");
+	const model = textModel(editor);
+	const i = caretIndex(model);
+	// the caret moved away from what was typed: it is only text
+	if ( i === null || i < text.length || model.text.slice(i - text.length, i) !== text ) { return false }
+	const original = typed.map((k) => k.original).join("");
+	selectRange(model, i - text.length, i);
+	original ? exec("insertText", original) : exec("delete");
+	setCaret(textModel(editor), i - text.length);
+	if ( recording ) { recording.text = (recording.text || "").slice(0, -text.length) }
+	changed();
+	return true
 }
 
 function pressEsc(){
@@ -674,6 +777,8 @@ function positionAt(model, index){
 
 function indexAt(model, node, offset){
 	if ( !node || !model.editor.contains(node) ) { return null }
+	// Safari may keep a selection's offset past the end of its node for a moment after the document changed
+	offset = Math.min(offset, node.nodeType === Node.ELEMENT_NODE ? node.childNodes.length : node.length);
 	if ( node.nodeType === Node.TEXT_NODE ) {
 		const segment = model.segments.find(s => s.node === node);
 		if ( segment ) { return segment.start + offset }
@@ -765,10 +870,11 @@ function exec(command, value=null){
 	if ( hidden ) { document.body.classList.add("vi-block-caret") }
 }
 
-function insertLines(lines){
+function insertLines(lines, items=null){
+	// with the yanked lines' formats (lineFormatsOf), a line with inline styles goes in as its HTML
 	lines.forEach((line, i) => {
 		if ( i ) { exec("insertParagraph") }
-		if ( line ) { exec("insertText", line) }
+		if ( items?.[i]?.html ) { exec("insertHTML", items[i].html) } else if ( line ) { exec("insertText", line) }
 	});
 }
 
@@ -941,8 +1047,9 @@ function runNormal(editor, keys){
 	case "J": joinLines(editor, model, i, Math.max(count, 2)); changed(); return {change: true, count: count1, keys: ["J"]};
 	case "p":
 	case "P": put(editor, model, i, key === "P", count); changed(); return {change: true, count: count1, keys: [key]};
-	case "u": for ( let n = 0; n < count; n++ ) { exec("undo") } clampCaret(editor); changed(); return;
-	case "<C-r>": for ( let n = 0; n < count; n++ ) { exec("redo") } changed(); return;
+	// a script's changes to the document are undone and redone apart from the browser's (scripting.js)
+	case "u": for ( let n = 0; n < count; n++ ) { if ( !undoScriptChangeIn(editor) ) { exec("undo") } } clampCaret(editor); changed(); return;
+	case "<C-r>": for ( let n = 0; n < count; n++ ) { if ( !redoScriptChangeIn(editor) ) { exec("redo") } } changed(); return;
 	case ".": repeatLastChange(editor, count1); return;
 	case "Tab": {
 		// checks / unchecks the checklist item of the cursor's line, like Ctrl+Enter (checklist.js)
@@ -1195,7 +1302,14 @@ function deleteLines(editor, model, from, to){
 		const after = textModel(editor);
 		setCaret(after, from < after.text.length ? firstNonBlank(after.text, from) : firstNonBlank(after.text, Math.max(0, from - 1)));
 	} else if ( to < text.length ) {
+		// the line below merges into the first line's block: it gets its own block back (a heading isn't left)
+		const block = lineListItem(model, to + 1) ? null : lineBlockTag(model, to + 1);
 		deleteRange(model, from, to + 1);
+		const after = textModel(editor);
+		if ( block && !lineListItem(after, 0) && lineBlockTag(after, 0) !== block ) {
+			setCaret(after, 0);
+			exec("formatBlock", block.toLowerCase());
+		}
 		setCaret(textModel(editor), firstNonBlank(textModel(editor).text, 0));
 	} else {
 		deleteRange(model, from, to);
@@ -1275,6 +1389,19 @@ function openEmptyLine(editor, model, i, above){
 	const insertParagraph = () => typeof withNewTaskItemsUnchecked === "function"
 		? withNewTaskItemsUnchecked(editor, () => exec("insertParagraph"))
 		: exec("insertParagraph");
+	// in a table the whole table is the line: an empty text line goes right before or after it
+	const cell = elementOf(positionAt(model, i).node)?.closest("td, th");
+	if ( cell && editor.contains(cell) ) {
+		openLineByTable(editor, cell.closest("table"), above);
+		rememberSelection();
+		return
+	}
+	// under a collapsed item: the new one goes after its hidden items, at its level (folding.js)
+	const li = lineListItem(model, i);
+	if ( !above && isCollapsedItem(li) && document.body.classList.contains("list-folding") && openItemAfterFold(editor, li) ) {
+		rememberSelection();
+		return
+	}
 	const start = lineStart(text, i);
 	const next = above ? start : lineEnd(text, i) + 1; // the line the new one goes before (past the text: none)
 	const prev = next - 1;                            // the end of the line it goes after (-1: none)
@@ -1299,6 +1426,25 @@ function openEmptyLine(editor, model, i, above){
 	rememberSelection();
 }
 
+function openLineByTable(editor, table, above){
+	// not by Enter in the line next to it, which would make a heading, a list item or a code line of it: an empty
+	// line inserted between the editor's lines (one undo), by hand where the browser puts it into a list
+	let block = table;
+	while ( block.parentElement !== editor ) { block = block.parentElement }
+	const at = [...editor.childNodes].indexOf(block) + (above ? 0 : 1);
+	const selection = window.getSelection();
+	selection.collapse(editor, at);
+	exec("insertHTML", "<div><br></div>");
+	let line = above ? block.previousElementSibling : block.nextElementSibling;
+	if ( line?.nodeName !== "DIV" || line.textContent !== "" || line.querySelector(":not(br)") ) {
+		exec("undo");
+		line = document.createElement("div");
+		line.appendChild(document.createElement("br"));
+		above ? block.before(line) : block.after(line);
+	}
+	selection.collapse(line, 0);
+}
+
 function restoreRules(editor){
 	// the put lines that were rules (ruleChar) become rules again
 	for ( const line of editor.querySelectorAll("div, p") ) {
@@ -1318,11 +1464,9 @@ function put(editor, model, i, before, count){
 	if ( register.linewise ) {
 		openEmptyLine(editor, model, i, before);
 		const first = caretIndex(textModel(editor));
-		lines.forEach((line, n) => {
-			if ( n ) { exec("insertParagraph") }
-			if ( line ) { exec("insertText", line) }
-		});
-		restoreListItems(editor, first, repeatedItems(count));
+		const items = repeatedItems(count);
+		insertLines(lines, items);
+		restoreLineFormats(editor, first, items);
 		restoreRules(editor);
 		const after = textModel(editor);
 		setCaret(after, firstNonBlank(after.text, first));
@@ -1363,15 +1507,18 @@ function replaceChar(editor, char){
 	const model = textModel(editor);
 	const i = caretIndex(model);
 	if ( i === null ) { return }
-	if ( model.text[i] !== undefined && model.text[i] !== "\n" ) { selectRange(model, i, i + 1) }
+	const original = model.text[i] !== undefined && model.text[i] !== "\n" ? model.text[i] : "";
+	if ( original ) { selectRange(model, i, i + 1) }
 	exec("insertText", char);
 	if ( recording ) { recording.text = (recording.text || "") + char }
 	changed();
+	return original
 }
 
 function yank(text, linewise, model=null, from=0){
-	// whole lines keep what makes them list items (checklist state, nesting level), so p puts them back as items
-	register = {text, linewise, items: linewise && model ? listItemsOf(model, from, text.split("\n").length) : null};
+	// whole lines keep what makes them list items (checklist state, nesting level), headings or quotes, and their
+	// inline styles, so p puts them back as they were
+	register = {text, linewise, items: linewise && model ? lineFormatsOf(model, from, text.split("\n").length) : null};
 }
 
 function listDepth(editor, li){
@@ -1388,23 +1535,63 @@ function lineListItem(model, index){
 	return li && model.editor.contains(li) && li.parentElement?.nodeName === "UL" ? li : null;
 }
 
-function listItemsOf(model, from, count){
-	// per line: {depth, checked} for an item of a bulleted list (checked: "true" / "false" for a checklist item, null for a bullet)
+const formatBlockTags = new Set(["H1", "H2", "H3", "H4", "H5", "H6", "BLOCKQUOTE", "PRE"]);
+
+function lineBlockTag(model, index){
+	// the block a line is: a heading, a quote, a code block, or a plain line ("DIV")
+	let el = elementOf(positionAt(model, index).node);
+	for ( ; el && el !== model.editor; el = el.parentElement ) {
+		if ( formatBlockTags.has(el.nodeName) ) { return el.nodeName }
+		if ( el.nodeName === "LI" || el.nodeName === "TD" || el.nodeName === "TH" ) { break }
+	}
+	return "DIV";
+}
+
+function lineHTML(model, start, end){
+	// the line's inline styles (<b>, <i>, links...) as HTML, null when it is just text
+	if ( end <= start ) { return null }
+	const a = positionAt(model, start);
+	const b = positionAt(model, end);
+	const range = document.createRange();
+	range.setStart(a.node, a.offset);
+	range.setEnd(b.node, b.offset);
+	const box = document.createElement("div");
+	box.append(range.cloneContents());
+	// the blocks the line is in come along partly: only what is inside them
+	for ( let block; (block = box.querySelector([...blockTags].join(","))); ) { block.replaceWith(...block.childNodes) }
+	box.querySelectorAll("br").forEach((br) => br.remove());
+	return box.querySelector("*") ? box.innerHTML : null;
+}
+
+function lineFormatsOf(model, from, count){
+	// per line: {depth, checked} for an item of a bulleted list (checked: "true" / "false" for a checklist item, null for
+	// a bullet), {block} for any other line (lineBlockTag), and the line's html if it has inline styles
 	const first = lineNumber(model.text, from);
 	const items = [];
 	for ( let n = 0; n < count; n++ ) {
-		const li = lineListItem(model, lineStartOfNumber(model.text, first + n));
-		items.push(li ? {depth: listDepth(model.editor, li), checked: li.getAttribute("data-checked")} : null);
+		const start = lineStartOfNumber(model.text, first + n);
+		const li = lineListItem(model, start);
+		const html = lineHTML(model, start, lineEnd(model.text, start));
+		items.push(li ? {depth: listDepth(model.editor, li), checked: li.getAttribute("data-checked"), html}
+			: {block: lineBlockTag(model, start), html});
 	}
-	return items.some(Boolean) ? items : null;
+	return items;
 }
 
-function restoreListItems(editor, from, items){
-	// the pasted lines from the line at from on become the list items they were yanked from
+function restoreLineFormats(editor, from, items){
+	// the pasted lines from the line at from on become the list items, headings, quotes they were yanked from
 	if ( !items ) { return }
 	const first = lineNumber(textModel(editor).text, from);
 	items.forEach((item, n) => {
-		if ( !item ) { return }
+		if ( item.block ) {
+			const model = textModel(editor);
+			const start = lineStartOfNumber(model.text, first + n);
+			// a line put into a list stays an item of it
+			if ( lineListItem(model, start) || lineBlockTag(model, start) === item.block ) { return }
+			setCaret(model, start);
+			exec("formatBlock", item.block.toLowerCase());
+			return
+		}
 		const lineAt = () => {
 			const model = textModel(editor);
 			setCaret(model, lineStartOfNumber(model.text, first + n));
@@ -1614,14 +1801,77 @@ function wrappedLineEnd(model, i){
 	return end;
 }
 
+// in a table h j k l and the arrows go from cell to cell: past its top or left edge to the line before the table,
+// past its bottom or right edge to the line after it
+const tableMotions = {h: "left", ArrowLeft: "left", l: "right", ArrowRight: "right", k: "up", ArrowUp: "up", j: "down", ArrowDown: "down"};
+
+function cellSpan(model, cell){
+	// [start, end] of the cell's text in the model
+	const own = model.segments.filter((segment) => cell.contains(segment.node));
+	return own.length ? [own[0].start, own.at(-1).start + own.at(-1).length] : null;
+}
+
+function tableMotionTarget(model, i, key){
+	// the index one step takes the cursor to; undefined outside a table or when it moves inside the cell
+	const direction = tableMotions[key];
+	const node = direction && positionAt(model, i).node;
+	const cell = node && elementOf(node)?.closest("td, th");
+	if ( !cell || !model.editor.contains(cell) ) { return undefined }
+	const span = cellSpan(model, cell);
+	if ( !span ) { return undefined }
+	const text = model.text;
+	const [start, end] = span;
+	if ( direction === "left" && i > start ) { return undefined }
+	if ( direction === "right" && i < end - 1 ) { return undefined }
+	if ( direction === "up" && lineNumber(text, i) > lineNumber(text, start) ) { return undefined }
+	if ( direction === "down" && lineNumber(text, i) < lineNumber(text, end) ) { return undefined }
+	const table = cell.closest("table");
+	const rows = [...table.rows].filter((tr) => tr.closest("table") === table);
+	const row = rows.indexOf(cell.parentElement);
+	const column = [...cell.parentElement.cells].indexOf(cell);
+	const step = { left: [0, -1], right: [0, 1], up: [-1, 0], down: [1, 0] }[direction];
+	const next = rows[row + step[0]]?.cells[column + step[1]];
+	if ( next ) {
+		const [nextStart, nextEnd] = cellSpan(model, next) || [];
+		if ( nextStart === undefined ) { return null }
+		return direction === "left" ? Math.max(nextStart, nextEnd - 1) : nextStart;
+	}
+	// out of the table
+	const cells = [...table.querySelectorAll("td, th")].map((c) => cellSpan(model, c)).filter(Boolean);
+	if ( !cells.length ) { return null }
+	if ( direction === "left" || direction === "up" ) {
+		const line = lineNumber(text, cells[0][0]) - 1;
+		return line < 0 ? null : firstNonBlank(text, lineStartOfNumber(text, line));
+	}
+	const line = lineNumber(text, cells.at(-1)[1]) + 1;
+	return line >= lineCount(text) ? null : firstNonBlank(text, lineStartOfNumber(text, line));
+}
+
 function moveCaret(editor, model, i, motion, count){
+	if ( tableMotions[motion.key] && tableMotionTarget(model, i, motion.key) !== undefined ) {
+		// step by step: the steps inside a cell move like the keys do anywhere
+		let index = i;
+		for ( let n = 0; n < (count || 1); n++ ) {
+			const target = tableMotionTarget(model, index, motion.key);
+			if ( target === null ) { break }
+			if ( target === undefined ) { index = evalMotion(editor, model, index, motion, 1, true)?.index ?? index; continue }
+			index = target;
+		}
+		setCaret(model, index);
+		// a wide table scrolls sideways to the cell (tables.js)
+		revealCell(elementOf(positionAt(model, index).node)?.closest("td, th"));
+		scrollCaret(editor);
+		return
+	}
 	const browser = !byTextLines(motion.key) && browserMotions[motion.key];
 	if ( browser ) {
 		// exactly like the arrow keys: wrapped lines, the remembered column, crossing to the next line
 		const selection = window.getSelection();
 		if ( !selection.isCollapsed ) { selection.collapseToEnd() }
 		for ( let n = 0; n < (count || 1); n++ ) { browserMove(selection, ...browser) }
-		if ( motion.key === "g$" || motion.key === "End" ) { clampCaret(editor) } else { rememberSelection() }
+		// NORMAL keeps the cursor on a character: the browser's caret stops after a line's last one (l, j / k on a
+		// longer line), where Space or an edit acts on no character, next to a collapsed item's hidden ones
+		if ( motion.key === "g$" || motion.key === "End" || mode === "normal" ) { clampCaret(editor) } else { rememberSelection() }
 		scrollCaret(editor);
 		return
 	}
@@ -2158,7 +2408,7 @@ function runVisual(editor, keys){
 		return change();
 	}
 	case "p": case "P": {
-		const replaced = {text: text.slice(from, to), linewise, items: linewise ? listItemsOf(model, from, text.slice(from, to).split("\n").length) : null};
+		const replaced = {text: text.slice(from, to), linewise, items: linewise ? lineFormatsOf(model, from, text.slice(from, to).split("\n").length) : null};
 		const pasted = register;
 		setMode("normal");
 		if ( linewise ) {
@@ -2174,8 +2424,8 @@ function runVisual(editor, keys){
 			if ( pasted.linewise ) {
 				setCaret(after, from);
 				exec("insertParagraph");
-				insertLines(pasted.text.split("\n"));
-				restoreListItems(editor, from + 1, pasted.items);
+				insertLines(pasted.text.split("\n"), pasted.items);
+				restoreLineFormats(editor, from + 1, pasted.items);
 			} else {
 				setCaret(after, from);
 				insertLines(pasted.text.split("\n"));
@@ -2286,6 +2536,8 @@ const exCommands = [
 	[["split", "vsplit", "vsp", "new", "vnew"], "split the editor"],
 	[["tree", "FileExplorer"], "show the documents and go to them"],
 	[["toc", "TableOfContents"], "show the table of contents and go to it"],
+	[["table"], "add a table: :table columns rows headers", true],
+	[["script"], "add a script's button: :script, run one: :script name", true],
 	[["focus"], "focus mode on / off"],
 	[["lines"], "line numbers on / off"],
 	[["nohlsearch", "noh"], "hide the search highlight"],
@@ -2443,6 +2695,11 @@ function runExCommand(editor, value, visual){
 	}
 	const [name, ...args] = command.split(/\s+/);
 	const arg = args.join(" ");
+	// a .vi-editable handles the commands it knows (the Script wizard's :w, :q), the others are the app's
+	if ( editor.classList.contains("vi-editable") ) {
+		const handled = !editor.dispatchEvent(new CustomEvent("vi-command", {cancelable: true, detail: {name, arg}}));
+		if ( handled ) { return }
+	}
 	switch ( name ) {
 	case "w": case "write": case "w!":
 		saveDocumentToLocalStorage();
@@ -2476,6 +2733,30 @@ function runExCommand(editor, value, visual){
 		// shows the table of contents and goes to it (toc.js): j / k, Enter goes to the heading, Esc back
 		openTableOfContents(true);
 		return;
+	case "table": {
+		// :table columns rows [headers] adds the table at the cursor, :table alone opens the widget (tables.js)
+		const options = tableCommandOptions(args.filter(Boolean));
+		if ( typeof options === "string" ) { showMessage(options, "error"); return }
+		if ( !options.columns || !options.rows ) { createInsertTableModal(options); return }
+		// under the cursor's line, not splitting it
+		setCaret(model, lineEnd(text, i));
+		insertTable(options.columns, options.rows, options.headers ?? true);
+		return;
+	}
+	case "script": {
+		// :script opens the Script wizard for a button at the end of the cursor's line, :script name runs the
+		// document's script button of that name (scripting.js)
+		if ( arg ) {
+			const activator = [...editor.querySelectorAll(".script-activator")].find(el => el.textContent.trim() === arg.trim());
+			if ( activator ) { runScript(activator) } else { showMessage(`No script "${arg}"`, "error") }
+			return;
+		}
+		if ( !scriptsEnabled(editor) ) { showMessage("Scripts are disabled in this document", "error"); return }
+		setCaret(model, lineEnd(text, i));
+		const selection = window.getSelection();
+		openScriptWizard(null, selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null);
+		return;
+	}
 	case "f": case "focus":
 		toggleFocusMode();
 		return;
@@ -2943,6 +3224,7 @@ const helpSections = [
 	]],
 	["Moving (with a count: 3j, 2w)", [
 		["h j k l, arrows", "like the arrow keys: j / k follow wrapped lines (lines of the text with Word-wrap navigation off in Settings)"],
+		["h j k l, arrows in a table", "from cell to cell; past the top or left edge to the line before the table, past the bottom or right edge to the line after it"],
 		["gj gk", "down / up a wrapped line"],
 		["w b e ge, W B E gE", "words, WORDS (separated by spaces only)"],
 		["0 ^ $ g_", "line start, first character, line end, last character"],
@@ -3009,6 +3291,8 @@ const helpSections = [
 		[":h0 :h1 :h2 :h3 :h4", "text, heading 1 to 4 (on the selected lines from VISUAL)"],
 		[":tree :FileExplorer", "show the documents and go to them (TREE)"],
 		[":toc :TableOfContents", "show the table of contents and go to it: j / k, Enter goes to the heading, Esc back"],
+		[":table 3 2 :table 3 2 no", "add a table: columns, rows, headers (true / false, yes / no, 1 / 0); :table alone opens the widget"],
+		[":script :script name", "add a script's button at the end of the line with the Script wizard, run the script of that name"],
 		[":lines", "line numbers on / off"],
 		[":f :focus", "focus mode on / off: only the text; Esc Esc in NORMAL or the faint x leaves it"],
 		[":h :help", "this help"],

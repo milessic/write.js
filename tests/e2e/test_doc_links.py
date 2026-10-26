@@ -125,3 +125,21 @@ def test_unknown_document_is_not_linked(app):
 	insert_doc_link(app, "nope")
 	assert app.locator("#editor a").count() == 0
 	assert app.locator(".insert-link-modal").count() == 1
+
+
+@pytest.mark.parametrize("item, expected", [
+	("Export", '<div>see <b>second</b> and <a href="https://e.com/">web</a></div>'),
+	("Export as Markdown", "see __second__ and [web](https://e.com/)"),
+])
+def test_export_drops_the_links_to_documents(app, item, expected):
+	app.evaluate("""() => {
+		document.getElementById("editor").innerHTML = '<div>see <a contenteditable="false" href="?doc=x" data-doc-id="x"><b>second</b></a>'
+			+ ' and <a href="https://e.com/">web</a></div>';
+	}""")
+	with app.expect_download() as download:
+		# the document's menu, on its name in the top bar
+		app.click("#doc-name", button="right")
+		app.click(f"#context-menu button:text-is('{item}')")
+	content = open(download.value.path(), encoding="utf-8").read()
+	assert expected in content
+	assert "data-doc-id" not in content and "?doc=" not in content

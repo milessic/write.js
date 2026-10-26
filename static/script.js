@@ -3,22 +3,33 @@ const userLoggedInKey = "__userLoggedIn__";
 const userConsentKey = "__userConsent__";
 const lastOpenedKey= "__lastOpened__";
 const docPrefix = "__doc__";
-const autosaveKey = "__autosave__";
+const autosaveKey = "__autosave__"; // "1" when documents are saved as they are typed (Settings), goes with the notebook
+const spellcheckKey = "__spellcheck__"; // "0" when the browser's spell check is off in the editors (Settings), goes with the notebook
 const focusModeKey = "__focusMode__"; // "editors" when focus mode shows every opened tab, else only the focused document (Settings), goes with the notebook
+const formattingBarKey = "__formattingBar__"; // "0" when the formatting toolbar is hidden (Settings), goes with the notebook
 const headingBreaksKey = "__headingBreaks__"; // "1" when an <hr> is auto-inserted under each heading (Settings), goes with the notebook
 const syncPendingKey = "__syncPending__"; // set while there are changes that couldn't reach the cloud (offline)
-const syncBaseKey = "__syncBase__"; // {key: hash} of what the cloud held at the last sync, tells which side changed a document
+const syncBaseKey = "__syncBase__"; // {key: hash} of what the cloud held at the last sync of the notebook as a whole, before cloudsync.js
+const cloudSyncKey = "__cloudSync__"; // {notebookId, meta, docs: {id: {version, hash}}, lastSync}: what the cloud held at the last sync (cloudsync.js)
 const themeCookie = "theme";
 const viModeKey = "__viMode__"; // "1" when the vi keybindings are on (Settings), goes with the notebook
 const autoDetectKey = "__autoDetect__"; // {enabled, rules} for markdown typed into formatting (Settings, autodetect.js), goes with the notebook
 const headingFoldingKey = "__headingFolding__"; // "0" when collapsing sections by their headings is off (Settings, folding.js), goes with the notebook
+const saveDocumentFoldsKey = "__saveDocumentFolds__"; // "0" when collapsed headings and list items aren't saved with the document (Settings, folding.js), goes with the notebook
+const saveContentsFoldsKey = "__saveContentsFolds__"; // "0" when what is collapsed in the table of contents isn't remembered (Settings, toc.js), goes with the notebook
 const listFoldingKey = "__listFolding__"; // "0" when collapsing list items with nested items is off (Settings, folding.js), goes with the notebook
 const autoCheckParentsKey = "__autoCheckParents__"; // "0" when a checklist item isn't checked with all its nested items (Settings, checklist.js), goes with the notebook
 const lineNumbersKey = "__lineNumbers__"; // "1" when the line numbers show left of the text (Settings, linenumbers.js), goes with the notebook
 const tocHeadingsKey = "__tocHeadings__"; // the heading levels listed in the table of contents, e.g. [1, 2] (Settings, toc.js), goes with the notebook
+const tableCopyKey = "__tableCopy__"; // "html" when a copied table's text is its HTML, else Markdown (Settings, tables.js), goes with the notebook
 const viWrapNavigationKey = "__viWrapNavigation__"; // "0" when vi's j / k move by the lines of the text like Vim, not by the wrapped lines (Settings), goes with the notebook
+const viAltEscKey = "__viAltEsc__"; // the keys that also work as Esc in vi, e.g. ["j", "k"] or ["<C-Space>"] (Settings), goes with the notebook
 const viEscButtonKey = "__viEscButton__"; // "1" shows the vi Esc button on touch screens, this device only
 const viScriptUrl = document.currentScript?.dataset.viSrc || "static/vi.js"; // content-versioned by the server, see utils/static_files.py
+const docWindowParam = "window";
+// ?window={document id}: the document on its own, in a browser window (tab) of its own (docwindow.js)
+const docWindowId = new URLSearchParams(window.location.search).get(docWindowParam);
+const isDocWindow = Boolean(docWindowId);
 
 let autosaveEnabled = 0;
 let documentNames = [];
@@ -40,6 +51,8 @@ const softReturnText = `
 // Apple devices (iPadOS says it is a Mac) put window controls top-left: focus mode's x goes there (styles.css)
 document.body.classList.toggle("apple-platform",
 	/mac|iphone|ipad|ipod/i.test(navigator.userAgentData?.platform || navigator.platform || navigator.userAgent));
+// set before anything is drawn: the document window never shows the app around the document
+document.body.classList.toggle("doc-window", isDocWindow);
 
 let userConsent = localStorage.getItem(userConsentKey);
 
@@ -51,7 +64,6 @@ const fontStyleMark = `
 
 if ( userConsent ){
 	loadAutosaveSetting();
-	setAutosaveText();
 	documentNames = getDocumentNamesFromLocalStorage();
 }
 
@@ -59,6 +71,7 @@ let boldState = false;
 let italicState = false;
 let underlineState = false;
 let isLowWidthViewport = false;
+applySpellcheckSetting();
 handleWidth();
 
 // Setup elements
@@ -70,7 +83,7 @@ const documentNameObject = document.getElementById("doc-name");
 // set document onload
 window.addEventListener("load", function() { 
 	userConsentModal();
-	if ( userConsent ) { loadLastOpenedDocument();}
+	if ( userConsent ) { isDocWindow ? openDocWindow() : loadLastOpenedDocument() } // docwindow.js
 	applyViMode();
 	if ( wordCounterEnabled ){
 		handleWordCounter();
@@ -106,7 +119,6 @@ document.getElementById("editor-grid").addEventListener('beforeinput', handleLis
 document.getElementById("editor-grid").addEventListener('keyup', (e) => {updateCaretPosition();handleWordCounter()});
 document.getElementById("new-doc-btn").addEventListener('click', createNewDocument);
 document.getElementById('editor-grid').addEventListener('click', focusEditor);
-document.getElementById("theme-btn").addEventListener("click", createThemeModal);
 document.getElementById("settings-btn").addEventListener("click", createSettingsModal);
 document.getElementById("offline-btn").addEventListener("click", createOfflineModal);
 document.addEventListener("selectionchange", () => {
@@ -120,23 +132,16 @@ document.getElementById("hamburger-menu").addEventListener("click", toggleMenu);
 // document.getElementById("export-btn").addEventListener("click", exportDocument);
 document.getElementById("save-btn").addEventListener("click", saveDocumentToLocalStorage);
 // workspace.js loads after this file, so its functions are looked up on click
-document.getElementById("open-btn").addEventListener("click", () => toggleFileTree());
 document.getElementById("open-doc-btn").addEventListener("click", () => showFileTree());
 document.getElementById("toc-btn").addEventListener("click", () => openTableOfContents()); // toc.js
 document.getElementById("import-doc-btn").addEventListener("click", importDocument);
-document.getElementById("toggle-format-btn").addEventListener("click", toggleFormattingBar);
+applyFormattingBarSetting();
 document.getElementById("focus-mode-btn").addEventListener("click", () => toggleFocusMode(true));
-document.getElementById("focus-exit-btn").addEventListener("click", () => toggleFocusMode(false));
+// the document window's x closes the window (docwindow.js)
+document.getElementById("focus-exit-btn").addEventListener("click", () => isDocWindow ? closeDocWindow() : toggleFocusMode(false));
 document.addEventListener("keydown", handleFocusModeEscape);
 // capture, and registered before vi.js loads: Esc closes the pop-ups before vi or anything else reads it
 document.addEventListener("keydown", handlePopupEscape, true);
-document.getElementById("spellcheck-btn").addEventListener("click", toggleSpellCheck);
-document.getElementById("toggle-autosave-btn").addEventListener("click", toggleAutosave);
-document.getElementById("insert-or-append-html").addEventListener("click", createInsertHtmlModal);
-document.getElementById("insert-or-append-markdown").addEventListener("click", createInsertMarkdownModal);
-document.getElementById("generate-md").addEventListener("click", exportMarkdown);
-document.getElementById("copy-md").addEventListener("click", copyMarkdown);
-document.getElementById("generate-pdf").addEventListener("click", generatePDF);
 document.getElementById("contact").addEventListener("click", () => createNotification("Thank you!", 'info'))
 documentNameObject.addEventListener("change", updateTitle);
 // toolbar
@@ -171,10 +176,18 @@ function formatText(command) {
 		moveRulesOutOfLines(document.getElementById("editor"));
     } else if (command === "code") {
         document.execCommand("formatBlock", false, "pre");
+    } else if (command === "table") {
+		// the widget or the table's menu keep the focus (tables.js)
+		openTableTool();
+		return
     } else if (command === "inline-code") {
         document.execCommand("formatBlock", false, "code");
     } else if (command === "a"){
 		createInsertLinkModal();
+	} else if ( command === "script" ) {
+		// the wizard keeps the focus (scripting.js)
+		openScriptWizard();
+		return
 	} else if (command === "softreturn"){
 		injectIntoDocument(softReturnText, false);
 		adjustSelectionRange(1);
@@ -350,26 +363,40 @@ function handleCodeBlockArrowDown(e){
 	performAutoSave();
 }
 
-function createThemeModal(){
-	if ( typeof MilessicThemes === "undefined" ) {
-		createNotification("Themes are unavailable right now, using the default Write.js theme.", "warning");
-		return
-	}
+function themeSettingsHtml(){
 	// milessic-themes license: the styling must credit milessic-themes with a link to its server
-	const themesOrigin = document.getElementById("themes-attribution")?.href;
-	createModal("Theme", `<div id="theme-picker"></div>`
-		+ (themesOrigin ? `<p class="muted small">Themes from <a href="${themesOrigin}" target="_blank" rel="noopener">milessic-themes</a></p>` : ""));
-	MilessicThemes.mountPicker(document.getElementById("theme-picker"), {onChange: saveTheme})
-		.catch(() => {
-			closeAllModals();
-			createNotification("Could not load themes!", "error");
-		});
+	const themesOrigin = document.body.dataset.themesUrl;
+	if ( typeof MilessicThemes === "undefined" ) {
+		return `<p class="muted small">Themes are unavailable right now, using the default Write.js theme.</p>`;
+	}
+	return `<div id="theme-picker"></div>`
+		+ (themesOrigin ? `<p class="muted small">Themes from <a id="themes-attribution" href="${themesOrigin}" target="_blank" rel="noopener">milessic-themes</a></p>` : "");
+}
+
+function initThemeSettings(){
+	const picker = document.getElementById("theme-picker");
+	if ( !picker ) { return }
+	MilessicThemes.mountPicker(picker, {onChange: saveTheme})
+		.catch(() => { picker.replaceWith(Object.assign(document.createElement("p"), { className: "muted small", textContent: "Could not load themes!" })) });
 }
 
 function createSettingsModal(){
-	createModal("Settings", `
+	// a search at the top hides the settings that don't match it (filterSettings)
+	const modal = createModal("Settings", `<input type="search" id="settings-search" class="settings-search" placeholder="Search settings" aria-label="Search settings" autocomplete="off" spellcheck="false">
+	<p class="muted small settings-empty" hidden>No settings match.</p>`
+	+ ( typeof cloudSyncSettingsHtml !== "undefined" ? cloudSyncSettingsHtml() : "" ) // logged in only (cloudsync.js)
+	+ `
+	<h3>Theme</h3>
+	<div class="stack">
+		${themeSettingsHtml()}
+	</div>
 	<h3>Editor</h3>
 	<div class="stack">
+		<label class="check"><input id="setting-autosave" type="checkbox"${autosaveEnabled ? " checked" : ""}>Autosave</label>
+		<p class="muted small">Saves the document as you type; turned off, <em>Save</em> (or <kbd>:w</kbd> in vi mode) saves it.</p>
+		<label class="check"><input id="setting-spellcheck" type="checkbox"${spellcheckEnabled() ? " checked" : ""}>Spell check</label>
+		<label class="check"><input id="setting-formatting-bar" type="checkbox"${formattingBarEnabled() ? " checked" : ""}>Formatting toolbar</label>
+		<p class="muted small">The bar with text styles, lists and the like above the editors; turned off, the keyboard shortcuts still format.</p>
 		${lineNumbersSettingsHtml()}
 	</div>
 	<h3>Table of contents</h3>
@@ -381,6 +408,11 @@ function createSettingsModal(){
 		<label class="check"><input id="setting-vi-mode" type="checkbox"${viModeEnabled() ? " checked" : ""}>Vi keybindings (like Neovim)</label>
 		<label class="check"><input id="setting-vi-wrap" type="checkbox"${viWrapNavigationEnabled() ? " checked" : ""}${viModeEnabled() ? "" : " disabled"}>Word-wrap navigation</label>
 		<p class="muted small"><kbd>j</kbd> / <kbd>k</kbd> go through the wrapped lines; turned off, through the lines of the text, like Vim, and <kbd>gj</kbd> / <kbd>gk</kbd> through the wrapped ones.</p>
+		<div class="vi-alt-esc-setting">Alternate Esc: <span id="setting-vi-alt-esc-keys">${viAltEscLabel(viAltEscKeys())}</span>
+			<button type="button" class="btn small" id="setting-vi-alt-esc-set"${viModeEnabled() ? "" : " disabled"}>Set</button>
+			<button type="button" class="btn small" id="setting-vi-alt-esc-clear"${viModeEnabled() && viAltEscKeys().length ? "" : " hidden"}>Clear</button>
+			<button type="button" class="btn small" id="setting-vi-alt-esc-cancel" hidden>Cancel</button></div>
+		<p class="muted small">Click <em>Set</em>, press the keys, then <em>Save</em>: one key (like <kbd>Ctrl+Space</kbd>) or keys typed one after another (like <kbd>j</kbd><kbd>k</kbd>, within a second). <kbd>Backspace</kbd> takes back the last key.</p>
 		<label class="check"><input id="setting-vi-esc" type="checkbox"${localStorage.getItem(viEscButtonKey) === "1" ? " checked" : ""}${viModeEnabled() ? "" : " disabled"}>Show Esc on mobiles <span class="muted small">(this device only)</span></label>
 		<p class="muted small">Starts in NORMAL mode: <kbd>i</kbd> to type, <kbd>Esc</kbd> to go back, <kbd>v</kbd> / <kbd>V</kbd> to select, <kbd>:w</kbd> saves, <kbd>:q</kbd> closes the tab, <kbd>:help</kbd> lists all the commands. The mode is shown in the top right corner.</p>
 	</div>
@@ -389,9 +421,11 @@ function createSettingsModal(){
 		<label class="check"><input type="radio" name="setting-focus-mode" value="single"${focusModeShowsEditors() ? "" : " checked"}>Single document</label>
 		<label class="check"><input type="radio" name="setting-focus-mode" value="editors"${focusModeShowsEditors() ? " checked" : ""}>Opened editors</label>
 		<p class="muted small">Single document shows only the document you are in. Opened editors shows every opened document side by side (up to 4); drag an editor's name onto another to swap them. Documents are opened and closed after leaving focus mode.</p>
+		${focusTitleSettingsHtml()}
 	</div>
 	<h3>Headings</h3>
 	<div class="stack">
+		${floatingHeadingsSettingsHtml()}
 		<label class="check"><input id="setting-heading-breaks" type="checkbox"${headingBreaksEnabled() ? " checked" : ""}>Auto-insert break lines under headings</label>
 		${headingFoldingSettingsHtml()}
 	</div>
@@ -399,13 +433,33 @@ function createSettingsModal(){
 	<div class="stack">
 		${listFoldingSettingsHtml()}
 		${autoCheckParentsSettingsHtml()}
+	</div>
+	<h3>Save folding state</h3>
+	<div class="stack">
+		${foldStateSettingsHtml()}
+	</div>
+	<h3>Tables</h3>
+	<div class="stack">
+		${tableSettingsHtml()}
+	</div>
+	<h3>Notebook cron</h3>
+	<div class="stack">
+		${cronSettingsHtml()}
 	</div>` + autoDetectSettingsHtml());
+	modal.classList.add("settings-modal");
+	initSettingsSearch(modal);
+	initThemeSettings();
+	initFloatingHeadingsSettings(); // floatingheadings.js
+	if ( typeof initCloudSyncSettings !== "undefined" ) { initCloudSyncSettings() }
 	initLineNumbersSettings();
 	initTocSettings();
 	initHeadingFoldingSettings();
 	initListFoldingSettings();
+	initFoldStateSettings();
 	initAutoCheckParentsSettings();
+	initTableSettings();
 	initAutoDetectSettings();
+	initCronSettings();
 	document.querySelectorAll('input[name="setting-focus-mode"]').forEach((input) => input.addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
 		localStorage.setItem(focusModeKey, e.target.value);
@@ -413,6 +467,24 @@ function createSettingsModal(){
 		if ( document.body.classList.contains("focus-mode") ) { toggleFocusMode(false); toggleFocusMode(true) }
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	}));
+	document.getElementById("setting-autosave").addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = false; return }
+		autosaveEnabled = e.target.checked ? 1 : 0;
+		saveAutosaveSetting();
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
+	document.getElementById("setting-spellcheck").addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
+		localStorage.setItem(spellcheckKey, e.target.checked ? "1" : "0");
+		applySpellcheckSetting();
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
+	document.getElementById("setting-formatting-bar").addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
+		localStorage.setItem(formattingBarKey, e.target.checked ? "1" : "0");
+		applyFormattingBarSetting();
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
 	document.getElementById("setting-heading-breaks").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
 		localStorage.setItem(headingBreaksKey, e.target.checked ? "1" : "0");
@@ -423,6 +495,7 @@ function createSettingsModal(){
 		localStorage.setItem(viModeKey, e.target.checked ? "1" : "0");
 		document.getElementById("setting-vi-esc").disabled = !e.target.checked;
 		document.getElementById("setting-vi-wrap").disabled = !e.target.checked;
+		document.getElementById("setting-vi-alt-esc-set").disabled = !e.target.checked;
 		applyViMode();
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
@@ -431,11 +504,149 @@ function createSettingsModal(){
 		localStorage.setItem(viEscButtonKey, e.target.checked ? "1" : "0");
 		window.WriteVi?.setEscButton(e.target.checked);
 	});
+	initViAltEscSettings();
 	document.getElementById("setting-vi-wrap").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
 		localStorage.setItem(viWrapNavigationKey, e.target.checked ? "1" : "0");
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
+}
+
+function initSettingsSearch(modal){
+	const input = modal.querySelector("#settings-search");
+	input.addEventListener("input", () => filterSettings(modal, input.value));
+	input.addEventListener("keydown", (e) => {
+		// Esc clears the search first, then closes Settings (handlePopupEscape)
+		if ( e.key === "Escape" && input.value ) { e.preventDefault(); e.stopPropagation(); input.value = ""; filterSettings(modal, "") }
+	});
+	input.focus({ preventScroll: true });
+}
+
+function filterSettings(modal, query){
+	// a section (an h3 and what follows it) whose title matches is shown whole; otherwise only its settings that match,
+	// each with the help text right after it. Hidden by the search with .search-hidden, so what is hidden for other
+	// reasons stays hidden
+	query = query.trim().toLowerCase();
+	const matches = (el) => el.textContent.toLowerCase().includes(query);
+	const hide = (el, hidden) => el.classList.toggle("search-hidden", hidden);
+	const content = modal.querySelector(".modal-content");
+	const sections = [];
+	for ( const el of content.children ) {
+		if ( el.nodeName === "H3" ) { sections.push({ heading: el, parts: [] }) }
+		else if ( sections.length ) { sections.at(-1).parts.push(el) }
+	}
+	let anyShown = false;
+	for ( const { heading, parts } of sections ) {
+		const whole = !query || matches(heading);
+		let sectionShown = whole;
+		// a help text goes with the setting before it
+		const show = (item, previousShown) => whole || matches(item) || (item.matches("p.muted") && previousShown);
+		let previousShown = false;
+		for ( const part of parts ) {
+			let partShown = false;
+			if ( part.classList.contains("stack") ) {
+				// a .stack holds the settings, each of its children is one
+				let previous = false;
+				for ( const item of part.children ) {
+					const shown = show(item, previous);
+					if ( !item.matches("p.muted") ) { previous = shown }
+					hide(item, !shown);
+					partShown ||= shown;
+				}
+			} else {
+				partShown = show(part, previousShown);
+			}
+			if ( !part.matches("p.muted") ) { previousShown = partShown }
+			hide(part, !partShown);
+			sectionShown ||= partShown;
+		}
+		hide(heading, !sectionShown);
+		anyShown ||= sectionShown;
+	}
+	content.querySelector(".settings-empty").hidden = anyShown;
+}
+
+function initViAltEscSettings(){
+	// Set: the keys pressed next are recorded (not typed), Save stores them, Cancel or Esc leaves them as they were
+	const label = document.getElementById("setting-vi-alt-esc-keys");
+	const setButton = document.getElementById("setting-vi-alt-esc-set");
+	const clearButton = document.getElementById("setting-vi-alt-esc-clear");
+	const cancelButton = document.getElementById("setting-vi-alt-esc-cancel");
+	let recorded = null;
+	const show = () => {
+		const keys = recorded ?? viAltEscKeys();
+		label.innerHTML = recorded && !recorded.length ? `<span class="muted">press the keys…</span>` : viAltEscLabel(keys);
+		setButton.textContent = recorded ? "Save" : "Set";
+		setButton.disabled = !viModeEnabled() || (recorded !== null && !recorded.length);
+		cancelButton.hidden = !recorded;
+		clearButton.hidden = Boolean(recorded) || !viAltEscKeys().length;
+	};
+	const record = (e) => {
+		if ( !label.isConnected ) { stop(); return }
+		const name = viAltEscKeyName(e);
+		if ( name === null ) { return }
+		e.preventDefault();
+		e.stopImmediatePropagation();
+		if ( name === "Escape" ) { stop(); return }
+		if ( name === "Backspace" ) { recorded.pop() } else if ( recorded.length < 4 ) { recorded.push(name) }
+		show();
+	};
+	const stop = () => {
+		recorded = null;
+		window.removeEventListener("keydown", record, true);
+		if ( label.isConnected ) { show() }
+	};
+	setButton.addEventListener("click", () => {
+		if ( !validateUserConsent() ) { return }
+		if ( recorded === null ) {
+			recorded = [];
+			// window, capture: before the pop-ups' Esc and vi's keys
+			window.addEventListener("keydown", record, true);
+			setButton.blur(); // Enter / Space don't press it again
+			show();
+			return
+		}
+		localStorage.setItem(viAltEscKey, JSON.stringify(recorded));
+		stop();
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
+	cancelButton.addEventListener("click", stop);
+	clearButton.addEventListener("click", () => {
+		if ( !validateUserConsent() ) { return }
+		localStorage.removeItem(viAltEscKey);
+		show();
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
+}
+
+function viAltEscKeys(){
+	try {
+		const keys = JSON.parse(localStorage.getItem(viAltEscKey));
+		return Array.isArray(keys) ? keys.filter((key) => typeof key === "string" && key) : [];
+	} catch {
+		return [];
+	}
+}
+
+function viAltEscKeyName(e){
+	// a key as the alternate Esc stores it: a typed character as itself ("j"), anything else Vim-like ("<C-Space>", "<F2>");
+	// null for a modifier alone and phone keyboards' keys, which don't tell the key on keydown
+	if ( ["Shift", "Control", "Alt", "Meta", "AltGraph", "Dead", "Unidentified", "Process"].includes(e.key) || e.keyCode === 229 ) { return null }
+	if ( e.key === "Escape" && !e.ctrlKey && !e.altKey && !e.metaKey ) { return "Escape" }
+	if ( e.key === "Backspace" && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey ) { return "Backspace" }
+	const base = e.key === " " ? "Space" : e.key;
+	if ( base.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey ) { return base }
+	const mods = (e.ctrlKey ? "C-" : "") + (e.altKey ? "A-" : "") + (e.metaKey ? "M-" : "") + (e.shiftKey && base.length > 1 ? "S-" : "");
+	return `<${mods}${base.length === 1 && (e.ctrlKey || e.altKey) ? base.toLowerCase() : base}>`;
+}
+
+function viAltEscLabel(keys){
+	if ( !keys.length ) { return `<span class="muted">none</span>` }
+	return keys.map((key) => {
+		const text = key.length === 1 ? key : key.slice(1, -1).replace(/^((?:[CAMS]-)*)/, (mods) =>
+			mods.replace("C-", "Ctrl+").replace("A-", "Alt+").replace("M-", "Meta+").replace("S-", "Shift+"));
+		return `<kbd>${escapeHtmlText(text)}</kbd>`;
+	}).join("");
 }
 
 function viWrapNavigationEnabled(){
@@ -475,6 +686,8 @@ function focusEditor(e){
 	// a button over the editor (a comment icon, comments.js) keeps its own focus: focusing the editor would put
 	// the caret at its start and scroll there
 	if ( e?.target.closest?.("button") ) { return }
+	// so does the document's title (workspace.js)
+	if ( e?.target.closest?.(".doc-title") ) { return }
     document.getElementById('editor').focus({preventScroll: true});
 }
 
@@ -492,7 +705,7 @@ function toggleMenu(){
 function getDocumntContentToExport(){
 	// same theme + skeleton as the app (class before id: stripImportToOnlyContent matches `id="content">`)
 	const theme = document.documentElement.dataset.theme;
-	return `<!DOCTYPE html><html data-theme="${theme}"><head><meta charset="UTF-8"><style>${getStyles()}</style>${fontStyleMark}</head><body><div class="container" id="content-container"><div class="card editor" id="content">${document.getElementById("editor").innerHTML}</div></div></body></html>`;
+	return `<!DOCTYPE html><html data-theme="${theme}"><head><meta charset="UTF-8"><style>${getStyles()}</style>${fontStyleMark}</head><body><div class="container" id="content-container"><div class="card editor" id="content">${withoutScripts(withoutDocumentLinks(document.getElementById("editor").innerHTML))}</div></div></body></html>`;
 }
 function exportDocument(){
 	try {
@@ -556,6 +769,7 @@ function fillEditorWithHTML(html, append=false){
 	moveListsOutOfItems(document.getElementById("editor"));
 	moveHeadingsOutOfLines(document.getElementById("editor"));
 	moveRulesOutOfLines(document.getElementById("editor"));
+	moveTablesOutOfLines(document.getElementById("editor")); // tables.js
 	removeInlineStyles(document.getElementById("editor"));
 	normalizeChecklists(document.getElementById("editor"));
 	document.getElementById("editor").closest(".pane-scroll").scrollTo(0, 1000);
@@ -583,23 +797,24 @@ function insertHTMLAtLastCaret(html){
 	handleWordCounter();
 }
 
-function toggleFormattingBar(){
-    const subBar = document.getElementById("sub-bar");
-	const toggleFormatBtn = document.getElementById("toggle-format-btn");
-    subBar.style.display = subBar.style.display === "none" ? "" : "none";
-	if (subBar.style.display === "none"){
-		toggleFormatBtn.innerText = "Toggle Formatting (It's off now)";
-	} else {
-		toggleFormatBtn.innerText = "Toggle Formatting (It's on now)";
-	}
+function formattingBarEnabled(){
+	// on until turned off
+	return localStorage.getItem(formattingBarKey) !== "0";
 }
 
-function toggleSpellCheck(){
-	const spellCheckBtn = document.getElementById("spellcheck-btn");
-	const spellcheck = !document.getElementById("editor").spellcheck;
-	document.querySelectorAll("#editor-grid .editor").forEach((editor) => { editor.spellcheck = spellcheck });
-	spellCheckBtn.innerText = spellcheck ? "Toggle Spell Check (It's on)" : "Toggle Spell Check (It's off)";
+function applyFormattingBarSetting(){
+	document.getElementById("sub-bar").hidden = !formattingBarEnabled();
+}
 
+function spellcheckEnabled(){
+	// on until turned off; stored, so the browser's own default (which iOS Safari drops) doesn't decide it
+	return !validateUserConsent(false) || localStorage.getItem(spellcheckKey) !== "0";
+}
+
+function applySpellcheckSetting(){
+	// every editor, the split ones too (addPane, workspace.js, copies it)
+	const spellcheck = spellcheckEnabled();
+	document.querySelectorAll("#editor-grid .editor").forEach((editor) => { editor.spellcheck = spellcheck });
 }
 
 function getDocumentText(withHtml=true){
@@ -629,6 +844,7 @@ function createModal(title, html){
 	createOverlay();
 	document.body.appendChild(modalContainer)
 	modalContainer.show();
+	return modalContainer;
 }
 function saveDocumentToLocalStorage(){
 	if ( !validateUserConsent() ) { return }
@@ -744,11 +960,7 @@ function deleteDocumentInLocalStorage(name){
 		forgetDocumentFolder(name);
 		closeTabsOfDocument(name);
 		refreshFileTree();
-		if ( typeof sendNotebook !== 'undefined' ) {
-			if ( remoteAutoSaveEnabled || showConfirm("Do you want to send updated Notebook to the cloud?") ){
-				sendNotebookForce();
-			}
-		}
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the delete goes to the cloud (cloudsync.js)
 		closeAllModals();
 	}
 }
@@ -780,6 +992,8 @@ function closeAllPopups(){
 	const focusWasInPopup = popups.some((el) => el.contains(document.activeElement)) || document.activeElement === document.body;
 	closeAllModals();
 	if ( document.getElementById("menu").classList.contains("menu-opened") ) { toggleMenu() } // also brings back the word counter
+	if ( typeof closeDocWindowMenu !== "undefined" ) { closeDocWindowMenu() } // docwindow.js
+	if ( typeof closeDocSearch !== "undefined" ) { closeDocSearch() } // workspace.js
 	document.querySelectorAll(".block-select-menu.menu-opened").forEach((menu) => {
 		menu.classList.remove("menu-opened");
 		menu.closest(".block-select")?.querySelector(".block-select-btn")?.setAttribute("aria-expanded", "false");
@@ -793,13 +1007,16 @@ function closeAllPopups(){
 function handlePopupEscape(e){
 	// Esc closes every open pop-up, in any vi mode; vi's own command line handles its Esc
 	if ( e.key !== "Escape" || e.isComposing || e.target.closest?.("#vi-root") || !openPopups().length ) { return }
+	// in vi, Esc in the Script wizard's code only changes the mode (scripting.js)
+	if ( viModeEnabled() && e.target.closest?.(".vi-editable") ) { return }
 	e.preventDefault();
 	e.stopImmediatePropagation(); // one Esc: vi doesn't change mode and focus mode stays on
 	closeAllPopups();
 }
 
 function saveAsLastOpenedDocument(name=null){
-	if ( !validateUserConsent() ) { return }
+	// the document window leaves the app's last opened document as it is
+	if ( !validateUserConsent() || isDocWindow ) { return }
 	if ( name === null ) {
 		name = getDocumentName();
 	}
@@ -820,8 +1037,8 @@ function loadLastOpenedDocument(){
 
 function markdownToHtml(markdown) {
 	// a line break in the Markdown is a line in the document, as typed
-	const converter = new showdown.Converter({ tasklists: true, simpleLineBreaks: true, noHeaderId: true });
-	return sanitizeStyles(markdownTaskItemsToChecklist(converter.makeHtml(markdown)));
+	const converter = new showdown.Converter({ tasklists: true, simpleLineBreaks: true, noHeaderId: true, tables: true });
+	return sanitizeStyles(markdownTaskItemsToChecklist(converter.makeHtml(widenMarkdownTableSeparators(markdown)))); // tables.js
 }
 
 const sanitizedRenames = { STRONG: "b", EM: "i", H5: "h4", H6: "h4" };
@@ -876,6 +1093,12 @@ function sanitizeStyles(html){
 		}
 	}
 	moveListsOutOfItems(root);
+	// tables as the editor makes them (tables.js)
+	for ( const table of [...root.querySelectorAll("table")].filter((t) => !t.parentElement?.closest("table")) ) {
+		const clean = document.createElement("template");
+		clean.innerHTML = normalizedTableHtml(table);
+		table.replaceWith(clean.content);
+	}
 	if ( headingBreaksEnabled() ) {
 		for ( const heading of root.querySelectorAll("h1, h2, h3, h4") ) {
 			if ( heading.nextElementSibling?.tagName === "HR" ) { continue }
@@ -898,7 +1121,7 @@ function exportMarkdown(){
 	try {
 		if (!validateDocumentName()){return}
 		const docName = getDocumentName();
-		const mdContent = getContentAsMarkdown();
+		const mdContent = getContentAsMarkdown(withoutScripts(withoutDocumentLinks(getDocumentText()))); // doclinks.js, scripting.js
 		const blob = new Blob([mdContent], { type: "text"});
 		const link = document.createElement("a");
 		link.href = URL.createObjectURL(blob);
@@ -966,9 +1189,10 @@ function toggleFocusMode(force){
 	// Settings > Focus mode: the focused document only, or every opened tab in its own editor (workspace.js)
 	const was = document.body.classList.contains("focus-mode");
 	const on = force ?? !was;
-	if ( on === was ) { return }
+	// the document window is always in focus mode, its x closes the window (docwindow.js)
+	if ( on === was || (isDocWindow && !on) ) { return }
 	if ( on ) {
-		document.body.classList.toggle("focus-editors", focusModeShowsEditors() && enterFocusEditors());
+		document.body.classList.toggle("focus-editors", !isDocWindow && focusModeShowsEditors() && enterFocusEditors());
 	} else {
 		leaveFocusEditors();
 		document.body.classList.remove("focus-editors");
@@ -995,17 +1219,6 @@ function updateWordCounter(){
 	document.getElementById("word-counter-container").innerText = countWords();
 }
 
-function toggleAutosave(){
-	if ( !validateUserConsent() ) { autosaveEnabled = 0; return}
-	if (autosaveEnabled) {
-		autosaveEnabled = 0
-	} else { 
-		autosaveEnabled = 1
-	};
-
-	setAutosaveText();
-	saveAutosaveSetting();
-}
 
 function loadAutosaveSetting(){
 	if ( !validateUserConsent() ) { return }
@@ -1021,10 +1234,6 @@ function saveAutosaveSetting(){
 	if ( !validateUserConsent() ) { return }
 	localStorage.setItem(autosaveKey, autosaveEnabled);
 }
-function setAutosaveText(){
-	const autosaveBtn = document.getElementById("toggle-autosave-btn");
-	autosaveBtn.innerText = autosaveEnabled ? "Toggle Autosave (It's on now)" : "Toggle Autosave (It's off now)"
-}
 function createNewDocument(){
 	let previousAutosave = autosaveEnabled;
 	try {
@@ -1037,8 +1246,7 @@ function createNewDocument(){
 	}
 }
 
-function getContentAsMarkdown(){
-	let content = getDocumentText();
+function getContentAsMarkdown(content = getDocumentText()){
 	const parser = new DOMParser();
     const doc = parser.parseFromString(content, "text/html");
 
@@ -1099,6 +1307,9 @@ function getContentAsMarkdown(){
                     case "ul":
                         markdown += listToMarkdown(child, 0);
                         break;
+                    case "table":
+                        markdown += tableToMarkdown(child, markdown);
+                        break;
                     case "li":
                         markdown += traverse(child) + "\n";
                         break;
@@ -1118,6 +1329,20 @@ function getContentAsMarkdown(){
         }
 
         return markdown;
+    }
+
+    function tableToMarkdown(table, before) {
+        // a blank line around it; Markdown needs a header row: an empty one for a table without headers
+        const rows = [...table.rows].filter(tr => tr.closest("table") === table);
+        if (!rows.length) { return "" }
+        const cell = (c) => traverse(c).replace(/\n+$/, "").replace(/\n/g, "<br>").replace(/\|/g, "\\|").trim();
+        const line = (cells) => `| ${cells.join(" | ")} |\n`;
+        const columns = Math.max(...rows.map(tr => tr.cells.length));
+        const fit = (cells) => [...cells, ...Array(columns - cells.length).fill("")];
+        const hasHead = rows[0].parentElement.tagName === "THEAD" || [...rows[0].cells].every(c => c.tagName === "TH");
+        const head = hasHead ? fit([...rows.shift().cells].map(cell)) : Array(columns).fill("");
+        const gap = before && !before.endsWith("\n\n") ? (before.endsWith("\n") ? "\n" : "\n\n") : "";
+        return gap + line(head) + line(Array(columns).fill("---")) + rows.map(tr => line(fit([...tr.cells].map(cell)))).join("") + "\n";
     }
 
     function listToMarkdown(list, depth) {
@@ -1177,7 +1402,7 @@ function simulateEnter() {
 function isDeviceOnlyKey(key){
 	// state of this device that never goes to the cloud or a notebook backup
 	// (the workspace.js keys are looked up on call, that file loads after this one)
-	return [userLoggedInKey, syncPendingKey, syncBaseKey, viEscButtonKey, openedTabsKey, openedEditorsKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey].includes(key);
+	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viEscButtonKey, openedTabsKey, openedEditorsKey, tocSplitKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey, tocFoldsKey, cronExecutorKey, cronLastTickKey, cronLocalKey].includes(key);
 }
 
 function getAllLocalStorageItems() {
@@ -1238,18 +1463,23 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 	// the settings may have come with the notebook
 	applyFoldingSettings();
 	applyLineNumbersSetting();
+	applyFormattingBarSetting();
 	scheduleToc(); // the headings it lists may have come with the notebook (toc.js)
 	applyViMode();
+	applyCronSetting(); // cron.js
 	refreshFileTree();
 	if (loadLastOpened){
 		loadLastOpenedDocument();
 	}
 	resolveSyncConflicts(conflicts, fromCloud ? "Cloud" : "Backup", fromCloud);
+	// a backup's documents and settings go to the cloud (cloudsync.js)
+	if ( !fromCloud && typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() }
 }
 
-function resolveSyncConflicts(conflicts, sourceLabel, fromCloud){
+function resolveSyncConflicts(conflicts, sourceLabel, fromCloud, onResolved=null){
 	// one document at a time: this device's version and the incoming one side by side (stacked on phones).
 	// Closing the modal keeps this device's versions of the rest; a cloud conflict is asked again on the next sync.
+	// onResolved(conflict, pick): the cloud sync (cloudsync.js) remembers what was picked
 	const conflict = conflicts.shift();
 	if ( !conflict ) { return }
 	const {key, name, local, remote} = conflict;
@@ -1265,12 +1495,12 @@ function resolveSyncConflicts(conflicts, sourceLabel, fromCloud){
 		<button class="btn" data-pick="local">Keep this device's</button>
 		<button class="btn primary" data-pick="remote">Use ${sourceLabel.toLowerCase()}'s</button>
 		<button class="btn" data-pick="both">Keep both</button>
-	</div>`);
+	</div>
+	<p class="sync-review-count muted small">You have ${conflicts.length + 1} document(s) to review</p>`);
 	const modal = document.getElementById("modal");
 	modal.classList.add("sync-compare-modal");
 	modal.querySelector(".sync-compare-info").textContent =
-		`'${name}' was changed on this device and ${fromCloud ? "in the cloud since the last sync" : "differs from the backup"}. Pick the version to keep.`
-		+ (conflicts.length ? ` ${conflicts.length} more after this one.` : "");
+		`'${name}' was changed on this device and ${fromCloud ? "in the cloud since the last sync" : "differs from the backup"}. Pick the version to keep.`;
 	const views = modal.querySelectorAll(".compare-view");
 	const diff = renderLineDiff(views[0], views[1], splitDocumentId(local).html, splitDocumentId(remote).html);
 	const summary = modal.querySelector(".diff-summary");
@@ -1295,13 +1525,13 @@ function resolveSyncConflicts(conflicts, sourceLabel, fromCloud){
 			const folder = folderOfDocument(name);
 			if ( folder ) { assignDocumentFolder(copyName, folder) }
 		}
-		if ( fromCloud ) { rememberSynced({ [key]: remote }) }
+		if ( onResolved ) { onResolved(conflict, pick) } else if ( fromCloud ) { rememberSynced({ [key]: remote }) }
 		ensureDocumentIds();
 		refreshFileTree();
-		// this device's version or the copy goes to the cloud with the next push
-		if ( pick !== "remote" && typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() }
+		// the picked version or the copy goes to the cloud with the next sync
+		if ( !onResolved && typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() }
 		closeAllModals();
-		resolveSyncConflicts(conflicts, sourceLabel, fromCloud);
+		resolveSyncConflicts(conflicts, sourceLabel, fromCloud, onResolved);
 	}));
 }
 
@@ -1399,6 +1629,20 @@ function rememberSynced(entries, replace=false){
 	localStorage.setItem(syncBaseKey, JSON.stringify(base));
 }
 
+
+function notebookDataHtml(){
+	// in Account, logged in or not (script2.js / script3.js): the notebook in this browser
+	return `
+	<h3>Notebook data</h3>
+	<div class="stack">
+		<div class="row">
+			<button class="btn" type="button" id="backup-btn" onclick="saveBackup()">Export Notebook</button>
+			<button class="btn" type="button" id="restore-btn" onclick="loadBackup()">Import Notebook</button>
+			<button class="btn danger" type="button" id="clearall-btn" onclick="purgeLocalStorage()">Clear localStorage</button>
+		</div>
+		<p class="muted small">Export saves every document and setting of this browser to a <em>.writejs</em> file, Import replaces them with one. Clear deletes them from this browser.</p>
+	</div>`;
+}
 
 function purgeLocalStorage(doConfirm=true){
 	if ( !doConfirm ){
@@ -1677,7 +1921,8 @@ function adjustSelectionRange(n) {
 }
 
 function changeTabBehavior(e){
-	if ( e.key === "Tab" ){
+	// in a table, Tab moves between the cells (tables.js)
+	if ( e.key === "Tab" && !e.defaultPrevented ){
 		e.preventDefault();
 		e.shiftKey ? removeTab() : insertTab();
     }
@@ -1930,19 +2175,20 @@ function removeInlineStyles(editor){
 	}
 }
 
-// pasting a list into a list: its items become items of that list, where the caret is (before, after, or splitting
-// its item), nested ones nested as Tab nests them; into a checklist, items without a checkbox get one
+// pasting a list (or lines of text) into a list: its items become items of that list, where the caret is (before, after,
+// or splitting its item), nested ones nested as Tab nests them; into a checklist, items without a checkbox get one
 const pastedListLine = /^([ \t]*)([-*+]|\d+[.)])[ \t]+(?:\[([ xX]?)\](?:[ \t]+|$))?(.*)$/;
 const pastedInlineTags = new Set(["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "CODE", "A"]);
 
 function pastedItemsFromText(text){
-	// "- a", "* a", "1. a", "- [ ] a", "- [] a", "- [x] a" lines, nested by their indent; null if any line isn't one
+	// "- a", "* a", "1. a", "- [ ] a", "- [] a", "- [x] a" lines, nested by their indent; any other line is an item
+	// of its own too, when there is more than one line; null for one line that isn't one
 	const lines = text.replace(/\r\n?/g, "\n").split("\n").filter((line) => line.trim() !== "");
-	if ( !lines.length || !lines.every((line) => pastedListLine.test(line)) ) { return null }
+	if ( !lines.length || (lines.length === 1 && !pastedListLine.test(lines[0])) ) { return null }
 	const root = { children: [], indent: -1 };
 	const stack = [root];
 	for ( const line of lines ) {
-		const [, space, marker, box, content] = line.match(pastedListLine);
+		const [, space, marker, box, content] = line.match(pastedListLine) || [null, line.match(/^[ \t]*/)[0], "", undefined, line.trim()];
 		const indent = space.replace(/\t/g, " ".repeat(indentSize)).length;
 		while ( stack.length > 1 && stack.at(-1).indent >= indent ) { stack.pop() }
 		const parent = stack.at(-1);
@@ -2069,7 +2315,8 @@ function restoreEditorSelection(){
 	const selection = window.getSelection();
 	if ( selection.rangeCount && editor.contains(selection.anchorNode) ) { return }
 	if ( lastEditorRange && editor.contains(lastEditorRange.commonAncestorContainer) ){
-		editor.focus();
+		// focusing the editor scrolls to its top: the caret's place is where the view stays
+		editor.focus({preventScroll: true});
 		selection.removeAllRanges();
 		selection.addRange(lastEditorRange);
 	}
@@ -2147,7 +2394,7 @@ function handleListItemBackspace(e){
 
 function copyMarkdown(){
 	navigator.clipboard.writeText(
-		getContentAsMarkdown()
+		getContentAsMarkdown(withoutScripts(getDocumentText())) // scripting.js
 	);
 }
 

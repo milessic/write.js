@@ -113,6 +113,37 @@ body.app > .topbar {
 .toc-split .toc-resizer {
 	display: none;
 }
+/* the documents' share of the place (--split-share, toc.js), the contents get the rest */
+.toc-split .side-dock > .file-tree {
+	flex-grow: var(--split-share, .5);
+}
+.toc-split:not(.tree-hidden) .side-dock > .toc-panel {
+	flex-grow: calc(1 - var(--split-share, .5));
+}
+/* the edge between them, dragged to share the place; over their border, it takes no room */
+.split-resizer {
+	display: none;
+}
+.toc-split:not(.tree-hidden) .split-resizer {
+	display: block;
+	flex: none;
+	position: relative;
+	z-index: 5;
+	height: 6px;
+	margin: -3px 0;
+	cursor: row-resize;
+	touch-action: none;
+}
+:is([data-tree-side="top"], [data-tree-side="bottom"]).toc-split:not(.tree-hidden) .split-resizer {
+	width: 6px;
+	height: auto;
+	margin: 0 -3px;
+	cursor: col-resize;
+}
+.split-resizer:hover,
+.tree-resizing .split-resizer:active {
+	background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
 
 /* documents tree (file explorer) */
 .file-tree {
@@ -278,6 +309,33 @@ body.app > .topbar {
 .toc-row.folded {
 	opacity: .55;
 }
+/* the arrow of an entry with entries under it, collapsing them in the list only (toc.js); an empty place on the others */
+.toc-fold {
+	flex: none;
+	width: 1em;
+	margin-left: -.2rem;
+	margin-right: .2rem;
+	color: var(--muted);
+	text-align: center;
+}
+.toc-row[aria-expanded] .toc-fold::before {
+	content: "▾";
+}
+.toc-row[aria-expanded="false"] .toc-fold::before {
+	content: "▸";
+}
+.toc-row[aria-expanded] .toc-fold:hover {
+	color: var(--ink);
+}
+/* a top-level checklist item (Settings > Table of contents), its checkbox before it */
+.toc-task-box {
+	flex: none;
+	margin-right: .35rem;
+	color: var(--muted);
+}
+.toc-row.toc-task.checked .tree-label {
+	opacity: .6;
+}
 .toc-row.active {
 	background: color-mix(in srgb, var(--accent) 14%, transparent);
 	box-shadow: inset 2px 0 0 var(--accent);
@@ -390,6 +448,9 @@ body.app > .topbar {
 	white-space: nowrap;
 	/* Shift+click selects documents, not their names' text */
 	user-select: none;
+	-webkit-user-select: none;
+	/* a long press opens the row's menu (setupLongPressMenus, workspace.js), not Safari's callout */
+	-webkit-touch-callout: none;
 }
 /* the name is cut short, the folder mark stays visible */
 .tree-label {
@@ -416,6 +477,13 @@ body.app > .topbar {
 	background: var(--surface-2);
 	color: var(--ink);
 	font-weight: 600;
+}
+/* a document revealed from its tab (double click) */
+.tree-row.revealed {
+	animation: tree-reveal 1.2s ease-out;
+}
+@keyframes tree-reveal {
+	from, 30% { background: color-mix(in srgb, var(--accent) 30%, transparent) }
 }
 .tree-folder::before {
 	content: "▾";
@@ -456,7 +524,8 @@ body.app > .topbar {
 /* folder colors (workspace.js): a pastel tint over the theme's surface, softer in dark themes so the text stays readable;
    sub-folders without a color of their own show the one of the folder they are in.
    A folder colored inside colored folders is striped diagonally with all of their colors (built in workspace.js) */
-.tree [data-folder].colored {
+.tree [data-folder].colored,
+.tree .tree-match.colored {
 	--folder-bg: light-dark(
 		color-mix(in srgb, var(--folder-color) 75%, var(--surface)),
 		color-mix(in srgb, var(--folder-color) 18%, var(--surface))
@@ -473,12 +542,15 @@ body.app > .topbar {
 		color-mix(in srgb, var(--folder-color) 16%, var(--surface))
 	);
 }
-.tree [data-folder].colored {
+.tree [data-folder].colored,
+.tree .tree-match.colored {
 	background: var(--folder-bg);
 	border-radius: calc(var(--radius) / 3);
 }
 .tree [data-folder].colored .tree-row:not(.selected):hover,
-.tree [data-folder].colored .tree-row.active:not(.selected) {
+.tree [data-folder].colored .tree-row.active:not(.selected),
+.tree .tree-match.colored .tree-row:not(.selected):hover,
+.tree .tree-match.colored .tree-row.active:not(.selected) {
 	background: color-mix(in srgb, var(--ink) 7%, transparent);
 }
 .tab.colored {
@@ -489,6 +561,7 @@ body.app > .topbar {
 	background: var(--folder-bg-strong);
 }
 .tree [data-folder].striped,
+.tree .tree-match.striped,
 .tab.striped {
 	background: var(--folder-stripes);
 }
@@ -823,7 +896,8 @@ body.app > .topbar {
 	color: var(--muted);
 }
 
-/* drop zones shown while a panel's handle is dragged, over everything else (the notifications too) */
+/* while a panel's head is dragged (workspace.js): a layer over the page, so nothing under it takes the drag, and where
+   the panel would be docked, following the pointer, like VS Code */
 .dock-zones {
 	display: none;
 	position: fixed;
@@ -831,48 +905,28 @@ body.app > .topbar {
 	z-index: 110;
 }
 .dock-zones.dragging {
-	display: grid;
-	gap: 1rem;
-	padding: 1rem;
-	/* the page dimmed and blurred behind the zones, so they stand out from it */
-	background: color-mix(in srgb, var(--surface) 55%, transparent);
-	backdrop-filter: blur(4px);
-	-webkit-backdrop-filter: blur(4px);
+	display: block;
 }
-.dock-zones[data-panel="tree"] {
-	grid-template: "top top" 1fr "left right" 2fr "bottom bottom" 1fr / 1fr 1fr;
-}
-.dock-zones[data-panel="tabs"] {
-	grid-template: "top" 1fr "bottom" 1fr / 1fr;
-}
-.dock-zones[data-panel="toc"] {
-	grid-template: "top top top" 1fr "tree left right" 1fr "split left right" 1fr "bottom bottom bottom" 1fr / 1fr 1fr 1fr;
-}
-.dock-zone[data-side="top"] { grid-area: top; }
-.dock-zone[data-side="bottom"] { grid-area: bottom; }
-.dock-zone[data-side="left"] { grid-area: left; }
-.dock-zone[data-side="right"] { grid-area: right; }
-.dock-zone[data-side="tree"] { grid-area: tree; }
-.dock-zone[data-side="split"] { grid-area: split; }
-.dock-zone {
+.dock-preview {
 	display: none;
+	position: fixed;
 	place-items: center;
+	padding: .5rem;
 	color: var(--ink);
 	font-weight: 600;
-	background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-	border: 2px dashed var(--accent);
-	border-radius: var(--radius);
-}
-.dock-zone > * {
+	text-align: center;
+	background: color-mix(in srgb, var(--accent) 22%, transparent);
+	border: 2px solid var(--accent);
+	border-radius: calc(var(--radius) / 2);
 	pointer-events: none;
 }
-.dock-zones[data-panel="tree"] .dock-zone[data-for="tree"],
-.dock-zones[data-panel="tabs"] .dock-zone[data-for="tabs"],
-.dock-zones[data-panel="toc"] .dock-zone[data-for="toc"] {
+.dock-preview.shown {
 	display: grid;
 }
-.dock-zone.over {
-	background: color-mix(in srgb, var(--accent) 30%, var(--surface));
+.dock-preview > span {
+	padding: .2rem .5rem;
+	background: var(--surface);
+	border-radius: calc(var(--radius) / 2);
 }
 
 /* phones and tablets: the documents tree is a drawer over the editor */
@@ -959,10 +1013,69 @@ body.app > .topbar {
 	margin: 0 auto;
 }
 
-/* top bar: the document name takes the free space */
-#doc-name {
+/* top bar: the document name takes the free space; its v opens the document search tray under it (workspace.js) */
+.doc-name-field {
 	flex: 1 1 12rem;
 	max-width: 40rem;
+	min-width: 0;
+	position: relative;
+	display: flex;
+	align-items: center;
+}
+#doc-name {
+	flex: 1;
+	min-width: 0;
+	padding-right: 2rem;
+}
+.doc-search-btn {
+	position: absolute;
+	right: .25rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.6rem;
+	height: 1.6rem;
+	padding: 0;
+	color: var(--muted);
+	background: none;
+	border: 0;
+	border-radius: calc(var(--radius) / 3);
+	cursor: pointer;
+}
+.doc-search-btn:hover,
+.doc-search-btn[aria-expanded="true"] {
+	color: var(--ink);
+	background: var(--surface-2);
+}
+.doc-search-btn[aria-expanded="true"] svg {
+	transform: rotate(180deg);
+}
+.doc-search-tray {
+	display: none;
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: calc(100% + .3rem);
+	z-index: 25;
+	min-width: min(18rem, calc(100vw - 32px));
+	max-height: min(60vh, 28rem);
+	flex-direction: column;
+	gap: .4rem;
+	padding: .5rem;
+	border: 1px solid var(--line-strong);
+}
+.doc-search-tray.menu-opened {
+	display: flex;
+}
+#doc-search-input {
+	flex: none;
+	width: 100%;
+}
+#doc-search-list {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	margin: 0;
 }
 .topbar-end {
 	margin-left: auto;
@@ -995,6 +1108,9 @@ body.app > .topbar {
 	flex: none;
 	padding: .75rem 16px .25rem;
 	background: var(--page);
+}
+.format-bar[hidden] {
+	display: none;
 }
 [data-editors="1"] .format-bar .toolbar-bar {
 	max-width: 960px;
@@ -1075,6 +1191,30 @@ body.app > .topbar {
 :is(.editor, #content, .compare-view) h2 { font-size: 1.6em; }
 :is(.editor, #content, .compare-view) h3 { font-size: 1.3em; }
 :is(.editor, #content, .compare-view) h4 { font-size: 1.1em; }
+/* the document's title, line 0 (workspace.js): its name, bigger than an h1 of the text */
+.doc-title {
+	margin: 0 0 .6rem;
+	font-size: 2.6em;
+	font-weight: 700;
+	line-height: 1.2;
+	color: inherit;
+	outline: none;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+.doc-title[hidden] {
+	display: none;
+}
+.doc-title:empty::before {
+	content: "Untitled";
+	color: var(--muted);
+	opacity: .6;
+	pointer-events: none;
+}
+.line-numbers > .title-number {
+	pointer-events: none;
+	cursor: default;
+}
 /* heading folding (folding.js): an arrow in the margin left of each heading, shown on hover or when collapsed */
 .heading-folding .editor > :is(h1, h2, h3, h4) {
 	position: relative;
@@ -1143,6 +1283,14 @@ body.show-line-numbers .line-numbers {
 .line-numbers > span.current {
 	color: var(--ink);
 	opacity: .75;
+}
+/* a click on a number selects its line (linenumbers.js) */
+.line-numbers > span {
+	pointer-events: auto;
+	cursor: pointer;
+}
+.line-numbers > span:hover {
+	opacity: .9;
 }
 /* no hover on touch screens: the arrows are always there, faint */
 @media (hover: none) {
@@ -1253,6 +1401,19 @@ body.show-line-numbers .line-numbers {
 }
 :where(.editor, #content, .compare-view) {
 	--rule-height: 1lh;
+	--rule-thickness: 1px;
+}
+/* zoomed (a device pixel ratio between whole numbers), a 1px line falls between two rows of device pixels and is
+   painted faint on both, so faint it could vanish: a bit thicker, it fills at least one */
+@media not ((resolution: 1dppx) or (resolution: 2dppx) or (resolution: 3dppx)) {
+	:where(.editor, #content, .compare-view) {
+		--rule-thickness: 1.5px;
+	}
+}
+@media (resolution < 1dppx) {
+	:where(.editor, #content, .compare-view) {
+		--rule-thickness: 2px;
+	}
 }
 :where(.editor, #content, .compare-view) hr {
 	box-sizing: content-box;
@@ -1261,21 +1422,23 @@ body.show-line-numbers .line-numbers {
 	border: 0;
 	overflow: visible;
 	color: var(--line-strong, var(--muted));
-	background: linear-gradient(currentColor, currentColor) left center / 100% 1px no-repeat;
+	background: linear-gradient(currentColor, currentColor) left center / 100% var(--rule-thickness) no-repeat;
 }
 /* a collapsed heading whose section starts with a rule draws the rule where it was, under it: a background, not a line
    the caret (vi's or the browser's) could go to. The padding is the hidden rule's margin and height */
 .heading-folding .editor > [data-collapsed="true"]:has(+ hr) {
 	padding-bottom: calc(.3rem + var(--rule-height));
-	background: linear-gradient(var(--line-strong, var(--muted)), var(--line-strong, var(--muted))) left 0 bottom calc(var(--rule-height) / 2 - .5px) / 100% 1px no-repeat;
+	background: linear-gradient(var(--line-strong, var(--muted)), var(--line-strong, var(--muted))) left 0 bottom calc((var(--rule-height) - var(--rule-thickness)) / 2) / 100% var(--rule-thickness) no-repeat;
 }
 :where(.editor, #content, .compare-view) :is(ul, ol) {
 	margin-bottom: 0;
 	padding-left: 2rem;
 }
-/* checklist items (checklist.js): the checkbox is the ::before in the list's gutter, its tick the ::after */
+/* checklist items (checklist.js): the checkbox is the ::before in the list's gutter, its tick the ::after.
+   contain: layout, not position: relative, makes the item their containing block: Safari's editing takes a positioned
+   element for a block of its own, and a delete across items (vi's dd, d$) took the nested list after them, or the item */
 :where(.editor, #content, .compare-view) ul > li[data-checked] {
-	position: relative;
+	contain: layout;
 	list-style: none;
 }
 :where(.editor, #content, .compare-view) ul > li[data-checked]::before,
@@ -1334,9 +1497,116 @@ body.show-line-numbers .line-numbers {
 	overflow: auto;
 	page-break-inside: avoid;
 }
+/* tables (tables.js): bordered cells, the header row bold on a darker background. A table too wide for the editor,
+   even with its text wrapped, scrolls sideways (display: block keeps the cells in a table of their own inside it) */
+:where(.editor, #content, .compare-view) table {
+	display: block;
+	width: fit-content;
+	max-width: 100%;
+	overflow-x: auto;
+	border-collapse: collapse;
+	margin-top: .3rem;
+	page-break-inside: avoid;
+}
+:where(.editor, #content, .compare-view) :is(td, th) {
+	border: 1px solid var(--line-strong);
+	padding: .25em .6em;
+	min-width: 4em;
+	vertical-align: top;
+	text-align: left;
+}
+:where(.editor, #content, .compare-view) th {
+	font-weight: 700;
+	background: color-mix(in srgb, var(--ink) 8%, var(--surface));
+}
+/* selected cells: boxes over them, drawn outside the document; the browser's highlight of their text goes */
+.table-selection-layer {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+.table-selection-cell {
+	position: absolute;
+	background: color-mix(in srgb, var(--accent) 18%, transparent);
+	outline: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+	outline-offset: -1px;
+}
+.editor.table-cells-selected :is(td, th) ::selection,
+.editor.table-cells-selected :is(td, th)::selection {
+	background: transparent;
+	color: var(--ink);
+}
+/* while a table is replaced (tables.js): Safari puts what replaces a display: block table into its first cell */
+.editor.table-editing table {
+	display: table;
+}
+.insert-table input[type="number"] {
+	max-width: 8rem;
+}
 
 /* modals: <dialog class="modal-container"> opened with show(); #overlay is the backdrop,
-   so notifications can still show above it */
+   so notifications can still show above it. Only the content scrolls: the title and its x stay in sight */
+.modal-container[open]:has(> .modal-content) {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+.modal-container[open] > .section-head {
+	flex: none;
+	align-items: center;
+	margin-bottom: .6rem;
+}
+.modal-container[open] > .section-head > h2 {
+	margin: 0;
+}
+.modal-container[open] > .modal-content {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	/* room for focus rings at the edges of what scrolls, so they aren't cut off under the title */
+	margin: 0 -.3rem;
+	padding: .3rem .3rem .2rem;
+}
+/* Settings: tighter, with a search on top (script.js) */
+.settings-modal .modal-content {
+	gap: .4rem;
+}
+.settings-modal .modal-content > h3 {
+	margin: .7rem 0 0;
+	font-size: 1rem;
+}
+.settings-modal .modal-content .stack {
+	gap: .25rem;
+}
+.settings-modal .modal-content p.muted.small {
+	margin: 0 0 .25rem;
+	line-height: 1.35;
+}
+.settings-search {
+	width: 100%;
+}
+.search-hidden {
+	display: none !important;
+}
+/* Settings > Headings > Floating headings (floatingheadings.js): a row of choices for each kind of screen */
+.floating-setting {
+	display: grid;
+	gap: .2rem;
+}
+.floating-setting-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: .1rem .8rem;
+}
+.floating-setting-device {
+	min-width: 4.2rem;
+	color: var(--muted);
+}
+.floating-setting-device.current {
+	color: var(--ink);
+	font-weight: 700;
+}
 #overlay {
 	position: fixed;
 	inset: 0;
@@ -1384,11 +1654,11 @@ body.show-line-numbers .line-numbers {
 	color: var(--muted);
 }
 .diff-count-removed {
-	color: var(--tone-fail);
+	color: var(--danger);
 	font-weight: 600;
 }
 .diff-count-added {
-	color: var(--tone-ok);
+	color: var(--success-text);
 	font-weight: 600;
 }
 .compare-view .diff-removed,
@@ -1402,11 +1672,11 @@ body.show-line-numbers .line-numbers {
 }
 .compare-view .diff-removed {
 	background: color-mix(in srgb, var(--tone-fail) 16%, transparent);
-	border-left: 3px solid var(--tone-fail);
+	border-left: 3px solid var(--danger);
 }
 .compare-view .diff-added {
 	background: color-mix(in srgb, var(--tone-ok) 16%, transparent);
-	border-left: 3px solid var(--tone-ok);
+	border-left: 3px solid var(--success-text);
 }
 @media (max-width: 999px) {
 	.compare-grid {
@@ -1574,6 +1844,165 @@ body.focus-mode:not(.apple-platform) .vi-bar {
 	margin-right: 2rem;
 }
 
+/* the document window (docwindow.js): focus mode that stays on; its x closes the window and isn't faded,
+   its menu is next to it and its table of contents opens over the side of the document away from them */
+.doc-window-menu,
+.doc-window-toc {
+	display: none;
+}
+body.doc-window .focus-exit {
+	opacity: .85;
+}
+body.doc-window .doc-window-menu {
+	display: block;
+	position: fixed;
+	top: 6px;
+	right: calc(6px + 2rem + 2px);
+	z-index: 4;
+}
+body.doc-window.apple-platform .doc-window-menu {
+	right: auto;
+	left: calc(6px + 2rem + 2px);
+}
+body.doc-window .doc-window-menu .focus-exit {
+	position: static;
+}
+body.doc-window .doc-window-menu .focus-exit:is(:hover, :focus-visible) {
+	color: var(--ink);
+	background: var(--surface-2);
+}
+#doc-window-menu-list {
+	display: none;
+	position: absolute;
+	right: 0;
+	top: calc(100% + .3rem);
+	max-height: 80vh;
+	overflow-y: auto;
+	white-space: nowrap;
+}
+body.apple-platform #doc-window-menu-list {
+	right: auto;
+	left: 0;
+}
+#doc-window-menu-list.menu-opened {
+	display: flex;
+}
+body.doc-window:not(.apple-platform) .vi-bar {
+	margin-right: calc(4rem + 2px);
+}
+body.doc-window-toc-open .doc-window-toc {
+	display: flex;
+	flex-direction: column;
+	gap: .4rem;
+	position: fixed;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	z-index: 5;
+	width: min(18rem, 85vw);
+	padding: .5rem;
+	background: var(--surface);
+	color: var(--ink);
+	border-right: 1px solid var(--line);
+	box-shadow: 0 0 24px rgba(0, 0, 0, .18);
+}
+body.apple-platform.doc-window-toc-open .doc-window-toc {
+	left: auto;
+	right: 0;
+	border-right: 0;
+	border-left: 1px solid var(--line);
+}
+/* wide enough: the document steps aside instead of being covered */
+@media (min-width: 1000px) {
+	body.doc-window-toc-open .editor-grid {
+		padding-left: min(18rem, 85vw);
+	}
+	body.apple-platform.doc-window-toc-open .editor-grid {
+		padding-left: 0;
+		padding-right: min(18rem, 85vw);
+	}
+}
+.doc-window-toc .file-tree-head {
+	cursor: default;
+}
+.doc-window-toc .toc-body {
+	display: block;
+}
+
+/* search in the document (search.js): a bar over the focused editor's top right corner, the matches highlighted */
+.find-bar {
+	position: fixed;
+	z-index: 6;
+	display: flex;
+	align-items: center;
+	gap: .25rem;
+	padding: .3rem;
+	background: var(--surface);
+	color: var(--ink);
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	box-shadow: 0 4px 16px rgba(0, 0, 0, .15);
+	max-width: calc(100vw - 32px);
+}
+.find-bar[hidden] {
+	display: none;
+}
+#find-input {
+	width: 14rem;
+	min-width: 6rem;
+	flex: 1 1 auto;
+}
+.find-bar.no-results #find-input {
+	outline: 1px solid var(--danger);
+}
+.find-count {
+	min-width: 3.5rem;
+	text-align: center;
+	white-space: nowrap;
+}
+#find-case[aria-pressed="true"] {
+	color: var(--accent);
+	box-shadow: inset 0 0 0 1px var(--accent);
+}
+::highlight(find-match) {
+	background-color: rgba(245, 196, 0, .35);
+}
+::highlight(find-current) {
+	background-color: #f5c400;
+	color: #000;
+}
+
+/* code blocks (codeblocks.js): a Copy button in the top right corner, in the editor's card outside the editor */
+.code-copy-layer {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+.code-copy {
+	position: absolute;
+	z-index: 1;
+	pointer-events: auto;
+	font-size: .75rem;
+	opacity: 0;
+	transition: opacity .15s;
+}
+.code-copy[hidden] {
+	display: none;
+}
+.code-copy.shown,
+.code-copy:focus-visible {
+	opacity: .75;
+}
+.code-copy:hover,
+.code-copy.copied {
+	opacity: 1;
+}
+@media (hover: none) {
+	.code-copy {
+		opacity: .5;
+	}
+}
+
 /* comments (comments.js): an icon in the margin right of a commented line, red while any comment is unresolved,
    green when all are; it opens the comments in a popover. Hovering a line without comments shows a faint "+" there */
 .editor-card {
@@ -1600,7 +2029,7 @@ body.focus-mode:not(.apple-platform) .vi-bar {
 	padding: 0;
 	border: 0;
 	background: none;
-	color: var(--tone-fail, #c62828);
+	color: var(--danger);
 	cursor: pointer;
 	pointer-events: auto;
 }
@@ -1637,7 +2066,7 @@ body.focus-mode:not(.apple-platform) .vi-bar {
 	border-radius: calc(var(--radius) / 2);
 }
 .line-comment.resolved {
-	color: var(--tone-ok, #2e7d32);
+	color: var(--success-text);
 }
 .line-comment:hover {
 	filter: brightness(1.2);
@@ -1672,7 +2101,7 @@ body.focus-mode:not(.apple-platform) .vi-bar {
 }
 .comments-list > .comment {
 	padding: .4rem .5rem;
-	border-left: 3px solid var(--tone-fail, #c62828);
+	border-left: 3px solid var(--danger);
 	border-radius: calc(var(--radius) / 4);
 	background: var(--surface);
 }
@@ -1680,7 +2109,7 @@ body.focus-mode:not(.apple-platform) .vi-bar {
 	margin-top: .4rem;
 }
 .comments-list > .comment.resolved {
-	border-left-color: var(--tone-ok, #2e7d32);
+	border-left-color: var(--success-text);
 	opacity: .75;
 }
 .comment-meta {
@@ -1699,7 +2128,7 @@ body.focus-mode:not(.apple-platform) .vi-bar {
 	margin-left: auto;
 }
 .comment-badge {
-	color: var(--tone-ok, #2e7d32);
+	color: var(--success-text);
 	font-weight: 600;
 }
 .comment-text {
@@ -1717,4 +2146,281 @@ body.focus-mode:not(.apple-platform) .vi-bar {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+}
+
+/* Settings > Cloud sync (cloudsync.js): the documents as in the tree, each with its sync status */
+.cloud-sync-modal {
+	/* filtering the list doesn't make it narrower (cloudsync.js keeps its height) */
+	width: min(640px, calc(100vw - 32px));
+}
+.cloud-sync-head {
+	justify-content: space-between;
+	align-items: center;
+}
+.cloud-sync-head p {
+	margin: 0;
+}
+.cloud-sync-legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: .25rem 1rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.cloud-sync-filter {
+	display: flex;
+	align-items: center;
+	gap: .35rem;
+	padding: .15rem .45rem;
+	font: inherit;
+	color: inherit;
+	background: none;
+	border: 1px solid transparent;
+	border-radius: 999px;
+	cursor: pointer;
+}
+.cloud-sync-filter:hover {
+	background: var(--surface-2);
+}
+.cloud-sync-filter[aria-pressed="true"] {
+	color: var(--ink);
+	background: var(--surface-2);
+	border-color: var(--line);
+}
+.cloud-sync-filter:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
+.cloud-sync-tree,
+.cloud-sync-tree ul {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.cloud-sync-tree {
+	max-height: 60vh;
+	overflow-y: auto;
+	border: 1px solid var(--line);
+	border-radius: calc(var(--radius) / 2);
+	padding: .25rem;
+}
+.cloud-sync-tree .tree-row {
+	align-items: center;
+	gap: .4rem;
+	cursor: default;
+}
+.cloud-sync-tree .tree-row:hover {
+	background: none;
+}
+.cloud-sync-tree .tree-folder {
+	color: var(--ink);
+	font-weight: 600;
+}
+.cloud-sync-tree .tree-document::before {
+	display: none;
+}
+.cloud-sync-tree .sync-status {
+	margin-left: auto;
+	padding-left: .75rem;
+}
+.sync-dot {
+	flex: none;
+	width: .6rem;
+	height: .6rem;
+	border-radius: 50%;
+	background: var(--muted);
+}
+.sync-dot[data-status="synced"] { background: var(--success-text, #2e9e4f) }
+.sync-dot[data-status="queued"] { background: var(--tone-warn) }
+.sync-dot[data-status="progress"] { background: var(--accent); animation: sync-pulse 1s ease-in-out infinite alternate }
+.sync-dot[data-status="error"] { background: var(--danger, #d03b3b) }
+.sync-dot[data-status="pending"] { background: var(--muted, #898781) }
+.cloud-sync-tree [data-status="error"] .sync-status { color: var(--danger) }
+@keyframes sync-pulse {
+	to { opacity: .35 }
+}
+@media (prefers-reduced-motion: reduce) {
+	.sync-dot[data-status="progress"] { animation: none }
+}
+
+/* scripts (scripting.js): a script's button in the text looks like the Save button, with the border of its wizard */
+.editor .script-activator {
+	display: inline-block;
+	margin: 0 .15rem;
+	padding: .05rem .7rem;
+	border: 2px solid color-mix(in srgb, var(--accent-ink) 55%, var(--accent));
+	border-radius: 6px;
+	background: var(--accent);
+	color: var(--accent-ink);
+	font-size: .9em;
+	line-height: 1.5;
+	white-space: nowrap;
+	cursor: pointer;
+	user-select: none;
+	-webkit-user-select: none;
+}
+.editor .script-activator:hover { filter: brightness(1.08); }
+.editor .script-activator[data-script-border="dashed"] { border-style: dashed; }
+.editor .script-activator[data-script-border="dotted"] { border-style: dotted; }
+.editor .script-activator[data-script-border="double"] { border-width: 4px; border-style: double; }
+.editor .script-activator[data-script-border="none"] { border-color: transparent; }
+/* scripts disabled in the document: the buttons don't run */
+.editor:not(.scripts-enabled) .script-activator { opacity: .5; cursor: not-allowed; filter: grayscale(.5); }
+.script-tool[hidden] { display: none !important; }
+.script-wizard { width: min(640px, calc(100vw - 32px)); }
+.script-wizard .script-code-field { display: flex; flex-direction: column; gap: .3rem; flex: 1; min-height: 0; }
+.script-wizard .script-code {
+	width: 100%;
+	min-height: 14rem;
+	overflow: auto;
+	padding: .5rem .6rem;
+	border: 1px solid var(--line-strong);
+	border-radius: 6px;
+	background: var(--surface);
+	color: var(--ink);
+	outline: none;
+	font-family: "Cousine", ui-monospace, monospace;
+	font-size: .85rem;
+	tab-size: 4;
+	white-space: pre;
+	resize: vertical;
+}
+.script-wizard .script-check { color: var(--danger); white-space: pre-wrap; }
+.script-wizard .script-help-btn { margin-left: auto; }
+.script-help-modal { width: min(480px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+.script-help-modal h3 { margin: .4rem 0 0; font-size: 1rem; }
+.script-help-notes { margin: 0; padding-left: 1.2rem; }
+.script-help-function { display: grid; gap: .2rem; padding: .5rem 0; border-top: 1px solid var(--line); }
+.script-help-function code { font-weight: 700; overflow-wrap: anywhere; }
+.script-help-function p { margin: 0; }
+/* the wizard and the help are windows: moved by the title bar, resized by the corner (scripting.js) */
+.script-window { resize: both; min-width: 280px; min-height: 200px; display: flex; flex-direction: column; overflow: hidden; }
+/* only the content scrolls: the title bar and its x stay in view */
+.script-window .section-head { flex: none; }
+.script-window .modal-content { flex: 1; min-height: 0; overflow: auto; }
+.script-window .section-head { cursor: move; touch-action: none; user-select: none; -webkit-user-select: none; }
+.script-window.moving { user-select: none; -webkit-user-select: none; }
+.script-wizard { display: flex; flex-direction: column; }
+.script-wizard .modal-content { flex: 1; min-height: 0; }
+.script-wizard .script-code { flex: 1; }
+.script-wizard .script-code:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.script-wizard .script-code:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; }
+.script-notification-result { margin-top: .3rem; max-height: 12rem; overflow: auto; font-family: "Cousine", ui-monospace, monospace; font-size: .85em; white-space: pre-wrap; overflow-wrap: anywhere; }
+.script-notification-head { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; opacity: .7; }
+
+/* the document's id (Get Document Id, workspace.js): selectable to copy */
+.notification-container .document-id { user-select: all; -webkit-user-select: all; overflow-wrap: anywhere; }
+.script-notification-time { text-transform: none; letter-spacing: 0; font-weight: 400; }
+
+/* Notebook Cron (cron.js): a row of fields per job, stacked into cards on phones */
+#cron-btn[hidden] { display: none !important; }
+.cron-modal { width: min(1080px, calc(100vw - 32px)); }
+.cron-modal .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.cron-table { display: grid; gap: .3rem; overflow-x: auto; }
+.cron-rows { display: grid; gap: .3rem; }
+.cron-row {
+	display: grid;
+	grid-template-columns: 1.2rem minmax(8rem, 1.4fr) minmax(7rem, 1.2fr) minmax(7rem, 1fr) minmax(7rem, 1fr) minmax(7.5rem, .9fr) 4rem auto;
+	gap: .4rem;
+	align-items: center;
+}
+.cron-row > [role="cell"] { min-width: 0; }
+.cron-row input[type="text"] { width: 100%; min-width: 0; }
+.cron-row .cron-cron { font-family: "Cousine", ui-monospace, monospace; }
+.cron-head { font-size: .78rem; font-weight: 700; color: var(--muted); }
+.cron-executor-cell { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; }
+.cron-actions { display: flex; gap: .25rem; }
+.cron-missed {
+	display: inline-grid;
+	place-items: center;
+	width: 1.2rem;
+	height: 1.2rem;
+	border-radius: 50%;
+	background: var(--danger, #c62828);
+	color: #fff;
+	font-weight: 700;
+	font-size: .8rem;
+}
+.cron-missed[hidden], .cron-set-executor[hidden], .cron-problem[hidden] { display: none; }
+.cron-row-missed .cron-next { color: var(--danger, #c62828); }
+.cron-problem { grid-column: 2 / -1; color: var(--danger, #c62828); }
+.cron-enabled-label { display: inline-flex; align-items: center; gap: .3rem; }
+.cron-mobile-label { display: none; }
+.cron-help p { margin: .3rem 0; }
+.cron-log { margin: 0; padding: 0; list-style: none; max-height: 14rem; overflow: auto; display: grid; gap: .2rem; }
+.cron-log li { display: flex; gap: .5rem; padding: .15rem .4rem; border-left: 3px solid var(--success-text); overflow-wrap: anywhere; }
+.cron-log li.cron-log-error { border-left-color: var(--danger); }
+.cron-log-time { flex: none; font-family: "Cousine", ui-monospace, monospace; }
+@media (max-width: 760px) {
+	.cron-head { display: none; }
+	.cron-row { grid-template-columns: 1.2rem 1fr 1fr; padding: .4rem 0; border-top: 1px solid var(--line); }
+	.cron-row > [role="cell"]:nth-child(n+4) { grid-column: 2 / -1; }
+	.cron-mobile-label { display: inline; }
+}
+
+/* floating headings (floatingheadings.js): stuck at the top of the editor while the document scrolls under them;
+   the document's name above them in focus mode */
+.floating-headings {
+	position: sticky;
+	top: 0;
+	/* under focus mode's x and the document window's menu */
+	z-index: 3;
+	flex: none;
+	height: 0;
+}
+.floating-headings[hidden] {
+	display: none;
+}
+.pane-scroll {
+	scroll-padding-top: var(--floating-height, 0px);
+}
+.floating-headings-inner {
+	max-height: 40vh;
+	overflow: hidden;
+	padding: .3rem 16px;
+	background: color-mix(in srgb, var(--page) 94%, transparent);
+	backdrop-filter: blur(4px);
+	-webkit-backdrop-filter: blur(4px);
+	border-bottom: 1px solid var(--line);
+	box-shadow: 0 4px 10px -8px rgba(0, 0, 0, .35);
+}
+/* clear of focus mode's x (and the document window's menu) */
+body.focus-mode .floating-headings-inner {
+	padding-inline: 5.5rem;
+}
+.floating-headings-inner > * {
+	display: block;
+	max-width: 960px;
+	margin: 0 auto;
+}
+.floating-title {
+	font-weight: 700;
+	font-size: 1.05rem;
+	color: var(--ink);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.floating-heading {
+	width: 100%;
+	padding: .05rem 0 .05rem calc(var(--depth, 0) * 1rem);
+	overflow: hidden;
+	font: inherit;
+	font-weight: 700;
+	line-height: 1.35;
+	color: var(--ink-2, var(--ink));
+	text-align: left;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	background: none;
+	border: 0;
+	cursor: pointer;
+}
+.floating-heading[data-level="1"] { font-size: 1.1em; color: var(--ink); }
+.floating-heading[data-level="2"] { font-size: 1.02em; }
+.floating-heading[data-level="3"] { font-size: .95em; }
+.floating-heading[data-level="4"] { font-size: .9em; }
+.floating-heading:hover {
+	color: var(--accent);
 }

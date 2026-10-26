@@ -4,17 +4,14 @@ setUserLoggedIn(true);
  */
 
 
-let remoteAutoSaveTimeout;
-let notebook = null;
 let remoteAutoSaveEnabled = true;
-const remoteAutoSaveValue = 5000;
-const remoteForceAutoSaveValue = 60000;
+const remoteAutoSaveValue = 5000; // auto-sync this long after the last save (cloudsync.js)
+const remoteForceAutoSaveValue = 60000; // but not sooner than this after the last sync
 const refreshTokensTimeout = 360000
-setTimeout( () => { syncNotebook() }, 1)
 
 // Events
 document.getElementById("save-btn").addEventListener("click", sendNotebook);
-document.getElementById("load-notebook-btn").addEventListener("click", loadNotebookFromEvent);
+document.getElementById("load-notebook-btn").addEventListener("click", sendNotebook);
 
 //window.addEventListener("load", loadNotebook)
 //window.addEventListener("load", refreshTokens)
@@ -25,7 +22,7 @@ window.addEventListener("load", (e) => {
 window.addEventListener("online", async () => {
 	createNotification("Back online, syncing notebook", "info", notificationTimeoutShort);
 	await refreshTokens();
-	await syncNotebook(false);
+	await syncCloud();
 })
 window.addEventListener("offline", () => {
 	createNotification("You are offline, documents are saved in this browser and will sync when you are back online", "warning", notificationTimeoutLong);
@@ -75,6 +72,7 @@ async function createAccountModal(){
 			</div>
 		</div>
 	</div>
+	${notebookDataHtml()}
 	<h3>Logout</h3>
 	<div class="row">
 		<form method="GET" action="/api/auth/user/logout/">
@@ -187,91 +185,9 @@ async function createAccountModal(){
 }
 
 async function sendNotebook(){
-	// first fetch notebook and open Merge Editor if version of remote is same or higher
-	await loadNotebook(true, false);
-	// then send to the remote
-	return await sendNotebookForce()
-
+	// Save button and Load Remote notebook: a manual sync (cloudsync.js), pull and push
+	return await syncCloud({ manual: true });
 }
-async function syncNotebook(onStart=true){
-	"pull the remote notebook, then push the changes made offline (if any)"
-	if ( !navigator.onLine ) { return }
-	// mid-session keep the document being edited, like the Save button does
-	await ( onStart ? loadNotebook() : loadNotebook(true, false) );
-	if ( localStorage.getItem(syncPendingKey) ) { await sendNotebookForce() }
-}
-
-function markSyncPending(){
-	if ( !localStorage.getItem(syncPendingKey) ) {
-		createNotification("Offline - saved in this browser, will sync to the cloud when you are back online", "info", notificationTimeoutLong);
-	}
-	localStorage.setItem(syncPendingKey, "1");
-}
-
-async function sendNotebookForce(){
-	if ( !navigator.onLine ) { markSyncPending(); return }
-	try {
-		const data = getAllLocalStorageItems();
-		const payload = compressObject(JSON.stringify(data));
-		const resp = await fetch("/api/notebooks/notebook", {
-			method: "POST",
-			headers: {"Content-Type": "application/json"},
-			body: JSON.stringify({"json_content": payload}),
-			credentials: "include"
-		})
-		if ( resp.status != 201 ){
-			throw new Error(resp);
-		}
-		localStorage.removeItem(syncPendingKey);
-		rememberSynced(data, true);
-		createNotification("Notebook pushed to remote", "info", notificationTimeoutShort)
-
-	} catch(err) {
-		// fetch rejects with TypeError when the network is gone
-		if ( err instanceof TypeError ) { markSyncPending() }
-		if ( !navigator.onLine ) { return }
-		informError("Sync error! Cannot send notebook to the cloud!", err);
-	}
-}
-
-async function fetchNotebook(){
-	try {
-		let resp;
-			resp = await fetch("/api/notebooks/notebook", {
-				method: "GET",
-				credentials: "include"
-			})
-		if ( resp.status === 404 ){
-		createNewNotebookModal();
-		return 
-		}
-		if ( resp.status === 401 ) {
-			window.location = "?logout=3";
-			return null;
-		} else if ( resp.status != 200 ){
-			throw new Error(resp);
-		}
-		const respText = await resp.json()
-		const json_content = respText.json_content
-		//notebook = json_content
-		return json_content
-
-	} catch(err) {
-		informError("cannot fetch notebook", err);
-	}
-}
-
-async function loadNotebookFromEvent(e){
-	await loadNotebook();
-}
-async function loadNotebook(excludeCurrentDocument=false, loadLastDocument=true){
-	const encodedNotebook = await fetchNotebook();
-	if ( encodedNotebook ){
-		loadNotebookFromJson(encodedNotebook, excludeCurrentDocument, loadLastDocument, true);
-		return
-	}
-}
-
 
 function createChangePasswordModal(){
 	// assign enter events
@@ -314,7 +230,15 @@ async function startRefreshTokenProcess(){
 	}
 }
 
-async function refreshTokens(){
+let tokenRefresh = null; // the running refresh: it invalidates the old access token, so requests sent meanwhile get 401 (cloudsync.js retries them)
+let tokenRefreshes = 0;
+
+function refreshTokens(){
+	if ( !tokenRefresh ) { tokenRefreshes++ }
+	return tokenRefresh ??= requestNewTokens().finally(() => { tokenRefresh = null });
+}
+
+async function requestNewTokens(){
 	console.log('QWE refresh tokens start');
 	try {
 		const resp = await fetch("/api/auth/token/refresh", {
@@ -395,21 +319,9 @@ async function changePassword(){
 }
 
 
-function handleRemoteAutosave(){
-	if ( !remoteAutoSaveEnabled ) { return }
-	clearTimeout(remoteAutoSaveTimeout);
-	remoteAutoSaveTimeout = setTimeout(perofrmRemoteAutosave, remoteAutoSaveValue);
-}
-
-function perofrmRemoteAutosave(){
-	if ( !remoteAutoSaveEnabled ) { return }
-	sendNotebookForce(); // TODO user sendNotebook, but doens't fetch existing document
-}
-
 function firstLoginOnDevice(){
 	// fresh user scenario
 	closeAllModals();
-	loadNotebook();
 	if ( !countDocuments ) { return }
 	startRefreshTokenTimer({"access_token_expires": 63});
 	createNotification("Welcome back!", "info")

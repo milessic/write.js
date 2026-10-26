@@ -8,6 +8,10 @@
  * List folding: an item of any list (bulleted, numbered, checklist) with a list nested in it gets an arrow left of its
  * bullet or checkbox, which collapses the nested items. A collapsed item has data-collapsed="true" too; its nested items
  * are hidden by styles.css while body has .list-folding. Settings > Lists turns it off (listFoldingKey, script.js).
+ *
+ * Settings > Save folding state > Document (saveDocumentFoldsKey, script.js): turned off, collapsing and expanding doesn't
+ * change the document (no unsaved changes, no autosave) and the document is saved without its folds; folds it was saved
+ * with before still show when it opens. The Contents setting there is the table of contents' (toc.js).
  */
 const foldableHeadings = "h1, h2, h3, h4";
 
@@ -33,6 +37,54 @@ function applyFoldingSettings(){
 	document.body.classList.toggle("heading-folding", headingFoldingEnabled());
 	document.body.classList.toggle("list-folding", listFoldingEnabled());
 	document.querySelectorAll("#editor-grid .editor").forEach(applyHeadingFolds);
+}
+
+function documentFoldsSaved(){
+	// on until turned off
+	return !validateUserConsent(false) || localStorage.getItem(saveDocumentFoldsKey) !== "0";
+}
+
+function foldsChanged(editor){
+	// the folds are part of the document when they are saved with it: it changed like after an edit (unsaved tab, autosave)
+	if ( !documentFoldsSaved() ) { return }
+	editor.dispatchEvent(new Event("input", { bubbles: true }));
+	if ( editor.id === "editor" ) { performAutoSave() }
+}
+
+function withoutFolds(html){
+	// a document as it is saved when its folds aren't
+	const template = document.createElement("template");
+	template.innerHTML = html;
+	template.content.querySelectorAll("[data-collapsed]").forEach((el) => el.removeAttribute("data-collapsed"));
+	template.content.querySelectorAll(".fold-hidden").forEach((el) => {
+		el.classList.remove("fold-hidden");
+		if ( !el.classList.length ) { el.removeAttribute("class") }
+	});
+	return template.innerHTML;
+}
+
+function foldStateSettingsHtml(){
+	// the Save folding state section of Settings (createSettingsModal, script.js)
+	return `
+		<label class="check"><input id="setting-save-contents-folds" type="checkbox"${contentsFoldsSaved() ? " checked" : ""}>Contents</label>
+		<p class="muted small">What is collapsed in the table of contents is remembered for each document, on this device.</p>
+		<label class="check"><input id="setting-save-document-folds" type="checkbox"${documentFoldsSaved() ? " checked" : ""}>Document</label>
+		<p class="muted small">Collapsed headings and list items are saved with the document; turned off, collapsing doesn't change the document and it is saved with everything expanded.</p>`;
+}
+
+function initFoldStateSettings(){
+	document.getElementById("setting-save-contents-folds").addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
+		localStorage.setItem(saveContentsFoldsKey, e.target.checked ? "1" : "0");
+		// turned off, what was remembered is forgotten (toc.js); this visit's folds stay
+		if ( !e.target.checked ) { localStorage.removeItem(tocFoldsKey) }
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
+	document.getElementById("setting-save-document-folds").addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
+		localStorage.setItem(saveDocumentFoldsKey, e.target.checked ? "1" : "0");
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
 }
 
 function applyHeadingFolds(editor){
@@ -93,9 +145,7 @@ function toggleHeadingFold(heading){
 		selection.removeAllRanges();
 		selection.addRange(caret);
 	}
-	// the folds are part of the document: it changed like after an edit (unsaved tab, autosave)
-	editor.dispatchEvent(new Event("input", { bubbles: true }));
-	if ( editor.id === "editor" ) { performAutoSave() }
+	foldsChanged(editor);
 }
 
 function unfoldAround(el){
@@ -280,9 +330,36 @@ function toggleListFold(li){
 		selection.removeAllRanges();
 		selection.addRange(caret);
 	}
-	// the folds are part of the document: it changed like after an edit (unsaved tab, autosave)
-	editor.dispatchEvent(new Event("input", { bubbles: true }));
-	if ( editor.id === "editor" ) { performAutoSave() }
+	foldsChanged(editor);
+}
+
+function unfoldChecklists(root){
+	// every checklist item of the document (an editor, or a stored one being changed) expanded; the number changed
+	const items = [...root.querySelectorAll(`${taskItemSelector}[data-collapsed]`)];
+	items.forEach((li) => li.removeAttribute("data-collapsed"));
+	return items.length;
+}
+
+function foldCompletedChecklists(root){
+	// every checked item with nested items collapsed; the number changed
+	const items = [...root.querySelectorAll('li[data-checked="true"]')].filter((li) => !isCollapsedItem(li) && foldedLists(li).length);
+	items.forEach((li) => { li.dataset.collapsed = "true" });
+	if ( root.classList?.contains("editor") ) { caretOutOfFolds(root) }
+	return items.length;
+}
+
+function caretOutOfFolds(editor){
+	// a caret left in an item that got collapsed goes to the end of the outermost such item's own text
+	const selection = window.getSelection();
+	if ( !selection.rangeCount || !editor.contains(selection.anchorNode) ) { return }
+	const li = hidingItems(selection.anchorNode).filter(isCollapsedItem).at(-1);
+	if ( !li ) { return }
+	const caret = document.createRange();
+	const inside = [...li.children].find(isListElement);
+	inside ? caret.setStartBefore(inside) : caret.setStart(li, li.childNodes.length);
+	caret.collapse(true);
+	selection.removeAllRanges();
+	selection.addRange(caret);
 }
 
 function normalizeListFolds(editor){
@@ -343,13 +420,53 @@ function handleListFoldMouseDown(e){
 	toggleListFold(li);
 }
 
+function openItemAfterFold(editor, li){
+	// a new item after a collapsed one and all its hidden items, at its level, the caret in it; it stays collapsed.
+	// Made with execCommand where the browser puts it there, so undo takes it back
+	const unit = listItemUnit(li); // script.js
+	const list = li.parentElement;
+	if ( !isFoldableItem(li) || !isListElement(list) ) { return false }
+	// the browser doesn't edit hidden items as shown ones: it is open while the item is made
+	li.removeAttribute("data-collapsed");
+	const selection = window.getSelection();
+	const state = li.hasAttribute("data-checked") ? ' data-checked="false"' : "";
+	const items = new Set(editor.querySelectorAll("li"));
+	selection.collapse(list, [...list.childNodes].indexOf(unit.at(-1)) + 1);
+	document.execCommand("insertHTML", false, `<li${state}><br></li>`);
+	const made = [...editor.querySelectorAll("li")].filter((el) => !items.has(el));
+	let item = made.length === 1 && made[0].parentElement === list ? made[0] : null;
+	if ( !item ) {
+		// at the end of its list the browser puts it into the last nested list: by hand (as openLineByTable, vi.js)
+		if ( made.length ) { document.execCommand("undo") }
+		item = document.createElement("li");
+		item.appendChild(document.createElement("br"));
+		unit.at(-1).after(item);
+	}
+	// Safari leaves the caret in the item after it
+	selection.collapse(item, 0);
+	item.removeAttribute("data-collapsed");
+	// a new item of a checklist is an unchecked one (checklist.js)
+	state ? item.dataset.checked = "false" : item.removeAttribute("data-checked");
+	li.dataset.collapsed = "true";
+	editor.dispatchEvent(new Event("input", { bubbles: true }));
+	return true;
+}
+
 function handleListFoldEnter(e){
-	// a new item made in a collapsed one would land among its hidden items: Enter opens it up first
+	// Enter at the end of a collapsed item makes the next item after its hidden ones; elsewhere in it, a new item
+	// would land among its hidden items: it opens up first
 	if ( e.key !== "Enter" || e.shiftKey || e.isComposing || e.defaultPrevented ) { return }
 	if ( !document.body.classList.contains("list-folding") ) { return }
 	const editor = e.target.closest?.(".editor");
 	const caret = editor && caretItem(editor);
-	if ( caret && isCollapsedItem(caret.li) ) { caret.li.removeAttribute("data-collapsed") }
+	if ( !caret || !isCollapsedItem(caret.li) ) { return }
+	if ( caret.atEnd && !caret.atStart ) {
+		e.preventDefault();
+		e.stopImmediatePropagation();
+		openItemAfterFold(editor, caret.li);
+		return
+	}
+	caret.li.removeAttribute("data-collapsed");
 }
 
 function handleListFoldDelete(e){

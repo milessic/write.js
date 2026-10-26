@@ -19,19 +19,27 @@
 	<link rel="stylesheet" data-milessic-theme crossorigin="anonymous" href="{{ theme_stylesheet or 'static/themes/writejs.css' }}"
 		onerror="this.onerror=null;document.documentElement.dataset.theme='{{ default_theme or 'writejs' }}';this.href='{{ theme_backup_stylesheet or 'static/themes/writejs.css' }}'">
 	{% if themes_available %}
-	<script src="{{ themes_url }}/js/themes.js?v={{ themes_version }}" data-persist="false" data-restore="false"></script>
+	<!-- so=1: the picker lists recently used themes first (localStorage, see the privacy notice) -->
+	<script src="{{ themes_url }}/js/themes.js?v={{ themes_version }}&so=1" data-restore="false"></script>
 	{% endif %}
     <link rel="stylesheet" href="{{ static_url('styles.css') }}">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
 </head>
-<body class="app"{% if username %} data-user="{{ username }}"{% endif %}>
+<body class="app"{% if username %} data-user="{{ username }}"{% endif %}{% if themes_url %} data-themes-url="{{ themes_url }}/"{% endif %}>
 	<!-- milessic-themes page skeleton: .topbar + .container + .card; the theme decides how it looks -->
 	<header class="topbar">
-		<input type="text" id="doc-name" placeholder="Document Name" aria-label="Document name">
+		<!-- the name of the focused document; its v opens the document search tray, its right click the document's menu (workspace.js) -->
+		<div class="doc-name-field" id="doc-name-field">
+			<input type="text" id="doc-name" placeholder="Document Name" aria-label="Document name">
+			<button class="doc-search-btn" id="doc-search-btn" title="Search documents" aria-label="Search documents" aria-haspopup="dialog" aria-expanded="false" aria-controls="doc-search-tray"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+			<div class="menu doc-search-tray" id="doc-search-tray" role="dialog" aria-label="Search documents">
+				<input type="search" id="doc-search-input" placeholder="Search documents" aria-label="Search documents" autocomplete="off" spellcheck="false">
+				<ul class="tree" id="doc-search-list" role="tree" aria-label="Documents"></ul>
+			</div>
+		</div>
 		<button class="btn primary" id="save-btn">Save</button>
-		<button class="btn" id="open-btn" title="Show or hide the documents">Documents</button>
 		<div class="topbar-end">
 			<span id="word-counter-container" class="muted small"></span>
 			<div class="hamburger-menu" id="hamburger-menu">
@@ -41,41 +49,28 @@
 					<button role="menuitem" id="open-doc-btn">File Explorer</button>
 					<button role="menuitem" id="toc-btn">Table Of Contents</button>
 					<button role="menuitem" id="import-doc-btn">Import Document</button>
+					<!-- the document's own options (search, insert, export...) are in its right-click menu: a tab, an editor's
+					     head or the name above (documentMenuItems, workspace.js) -->
 					<hr>
 					{% if is_authenticated %}
 					<button role="menuitem" id="account-btn">Account</button>
 					<button role="menuitem" id="load-notebook-btn">Load Remote notebook</button>
 					{% else %}
-					<button role="menuitem" id="login-btn">Login / Register</button>
+					<!-- logging in, and the notebook's data (export, import, clear) -->
+					<button role="menuitem" id="account-btn">Account / Login</button>
 					{% endif %}
 					<hr>
-					<button role="menuitem" id="insert-or-append-html">Insert or Append HTML</button>
-					<button role="menuitem" id="insert-or-append-markdown">Insert or Append Markdown</button>
-					<hr>
-					<button role="menuitem" id="generate-md">Export as Markdown</button>
-					<button role="menuitem" id="copy-md">Copy as Markdown</button>
-					<button role="menuitem" id="export-btn-menu">Export</button>
-					<button role="menuitem" id="generate-pdf" disabled>Export as PDF</button>
-					<hr>
-					<button role="menuitem" id="theme-btn">Theme</button>
+					<!-- Settings > Theme -->
 					<button role="menuitem" id="settings-btn">Settings</button>
-					<button role="menuitem" id="spellcheck-btn">Toggle Spell Check (It's off)</button>
+					<!-- Settings > Notebook cron (cron.js) -->
+					<button role="menuitem" id="cron-btn" hidden>Notebook Cron</button>
 					<button role="menuitem" id="focus-mode-btn">Focus Mode</button>
-					<button role="menuitem" id="toggle-format-btn">Toggle Formatting</button>
-					<button role="menuitem" id="toggle-autosave-btn">Toggle Autosave</button>
-					<hr>
-					<button role="menuitem" class="danger" id="clearall-btn" onclick="purgeLocalStorage()">Clear localStorage</button>
-					<button role="menuitem" id="backup-btn" onclick="saveBackup()">Export Notebook</button>
-					<button role="menuitem" id="restore-btn" onclick="loadBackup()">Import Notebook</button>
 					<hr>
 					<button role="menuitem" id="offline-btn">Install / Use offline</button>
 					<a role="menuitem" id="privacy-link" href="/privacy" target="_blank">Privacy Policy</a>
 					<a role="menuitem" id="terms-link" href="/terms" target="_blank">Terms of Service</a>
 					<button role="menuitem" id="consent-btn" onclick="userConsentModal(true)">Storage consent</button>
 					<a role="menuitem" id="contact" href="mailto:writejs.help@gmail.com?subject=Write.js Bug or Feedback&body=Please describe the problem">Report a bug/feedback!</a>
-					{% if themes_url %}
-					<a role="menuitem" id="themes-attribution" href="{{ themes_url }}/" target="_blank" rel="noopener">Themes from milessic-themes</a>
-					{% endif %}
 				</div>
 			</div>
 		</div>
@@ -88,8 +83,9 @@
 	<aside class="file-tree" id="file-tree" aria-label="Documents">
 		<div class="file-tree-head" id="file-tree-head" draggable="true" title="Drag to another side, or right-click for options">
 			<!-- the table of contents can be a tab here, next to the documents (toc.js) -->
-			<div class="side-tabs" role="tablist" aria-label="Side panel">
-				<button class="side-tab file-tree-title" id="documents-tab" role="tab" data-tree-tab="documents" aria-selected="true">Documents</button>
+			<!-- held between the tabs, it moves the documents and the contents together; a tab moves only itself (workspace.js) -->
+			<div class="side-tabs" id="side-tabs" role="tablist" aria-label="Side panel" draggable="true">
+				<button class="side-tab file-tree-title" id="documents-tab" role="tab" data-tree-tab="documents" aria-selected="true" draggable="true">Documents</button>
 				<button class="side-tab file-tree-title toc-tab" id="toc-tab" role="tab" data-tree-tab="toc" aria-selected="false" draggable="true" title="Drag to show it on its own, or right-click for options">Contents</button>
 			</div>
 			<button class="small-btn" id="file-tree-new" title="New document" aria-label="New document">+</button>
@@ -104,6 +100,8 @@
 		<nav class="toc-body" aria-label="Table of contents"><ol class="toc-list"></ol></nav>
 		<div class="file-tree-resizer" id="file-tree-resizer" role="separator" aria-orientation="vertical" aria-label="Resize documents" title="Drag to resize, double-click to reset"></div>
 	</aside>
+	<!-- splitting the documents' place: the edge between the documents and the contents, dragged to share it (toc.js) -->
+	<div class="split-resizer" id="split-resizer" role="separator" aria-label="Resize the documents and the contents" title="Drag to resize, double-click to share evenly"></div>
 	<!-- the table of contents on its own, left, right, above or below the editors, or split with the documents (toc.js) -->
 	<aside class="toc-panel" id="toc-panel" aria-label="Table of contents">
 		<div class="file-tree-head toc-head" id="toc-head" draggable="true" title="Drag to another side or onto the documents, or right-click for options">
@@ -147,25 +145,40 @@
 				<span class="toolbar-sep desktop-btn" aria-hidden="true"></span>
 				<button id="tb-btn-hr" class="small-btn desktop-btn" title="Horizontal rule" aria-label="Horizontal rule">---</button>
 				<button id="tb-btn-code" class="small-btn desktop-btn" title="Code block" aria-label="Code block">code</button>
+				<button id="tb-btn-table" class="small-btn desktop-btn" title="Table (with the caret in one: its options)" aria-label="Table">Table</button>
 				<span class="toolbar-sep" aria-hidden="true"></span>
 				<button id="tb-btn-bold" class="small-btn" title="Bold" aria-label="Bold"><b>B</b></button>
 				<button id="tb-btn-italic" class="small-btn" title="Italic" aria-label="Italic"><i>I</i></button>
 				<button id="tb-btn-underline" class="small-btn" title="Underline" aria-label="Underline"><u>U</u></button>
 				<span class="toolbar-sep desktop-btn" aria-hidden="true"></span>
 				<button id="tb-btn-link" class="small-btn desktop-btn" title="Insert link" aria-label="Insert link">Insert Link</button>
+				<!-- in a document with scripts enabled (scripting.js) -->
+				<span class="toolbar-sep desktop-btn script-tool" aria-hidden="true" hidden></span>
+				<button id="tb-btn-script" class="small-btn desktop-btn script-tool" title="Add a button that runs a script" aria-label="Script" hidden>Script</button>
 				<span class="toolbar-sep mobile-btn" aria-hidden="true"></span>
 				<div class="block-select mobile-btn" id="tb-more-select">
 					<button class="small-btn block-select-btn" title="More" aria-label="More" aria-haspopup="menu" aria-expanded="false"><span>More</span><span class="block-select-caret" aria-hidden="true">▾</span></button>
 					<div class="menu block-select-menu" role="menu" aria-label="More">
 						<button role="menuitem" data-block="hr">Horizontal rule (---)</button>
 						<button role="menuitem" data-block="code">Code block</button>
+						<button role="menuitem" data-block="table">Table</button>
 						<button role="menuitem" data-block="a">Insert Link</button>
+						<button role="menuitem" data-block="script" class="script-tool" hidden>Script</button>
 						<hr>
 						<button role="menuitem" data-block="softreturn">Soft Return</button>
 						<button role="menuitem" data-block="inserttab" title="In a list: move the item right">Insert Tab</button>
 					</div>
 				</div>
 			</div>
+		</div>
+		<!-- search in the focused document: the menu or Ctrl+F / Cmd+F (search.js) -->
+		<div class="find-bar" id="find-bar" role="search" aria-label="Search in document" hidden>
+			<input type="search" id="find-input" placeholder="Search in document" aria-label="Search in document" autocomplete="off" spellcheck="false">
+			<span class="find-count muted small" id="find-count" aria-live="polite"></span>
+			<button class="small-btn" id="find-case" title="Match case" aria-label="Match case" aria-pressed="false">Aa</button>
+			<button class="small-btn" id="find-prev" title="Previous match (Shift+Enter)" aria-label="Previous match">↑</button>
+			<button class="small-btn" id="find-next" title="Next match (Enter)" aria-label="Next match">↓</button>
+			<button class="small-btn" id="find-close" title="Close (Esc)" aria-label="Close search">✕</button>
 		</div>
 		<!-- split view: up to 4 editors (workspace.js); the focused one's editor has id="editor" -->
 		<main class="editor-grid" id="editor-grid" data-count="1">
@@ -176,9 +189,13 @@
 					<button class="pane-close" title="Close editor" aria-label="Close editor"></button>
 				</div>
 				<div class="pane-scroll">
+					<!-- the headings of the section being read, and the name in focus mode (floatingheadings.js) -->
+					<div class="floating-headings" hidden></div>
 					<div class="container">
 						<div class="editor-column">
 							<section class="card editor-card">
+								<!-- the document's name as its title, line 0, with "showTitle" in its metadata (workspace.js) -->
+								<h1 role="title" class="doc-title" spellcheck="false" aria-label="Document title" hidden></h1>
 								<div contenteditable="true" id="editor" class="editor"></div>
 							</section>
 						</div>
@@ -189,23 +206,33 @@
 	</div>
 	</div>
 	</div>
-	<div class="dock-zones" id="dock-zones" aria-hidden="true">
-		<div class="dock-zone" data-side="top" data-for="tree"><span>Dock documents at the top</span></div>
-		<div class="dock-zone" data-side="left" data-for="tree"><span>Dock documents left</span></div>
-		<div class="dock-zone" data-side="right" data-for="tree"><span>Dock documents right</span></div>
-		<div class="dock-zone" data-side="bottom" data-for="tree"><span>Dock documents at the bottom</span></div>
-		<div class="dock-zone" data-side="top" data-for="toc"><span>Dock contents at the top</span></div>
-		<div class="dock-zone" data-side="tree" data-for="toc"><span>Show contents as a tab next to the documents</span></div>
-		<div class="dock-zone" data-side="split" data-for="toc"><span>Split the documents' place with contents</span></div>
-		<div class="dock-zone" data-side="left" data-for="toc"><span>Dock contents left</span></div>
-		<div class="dock-zone" data-side="right" data-for="toc"><span>Dock contents right</span></div>
-		<div class="dock-zone" data-side="bottom" data-for="toc"><span>Dock contents at the bottom</span></div>
-		<div class="dock-zone" data-side="top" data-for="tabs"><span>Dock opened documents at the top</span></div>
-		<div class="dock-zone" data-side="bottom" data-for="tabs"><span>Dock opened documents at the bottom</span></div>
-	</div>
+	<!-- while a panel is dragged by its head: where it would be docked (workspace.js) -->
+	<div class="dock-zones" id="dock-zones" aria-hidden="true"><div class="dock-preview" id="dock-preview"><span></span></div></div>
 	<!-- focus mode (script.js): only the text, the word count and a faint x to leave it -->
 	<span class="focus-word-counter muted small" id="focus-word-counter" aria-hidden="true"></span>
 	<button class="focus-exit" id="focus-exit-btn" title="Leave focus mode (Esc)" aria-label="Leave focus mode">✕</button>
+	<!-- the document window (docwindow.js): its menu next to the x, and its table of contents (toc.js) -->
+	<div class="doc-window-menu" id="doc-window-menu">
+		<button class="focus-exit doc-window-menu-btn" id="doc-window-menu-btn" title="Menu" aria-label="Menu" aria-haspopup="menu">☰</button>
+		<div class="menu" id="doc-window-menu-list" role="menu">
+			<button role="menuitem" data-action="toc">Show Table of Contents</button>
+			<button role="menuitem" data-action="find">Search in Document</button>
+			<hr>
+			<button role="menuitem" data-action="insert-html">Insert or Append HTML</button>
+			<button role="menuitem" data-action="insert-markdown">Insert or Append Markdown</button>
+			<hr>
+			<button role="menuitem" data-action="copy-md">Copy as Markdown</button>
+			<button role="menuitem" data-action="export">Export</button>
+			<button role="menuitem" data-action="export-md">Export as Markdown</button>
+		</div>
+	</div>
+	<aside class="doc-window-toc" id="doc-window-toc" aria-label="Table of contents">
+		<div class="file-tree-head">
+			<span class="file-tree-title">Contents</span>
+			<button class="small-btn" id="doc-window-toc-hide" title="Close the table of contents" aria-label="Close the table of contents">✕</button>
+		</div>
+		<nav class="toc-body" aria-label="Table of contents"><ol class="toc-list"></ol></nav>
+	</aside>
 	<div class="menu context-menu" id="context-menu" role="menu"></div>
 	<div id="notifications-container"></div>
 	<!--
@@ -221,9 +248,18 @@
     <script src="{{ static_url('checklist.js') }}"></script>
     <script src="{{ static_url('linenumbers.js') }}"></script>
     <script src="{{ static_url('toc.js') }}"></script>
+    <script src="{{ static_url('floatingheadings.js') }}"></script>
     <script src="{{ static_url('comments.js') }}"></script>
+    <script src="{{ static_url('codeblocks.js') }}"></script>
+    <script src="{{ static_url('tables.js') }}"></script>
+    <script src="{{ static_url('search.js') }}"></script>
+    <script src="{{ static_url('docwindow.js') }}"></script>
+    <script src="{{ static_url('scriptapi.js') }}"></script>
+    <script src="{{ static_url('scripting.js') }}"></script>
+    <script src="{{ static_url('cron.js') }}"></script>
 	{% if is_authenticated %}
     	<script src="{{ static_url('script3.js') }}"></script>
+    	<script src="{{ static_url('cloudsync.js') }}"></script>
 	{% else %}
     	<script src="{{ static_url('script2.js') }}"></script>
 	{% endif %}

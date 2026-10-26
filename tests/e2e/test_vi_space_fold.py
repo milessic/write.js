@@ -64,3 +64,30 @@ def test_space_moves_elsewhere(page, line):
 	load(page, '<div>plain</div>' if line == "plain" else '<ul><li>item</li></ul>')
 	keys(page, "g", "g", " ")
 	assert offset(page) == 1
+
+
+ITEMS = """[...document.querySelectorAll("#editor li")].map((li) => {
+	let depth = 0;
+	for ( let el = li.parentElement; el.id !== "editor"; el = el.parentElement ) { if ( el.matches("ul, ol") ) { depth++ } }
+	return "  ".repeat(depth - 1) + (li.firstChild?.textContent ?? "") + (li.dataset.collapsed ? " (folded)" : "");
+})"""
+
+
+def test_l_and_space_on_a_line_end_never_leave_the_line(page):
+	# l and k stopped after the line's last character (next to the hidden items of a collapsed one); folding from there
+	# must change nothing but the fold
+	load(page, '<ul><li data-checked="false">1</li><ul><li data-checked="false">11</li><li data-checked="false">12</li></ul>'
+		'<li data-checked="false">2</li><ul><li data-checked="false">21</li><li data-checked="false">22</li></ul></ul>')
+	keys(page, "G", "k", "k", " ", "g", "g", " ")
+	keys(page, "o", "3", "Enter", "Tab", "3", "1", "Enter", "3", "2", "Escape", "k", "k")
+	assert offset(page) == 0
+	keys(page, "$", "l")
+	assert offset(page) == 0
+	before = ["1 (folded)", "  11", "  12", "3", "  31", "  32", "2 (folded)", "  21", "  22"]
+	assert page.evaluate(ITEMS) == before
+	keys(page, " ")
+	assert page.evaluate(ITEMS) == [*before[:3], "3 (folded)", *before[4:]]
+	keys(page, " ")
+	assert page.evaluate(ITEMS) == before
+	keys(page, "l")
+	assert offset(page) == 0

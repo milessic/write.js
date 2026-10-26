@@ -34,12 +34,14 @@ so you can open it on other devices. Your documents are not read, analysed, sold
 		<tr><td><code>access_token</code></td><td>Cookie, strictly necessary</td><td>Keeps you logged in</td><td>Until the session expires or you log out</td></tr>
 		<tr><td><code>refresh_token</code></td><td>Cookie, strictly necessary</td><td>Renews your login session</td><td>Until it expires or you log out</td></tr>
 		<tr><td><code>theme</code></td><td>Cookie, preference</td><td>Remembers the theme you picked</td><td>1 year</td></tr>
+		<tr><td><code>milessic-theme</code>, <code>milessic-theme-recent</code></td><td>localStorage, preference</td><td>Remember the theme you picked and the order of recently used themes (theme names only), so your favourites are listed first in the theme picker</td><td>Until you clear them or pick <em>Forget recently used</em> in the theme picker</td></tr>
 		<tr><td><code>__doc__*</code>, <code>__userConsent__</code>, <code>__autosave__</code>, <code>__lastOpened__</code>, layout and folder keys</td><td>localStorage</td><td>Your documents, settings and workspace layout</td><td>Until you clear them</td></tr>
 		<tr><td>Service worker cache</td><td>Cache storage</td><td>Lets the app open offline</td><td>Until replaced by a newer version or cleared</td></tr>
 	</tbody>
 </table>
 <p>The login cookies are set only when you log in, because the account cannot work without them.
 Documents and settings are stored in <code>localStorage</code> only after you agree in the consent dialog.
+The two theme keys are written only when you pick a theme yourself, stay in your browser and are never sent to us or to the themes server.
 We do not use analytics, tracking or advertising cookies.</p>
 
 <h2>4. Third parties</h2>

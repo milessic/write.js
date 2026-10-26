@@ -81,12 +81,33 @@ def test_one_undo(vi_insert):
 	assert vi_insert.evaluate(HTML) == CHECKLIST
 
 
-@pytest.mark.parametrize("text", ["plain text", "- x\nnot an item"])
-def test_other_text_is_pasted_as_before(vi_insert, text):
+def test_one_line_of_text_is_pasted_as_before(vi_insert):
 	load(vi_insert, "<ul><li>ab</li></ul>")
 	caret(vi_insert, "ab")
-	paste(vi_insert, text)
-	assert vi_insert.locator("#editor li").count() == 1
+	paste(vi_insert, "plain text")
+	assert vi_insert.evaluate(HTML) == "<ul><li>abplain text</li></ul>"
+
+
+@pytest.mark.parametrize("text, html", [
+	("smoke\ntest case\ntest\ntest rail \nclose ", None),
+	("smoke\r\ntest case\r\n\r\ntest\ntest rail\nclose\n", None),
+	("smoke\ntest case\ntest\ntest rail\nclose", "<div>smoke</div><div>test case</div><div>test</div><div>test rail</div><div>close</div>"),
+])
+def test_lines_of_text_are_items(vi_insert, text, html):
+	load(vi_insert, CHECKLIST)
+	caret(vi_insert, "ab")
+	paste(vi_insert, text, html)
+	assert vi_insert.evaluate(HTML) == ('<ul><li data-checked="false">ab</li>' + "".join(
+		f'<li data-checked="false">{line}</li>' for line in ["smoke", "test case", "test", "test rail", "close"])
+		+ '<li data-checked="false">c</li></ul>')
+
+
+def test_lines_of_text_and_list_lines(vi_insert):
+	load(vi_insert, "<ul><li>ab</li></ul>")
+	caret(vi_insert, "ab")
+	paste(vi_insert, "- [x] x\nnot an item\n  - y")
+	assert vi_insert.evaluate(HTML) == ('<ul><li>ab</li><li data-checked="true">x</li><li>not an item</li>'
+		'<ul><li>y</li></ul></ul>')
 
 
 def test_outside_a_list_as_before(vi_insert):

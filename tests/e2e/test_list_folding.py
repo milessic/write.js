@@ -137,8 +137,9 @@ def test_collapsing_moves_the_caret_out_of_hidden_items(editor):
 
 
 def test_enter_in_collapsed_item_expands_it(editor):
+	# at its end Enter makes the next item, see below
 	click_arrow(editor, "a")
-	caret(editor, "a")
+	caret(editor, "a", at_end=False)
 	editor.keyboard.press("Enter")
 	assert collapsed(editor) == []
 	assert visible(editor, "a1")
@@ -257,3 +258,59 @@ def test_loaded_document_has_lists_after_their_items(page):
 		+ '<li data-checked="false"><br><ul><li data-checked="false">x</li></ul></li></ul>')""")
 	assert page.evaluate(HTML) == ('<ul><li data-checked="false">p</li><ul><li data-checked="true">c</li></ul>'
 		'<ul><li data-checked="false">x</li></ul></ul>')
+
+
+def items_of(page):
+	# every item: [own text, nesting level, collapsed]
+	return page.evaluate("""() => [...document.querySelectorAll("#editor li")].map((li) => {
+		let depth = 0;
+		for ( let el = li.parentElement; el.id !== "editor"; el = el.parentElement ) { if ( el.matches("ul, ol") ) { depth++ } }
+		return [li.firstChild?.textContent ?? "", depth, li.dataset.collapsed === "true"];
+	})""")
+
+
+def test_enter_at_end_of_collapsed_item_adds_one_after_its_items(editor):
+	click_arrow(editor, "task")
+	caret(editor, "task")
+	editor.keyboard.press("Enter")
+	editor.keyboard.type("new")
+	assert collapsed(editor) == ["task"]
+	assert not visible(editor, "sub")
+	items = items_of(editor)
+	i = items.index(["task", 1, True])
+	assert items[i:i + 3] == [["task", 1, True], ["sub", 2, False], ["new", 1, False]]
+	assert editor.evaluate(f"({FIND})('new').dataset.checked") == "false"
+
+
+def test_enter_at_end_of_collapsed_item_with_deep_items(vi_insert):
+	load(vi_insert, '<ul><li data-checked="false">p</li><ul><li data-checked="true">c</li><ul><li data-checked="false">g</li></ul></ul>'
+		'<li data-checked="false">q</li></ul>')
+	click_arrow(vi_insert, "p")
+	caret(vi_insert, "p")
+	vi_insert.keyboard.press("Enter")
+	vi_insert.keyboard.type("n")
+	assert items_of(vi_insert) == [["p", 1, True], ["c", 2, False], ["g", 3, False], ["n", 1, False], ["q", 1, False]]
+	undo(vi_insert, 2)
+	assert items_of(vi_insert) == [["p", 1, True], ["c", 2, False], ["g", 3, False], ["q", 1, False]]
+
+
+def test_enter_at_end_of_last_collapsed_item(vi_insert):
+	load(vi_insert, '<ul><li data-checked="false">p</li><ul><li data-checked="true">c</li><ul><li data-checked="false">g</li></ul></ul></ul><div>x</div>')
+	click_arrow(vi_insert, "p")
+	caret(vi_insert, "p")
+	vi_insert.keyboard.press("Enter")
+	vi_insert.keyboard.type("n")
+	assert items_of(vi_insert) == [["p", 1, True], ["c", 2, False], ["g", 3, False], ["n", 1, False]]
+	assert vi_insert.evaluate(f"({FIND})('n').dataset.checked") == "false"
+
+
+def test_vi_o_on_collapsed_item_adds_one_after_its_items(vi_insert):
+	load(vi_insert, '<ul><li data-checked="false">p</li><ul><li data-checked="true">c</li></ul><li data-checked="false">q</li></ul>')
+	click_arrow(vi_insert, "p")
+	caret(vi_insert, "p", at_end=False)
+	vi_insert.keyboard.press("Escape")
+	vi_insert.keyboard.type("on")
+	assert items_of(vi_insert) == [["p", 1, True], ["c", 2, False], ["n", 1, False], ["q", 1, False]]
+	assert vi_insert.evaluate(f"({FIND})('n').dataset.checked") == "false"
+	vi_insert.keyboard.press("Escape")
+	vi_insert.keyboard.press("i")

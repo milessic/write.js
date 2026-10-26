@@ -3,12 +3,16 @@
  * The lines are the ones vi mode counts (textModel, vi.js), so :12 goes to the line numbered 12: every block, list item
  * and line inside them (<br>, line breaks of pasted text) is one, a rule (<hr>) too. A wrapped line keeps one number;
  * the lines of a collapsed section (folding.js) keep theirs, hidden with them.
- * The numbers are drawn in the editor's card, outside the editor, so they are never part of the document.
+ * The numbers are drawn in the editor's card, outside the editor, so they are never part of the document. A document's
+ * title (workspace.js) is line 0.
  * Settings > Editor or vi's :lines turns them on and off (lineNumbersKey, script.js); it goes to the cloud with the notebook.
+ * A click on a number selects its line, with its line break, like a click on a line number in VSCode; Shift+click or
+ * a drag over the numbers selects the lines in between. In vi mode that is V-LINE (vi.js).
  */
 const lineBlockTags = new Set(["ADDRESS", "ARTICLE", "ASIDE", "BLOCKQUOTE", "DD", "DIV", "DL", "DT", "FIGURE", "FOOTER", "FORM", "H1", "H2", "H3", "H4", "H5", "H6", "HEADER", "HR", "LI", "MAIN", "NAV", "OL", "P", "PRE", "SECTION", "TABLE", "TBODY", "TD", "TH", "THEAD", "TR", "UL"]);
 const lineNumberViews = new Map(); // editor -> {gutter, lines: [{node, offset, el}]}
 let lineNumbersFrame = 0;
+let lineSelectAnchor = null; // {editor, index}: the line a Shift+click or a drag over the numbers selects from
 
 function lineNumbersEnabled(){
 	// off until turned on
@@ -149,7 +153,8 @@ function renderLineNumbers(editor){
 	const origin = view.gutter.getBoundingClientRect().top;
 	// the card makes room for the numbers (styles.css)
 	view.gutter.parentElement.style.setProperty("--line-number-digits", Math.max(2, String(lines.length).length));
-	const numbers = [...view.gutter.children];
+	renderTitleNumber(view);
+	const numbers = [...view.gutter.children].filter((el) => !el.classList.contains("title-number"));
 	lines.forEach((line, i) => {
 		const el = numbers[i] || view.gutter.appendChild(document.createElement("span"));
 		const rect = lineRect(line);
@@ -164,6 +169,23 @@ function renderLineNumbers(editor){
 	numbers.slice(lines.length).forEach((el) => el.remove());
 	view.lines = lines;
 	markCaretLine(editor);
+}
+
+function renderTitleNumber(view){
+	// the document's title (workspace.js), when shown, is line 0
+	const title = view.gutter.parentElement.querySelector(".doc-title");
+	let zero = view.gutter.querySelector(".title-number");
+	if ( !title || title.hidden ) { zero?.remove(); return }
+	if ( !zero ) {
+		zero = document.createElement("span");
+		zero.className = "title-number";
+		zero.textContent = "0";
+		view.gutter.prepend(zero);
+	}
+	const style = getComputedStyle(title);
+	const height = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.25;
+	zero.style.top = `${title.getBoundingClientRect().top - view.gutter.getBoundingClientRect().top}px`;
+	zero.style.height = zero.style.lineHeight = `${height}px`;
 }
 
 function markCaretLine(editor){
@@ -202,11 +224,69 @@ function scheduleLineNumbers(){
 	});
 }
 
+// selecting lines from the numbers
+function linePoint(line){
+	// where the line starts, as a point a range can start at (a <br> or a rule is a node of its own, not a container)
+	const {node, offset} = line;
+	if ( node.nodeName === "BR" || node.nodeName === "HR" ) { return {node: node.parentNode, offset: [...node.parentNode.childNodes].indexOf(node)} }
+	return {node, offset};
+}
+
+function lineAtNumber(view, y){
+	// the line whose number is at y, or the nearest one above
+	let index = 0;
+	view.lines.forEach((line, i) => { if ( !line.el.hidden && line.el.getBoundingClientRect().top <= y ) { index = i } });
+	return index;
+}
+
+function selectLines(editor, from, to){
+	// from the start of the first line to the start of the one after the last (the editor's end after the last line)
+	const view = lineNumberViews.get(editor);
+	const lines = view.lines;
+	const start = (i) => linePoint(lines[i]);
+	const after = (i) => i + 1 < lines.length ? start(i + 1) : {node: editor, offset: editor.childNodes.length};
+	editor.focus({preventScroll: true});
+	if ( window.WriteVi?.selectLines(editor, start(from), start(to)) ) { return }
+	const [anchor, head] = to >= from ? [start(from), after(to)] : [after(from), start(to)];
+	window.getSelection().setBaseAndExtent(anchor.node, anchor.offset, head.node, head.offset);
+}
+
+function handleLineNumberDown(e){
+	const number = e.target.closest?.(".line-numbers > span");
+	if ( !number || e.button !== 0 ) { return }
+	const editor = [...lineNumberViews.keys()].find((ed) => lineNumberViews.get(ed).gutter === number.parentElement);
+	const view = editor && lineNumberViews.get(editor);
+	const index = view?.lines.findIndex((line) => line.el === number);
+	if ( index === undefined || index === -1 ) { return }
+	// no text selection by the browser, and the focus goes to the editor
+	e.preventDefault();
+	if ( !e.shiftKey || lineSelectAnchor?.editor !== editor ) {
+		// Shift+click without a line clicked before: from the caret's line
+		const current = view.lines.findIndex((line) => line.el.classList.contains("current"));
+		lineSelectAnchor = {editor, index: e.shiftKey && current !== -1 ? current : index};
+	}
+	const anchor = lineSelectAnchor.index;
+	selectLines(editor, anchor, index);
+	let last = index;
+	const move = (ev) => {
+		const i = lineAtNumber(view, ev.clientY);
+		if ( i !== last ) { selectLines(editor, anchor, last = i) }
+	};
+	const end = () => {
+		document.removeEventListener("pointermove", move);
+		document.removeEventListener("pointerup", end);
+		document.removeEventListener("pointercancel", end);
+	};
+	document.addEventListener("pointermove", move);
+	document.addEventListener("pointerup", end);
+	document.addEventListener("pointercancel", end);
+}
+
 function lineNumbersSettingsHtml(){
 	// goes in the Editor section of Settings (createSettingsModal, script.js)
 	return `
 		<label class="check"><input id="setting-line-numbers" type="checkbox"${lineNumbersEnabled() ? " checked" : ""}>Show line numbers</label>
-		<p class="muted small">A line counter in the margin left of the text. The lines are the ones vi mode counts, so <kbd>:12</kbd> goes to line 12.</p>`;
+		<p class="muted small">A line counter in the margin left of the text. The lines are the ones vi mode counts, so <kbd>:12</kbd> goes to line 12. A click on a number selects its line, Shift+click or a drag the lines in between.</p>`;
 }
 
 function setLineNumbers(show){
@@ -237,6 +317,7 @@ new MutationObserver((records) => {
 document.addEventListener("selectionchange", () => {
 	lineNumberViews.forEach((view, editor) => markCaretLine(editor));
 });
+document.getElementById("editor-grid").addEventListener("pointerdown", handleLineNumberDown);
 window.addEventListener("resize", scheduleLineNumbers);
 document.fonts?.ready.then(scheduleLineNumbers);
 applyLineNumbersSetting();
