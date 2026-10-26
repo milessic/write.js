@@ -54,6 +54,8 @@ pub trait Native: Send + Sync + 'static {
     fn reveal(&self, path: &Path);
     /// with the app the system opens it with
     fn open_path(&self, path: &Path) -> Result<(), String>;
+    /// selected in the system's file manager (Finder, File Explorer...)
+    fn show_in_folder(&self, path: &Path) -> Result<(), String>;
 }
 
 pub struct AppState {
@@ -152,6 +154,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/notebooks/{id}/folders/delete", post(delete_folder))
         .route("/notebooks/{id}/files/open", post(adopt_file))
         .route("/notebooks/{id}/files/system", post(open_with_system))
+        .route("/notebooks/{id}/files/show", post(show_in_folder))
+        .route("/notebooks/{id}/files/raw", get(raw_file))
         .route("/notebooks/{id}/reveal", post(reveal_notebook))
         .route("/notebooks/{id}/events", get(notebook_events))
         .route("/save", post(save_file))
@@ -543,6 +547,32 @@ async fn open_with_system(State(app): State<Arc<AppState>>, UrlPath(id): UrlPath
     let state = app.clone();
     blocking(move || state.native.open_path(&path)).await?.map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, format!("No app opens it: {e}")))?;
     Ok(Json(json!({ "opened": true })))
+}
+
+async fn show_in_folder(State(app): State<Arc<AppState>>, UrlPath(id): UrlPath<String>, Json(req): Json<FilePath>) -> AppResult<Json<Value>> {
+    let path = with_notebook(&app, &id, move |nb| nb.path_of(&req.path)).await?;
+    let state = app.clone();
+    blocking(move || state.native.show_in_folder(&path)).await?.map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, format!("Could not show it: {e}")))?;
+    Ok(Json(json!({ "shown": true })))
+}
+
+/// a file of the notebook as it is, for the previews of pictures and PDFs (an img or PDF.js reads it, the token comes
+/// in the query); sandboxed, so nothing in it runs on this origin
+async fn raw_file(State(app): State<Arc<AppState>>, UrlPath(id): UrlPath<String>, Query(q): Query<HashMap<String, String>>) -> AppResult<Response> {
+    let rel = q.get("path").cloned().unwrap_or_default();
+    let path = with_notebook(&app, &id, move |nb| nb.path_of(&rel)).await?;
+    let bytes = tokio::fs::read(&path).await.map_err(|e| ApiError(StatusCode::NOT_FOUND, e.to_string()))?;
+    let mime = mime_guess::from_path(&path).first_or_octet_stream();
+    Ok((
+        [
+            (header::CONTENT_TYPE, mime.essence_str().to_string()),
+            (header::CACHE_CONTROL, "no-store".to_string()),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff".to_string()),
+            (header::CONTENT_SECURITY_POLICY, "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'".to_string()),
+        ],
+        bytes,
+    )
+        .into_response())
 }
 
 async fn reveal_notebook(State(app): State<Arc<AppState>>, UrlPath(id): UrlPath<String>) -> AppResult<Json<Value>> {

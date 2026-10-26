@@ -616,10 +616,14 @@ impl Notebook {
         Ok(json!({ "document": { "name": name, "path": rel, "format": Format::Txt, "content": content, "id": null, "meta": {} } }))
     }
 
-    /// a file or a document of the notebook on the disk, to open it with the system's app
+    /// a file, a document or a folder of the notebook on the disk ("" the notebook's own), to open or show it
     pub fn path_of(&self, rel: &str) -> Result<PathBuf> {
         let state = self.state.lock().unwrap();
-        if !state.files.iter().any(|f| f == rel) && !state.docs.values().any(|d| d.rel == rel) {
+        let known = rel.is_empty()
+            || state.files.iter().any(|f| f == rel)
+            || state.docs.values().any(|d| d.rel == rel)
+            || state.folders.iter().any(|f| folder_dir(f) == rel);
+        if !known {
             return Err(NotebookError(404, format!("'{rel}' is not in the notebook")));
         }
         Ok(self.abs(rel))

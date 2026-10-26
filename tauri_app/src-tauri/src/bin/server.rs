@@ -24,11 +24,19 @@ impl Native for Headless {
 
     /// written to WRITEJS_OPEN_LOG, one path a line
     fn open_path(&self, path: &Path) -> Result<(), String> {
-        use std::io::Write;
-        let log = std::env::var_os("WRITEJS_OPEN_LOG").ok_or("no WRITEJS_OPEN_LOG")?;
-        let mut file = std::fs::OpenOptions::new().create(true).append(true).open(log).map_err(|e| e.to_string())?;
-        writeln!(file, "{}", path.display()).map_err(|e| e.to_string())
+        log_opened("open", path)
     }
+
+    fn show_in_folder(&self, path: &Path) -> Result<(), String> {
+        log_opened("show", path)
+    }
+}
+
+fn log_opened(what: &str, path: &Path) -> Result<(), String> {
+    use std::io::Write;
+    let log = std::env::var_os("WRITEJS_OPEN_LOG").ok_or("no WRITEJS_OPEN_LOG")?;
+    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(log).map_err(|e| e.to_string())?;
+    writeln!(file, "{what} {}", path.display()).map_err(|e| e.to_string())
 }
 
 #[tokio::main]

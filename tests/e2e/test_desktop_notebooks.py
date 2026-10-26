@@ -5,6 +5,8 @@ Build it first: cargo build --manifest-path tauri_app/src-tauri/Cargo.toml --fea
 """
 import json
 import os
+import struct
+import zlib
 import socket
 import subprocess
 import time
@@ -19,6 +21,33 @@ from utils.zlib_util.zlib_util import decompress
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVER_BIN = ROOT / "tauri_app/src-tauri/target/debug/writejs-server"
+
+
+def png(width=4, height=3):
+	# a real picture, red
+	row = b"\x00" + b"\xff\x00\x00" * width
+	chunk = lambda kind, data: struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+	return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) \
+		+ chunk(b"IDAT", zlib.compress(row * height)) + chunk(b"IEND", b"")
+
+
+def pdf(pages=2):
+	# the smallest PDF with pages of text
+	objects = ["<< /Type /Catalog /Pages 2 0 R >>",
+		f"<< /Type /Pages /Kids [{' '.join(f'{3 + i * 2} 0 R' for i in range(pages))}] /Count {pages} >>"]
+	for i in range(pages):
+		text = f"BT /F1 24 Tf 72 720 Td (Page {i + 1}) Tj ET"
+		objects.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {4 + i * 2} 0 R /Resources << /Font << /F1 {3 + pages * 2} 0 R >> >> >>")
+		objects.append(f"<< /Length {len(text)} >>\nstream\n{text}\nendstream")
+	objects.append("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+	out, offsets = "%PDF-1.4\n", []
+	for n, obj in enumerate(objects, 1):
+		offsets.append(len(out))
+		out += f"{n} 0 obj\n{obj}\nendobj\n"
+	xref = len(out)
+	out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n" + "".join(f"{o:010d} 00000 n \n" for o in offsets)
+	out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"
+	return out.encode()
 
 
 def wait_until(check, timeout=5):
@@ -37,7 +66,8 @@ def folders(tmp_path_factory):
 	(notes / "Plan.md").write_text("# Plan\n\n- [ ] one\n")
 	(notes / "Work/Report.html").write_text("<div>report</div>")
 	(notes / "Work/Daily/log.txt").write_text("line 1\nline 2\n")
-	(notes / "photo.png").write_bytes(b"\x89PNG\xff\x00")
+	(notes / "photo.png").write_bytes(png())
+	(notes / "manual.pdf").write_bytes(pdf())
 	(notes / "data.csv").write_text("name,count\napples,3\n")
 	(notes / "config.yaml").write_text("key: value\nlist:\n  - one\n")
 	(notes / "release.nfo").write_text("plain text, unknown kind\n")
@@ -178,10 +208,45 @@ def file_menu(app, path):
 
 
 def test_other_files_open_with_the_system(app, folders):
-	assert file_menu(app, "photo.png")[:2] == ["Try to open anyway", "Open with system default"]
+	assert file_menu(app, "release.nfo")[:3] == ["Try to open anyway", "Open with system default", "Show in file manager"]
 	app.click("#context-menu button:text('Open with system default')")
 	wait_until(lambda: (folders / "opened.log").is_file())
-	assert (folders / "opened.log").read_text().strip() == str(folders / "notes/photo.png")
+	assert (folders / "opened.log").read_text().splitlines()[-1] == f"open {folders / 'notes/release.nfo'}"
+
+
+def test_files_documents_and_folders_show_in_the_file_manager(app, folders):
+	log = folders / "opened.log"
+	def shown(click):
+		lines = len(log.read_text().splitlines()) if log.exists() else 0
+		click()
+		app.click("#context-menu button:text('Show in file manager')")
+		wait_until(lambda: log.exists() and len(log.read_text().splitlines()) > lines)
+		return log.read_text().splitlines()[-1]
+	assert shown(lambda: app.click('#file-tree-list .tree-document[data-name="data.csv"]', button="right")) == f"show {folders / 'notes/data.csv'}"
+	assert shown(lambda: app.click('#file-tree-list .tree-folder:has-text("Work")', button="right")) == f"show {folders / 'notes/Work'}"
+	assert shown(lambda: app.click('#file-tree-list .tree-file[data-path="photo.png"]', button="right")) == f"show {folders / 'notes/photo.png'}"
+
+
+def test_pictures_and_pdfs_open_in_a_preview(app, folders):
+	app.click('#file-tree-list .tree-file[data-path="photo.png"]')
+	app.wait_for_function("document.querySelector('.preview-modal .file-preview img')?.naturalWidth === 4")
+	assert app.locator(".preview-modal [contenteditable]").count() == 0
+	app.evaluate("closeAllModals()")
+	app.click('#file-tree-list .tree-file[data-path="manual.pdf"]')
+	app.wait_for_function("document.querySelectorAll('.preview-modal canvas.pdf-page').length === 2", timeout=10000)
+	assert "2 pages" in app.inner_text(".preview-modal .preview-info")
+	# drawn: not a blank canvas
+	assert app.evaluate("""() => {
+		const canvas = document.querySelector('.preview-modal canvas.pdf-page');
+		const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+		return data.some((v, i) => i % 4 !== 3 && v < 128);
+	}""")
+	app.evaluate("closeAllModals()")
+	# a file is served only to the app's pages, as it is, sandboxed
+	assert app.evaluate("fetch(rawFileUrl('photo.png').replace(/token=[^&]*/, 'token=x')).then(r => r.status)") == 403
+	headers = app.evaluate("fetch(rawFileUrl('manual.pdf')).then(r => [r.headers.get('content-type'), r.headers.get('content-security-policy')])")
+	assert headers[0] == "application/pdf" and headers[1].startswith("sandbox")
+	assert app.evaluate("fetch(rawFileUrl('../outside.txt')).then(r => r.status)") == 404
 
 
 def test_other_files_can_be_tried_as_text(app, folders):
@@ -193,10 +258,12 @@ def test_other_files_can_be_tried_as_text(app, folders):
 	assert app.locator('#file-tree-list .tree-document[data-name="release.nfo"]').count() == 1
 	assert app.locator('#file-tree-list .tree-file[data-path="release.nfo"]').count() == 0
 	# not text: shown in a new document, the file stays as it is
-	file_menu(app, "photo.png")
+	(folders / "notes/blob.bin").write_bytes(b"\x00\xff\xfe binary")
+	app.wait_for_selector('#file-tree-list .tree-file[data-path="blob.bin"]')
+	file_menu(app, "blob.bin")
 	app.click("#context-menu button:text('Try to open anyway')")
-	app.wait_for_function("getActiveTab()?.name === 'photo.png (as text)'")
-	assert (folders / "notes/photo.png").read_bytes() == b"\x89PNG\xff\x00"
+	app.wait_for_function("getActiveTab()?.name === 'blob.bin (as text)'")
+	assert (folders / "notes/blob.bin").read_bytes() == b"\x00\xff\xfe binary"
 	app.evaluate("closeTab(getActiveTab().id)")
 
 

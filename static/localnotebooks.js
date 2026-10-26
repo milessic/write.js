@@ -6,8 +6,9 @@
  * folder of the computer can be opened as the notebook. Its sub-folders are the notebook's folders and its .html, .md
  * and text files (.txt, .csv, .json, .yaml, code...) the documents: an .html file holds the document as the editor
  * stores it (every feature), Markdown and text files are converted when they are opened and when they are saved.
- * The other files show in the tree too, with an icon of their kind (as the documents have); their menu opens them with
- * the system's app, or tries them as text. Nothing of such a notebook goes to the cloud, only the settings still sync
+ * The other files show in the tree too, with an icon of their kind (as the documents have); pictures and PDFs open in
+ * a read-only preview (PDFs drawn by PDF.js, static/vendor/pdfjs), the rest show their menu: open with the system's
+ * app or try as text. Files, documents and folders can be shown in the system's file manager (Show in Finder...). Nothing of such a notebook goes to the cloud, only the settings still sync
  * (cloudsync.js).
  * Which notebook is opened is a preference of this device (localNotebookKey); opening another one reloads the page.
  *
@@ -477,31 +478,127 @@ function addFileIcon(row, name){
 	row.prepend(fileTypeIcon(file.fileName));
 }
 
+// what the app's web view shows itself
+const previewImageExtensions = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif"];
+
+function previewKind(fileName){
+	if ( fileExtension(fileName) === "pdf" ) { return "pdf" }
+	return previewImageExtensions.includes(fileExtension(fileName)) ? "image" : null;
+}
+
+function showInFolderLabel(){
+	// as the system calls its file manager
+	if ( document.body.classList.contains("apple-platform") ) { return "Show in Finder" }
+	return /win/i.test(navigator.userAgentData?.platform || navigator.platform) ? "Show in File Explorer" : "Show in file manager";
+}
+
 function treeFileItem(file, depth){
-	// a file that isn't a document: a click or a right click shows what can be done with it
+	// a file that isn't a document: a picture or a PDF opens its preview, anything else shows what can be done with it
 	const li = document.createElement("li");
 	li.setAttribute("role", "treeitem");
 	const row = treeRow("tree-file has-icon", file.name, depth);
 	row.prepend(fileTypeIcon(file.name));
 	row.dataset.path = file.path;
-	row.title = `${file.path}\nNot a document: click for what can be done with it`;
+	const preview = previewKind(file.name);
+	row.title = `${file.path}\n${preview ? "Click to preview it, right click for more" : "Not a document: click for what can be done with it"}`;
 	const menu = (e) => openContextMenu(e, [
-		{ label: "Try to open anyway", action: () => tryOpenFile(file) },
+		preview ? { label: "Open preview", action: () => openFilePreview(file) } : { label: "Try to open anyway", action: () => tryOpenFile(file) },
 		{ label: "Open with system default", action: () => openWithSystem(file.path) },
+		{ label: showInFolderLabel(), action: () => showInFolder(file.path) },
 		null,
 		...treePanelMenuItems(),
 	]);
-	row.addEventListener("click", menu);
+	row.addEventListener("click", (e) => preview ? openFilePreview(file) : menu(e));
 	row.addEventListener("contextmenu", menu);
 	li.append(row);
 	return li;
 }
 
 function documentFileMenuItems(names){
-	// in a document's menu in the tree (workspace.js)
-	const file = names.length === 1 ? window.localNotebookStorage?.fileOf(names[0]) : null;
+	// in a document's menus (workspace.js): the tree's, a tab's
+	const file = names.length === 1 && names[0] ? window.localNotebookStorage?.fileOf(names[0]) : null;
 	if ( !file ) { return [] }
-	return [{ label: "Open with system default", action: () => openWithSystem(file.path), disabled: !file.path }];
+	return [
+		{ label: "Open with system default", action: () => openWithSystem(file.path), disabled: !file.path },
+		{ label: showInFolderLabel(), action: () => showInFolder(file.path), disabled: !file.path },
+	];
+}
+
+function folderFileMenuItems(folder){
+	// in a folder's menu in the tree (workspace.js)
+	return [{ label: showInFolderLabel(), action: () => showInFolder(folder) }];
+}
+
+async function showInFolder(path){
+	try {
+		await desktopRequest(`/notebooks/${encodeURIComponent(window.localNotebook.id)}/files/show`, { method: "POST", body: { path } });
+	} catch ( err ) {
+		showDesktopError(err);
+	}
+}
+
+function rawFileUrl(path){
+	return `/__writejs_app__/notebooks/${encodeURIComponent(window.localNotebook.id)}/files/raw?path=${encodeURIComponent(path)}&token=${encodeURIComponent(desktopApp.token)}`;
+}
+
+function openFilePreview(file){
+	// read-only: a picture or a PDF as it is, and what else can be done with it
+	const kind = previewKind(file.name);
+	createModal(escapeHtmlText(file.name), `
+	<p class="muted small preview-info">Read-only preview<span class="preview-pages"></span> · <span class="preview-path"></span></p>
+	<div class="file-preview" data-kind="${kind}" tabindex="0"></div>
+	<div class="row">
+		<button class="btn" type="button" data-action="system">Open with system default</button>
+		<button class="btn" type="button" data-action="show">${showInFolderLabel()}</button>
+	</div>`);
+	const modal = document.getElementById("modal");
+	modal.classList.add("preview-modal");
+	modal.querySelector(".preview-path").textContent = file.path;
+	modal.querySelector('[data-action="system"]').addEventListener("click", () => openWithSystem(file.path));
+	modal.querySelector('[data-action="show"]').addEventListener("click", () => showInFolder(file.path));
+	const view = modal.querySelector(".file-preview");
+	if ( kind === "image" ) {
+		const img = document.createElement("img");
+		img.alt = file.name;
+		img.addEventListener("error", () => previewFailed(view, "This picture can't be shown here."));
+		// a click shows it in its own size, and fitted again
+		img.addEventListener("click", () => view.classList.toggle("actual-size"));
+		img.src = rawFileUrl(file.path);
+		view.append(img);
+	} else {
+		renderPdfPreview(view, rawFileUrl(file.path), modal.querySelector(".preview-pages"))
+			.catch((err) => { console.error(err); previewFailed(view, `This PDF can't be shown here: ${err.message}`) });
+	}
+	view.focus();
+}
+
+function previewFailed(view, text){
+	view.replaceChildren(Object.assign(document.createElement("p"), { className: "muted", textContent: `${text} Open it with the system's app instead.` }));
+}
+
+async function renderPdfPreview(view, url, pagesLabel){
+	// the pages one after another, as wide as the preview; stops when the preview is closed
+	const pdfjs = await import("/static/vendor/pdfjs/pdf.min.mjs");
+	pdfjs.GlobalWorkerOptions.workerSrc = "/static/vendor/pdfjs/pdf.worker.min.mjs";
+	const pdf = await pdfjs.getDocument({ url, isEvalSupported: false }).promise;
+	pagesLabel.textContent = ` · ${pdf.numPages} page${pdf.numPages === 1 ? "" : "s"}`;
+	try {
+		for ( let n = 1; n <= pdf.numPages && view.isConnected; n++ ) {
+			const page = await pdf.getPage(n);
+			const fit = Math.max(.5, (view.clientWidth - 32) / page.getViewport({ scale: 1 }).width);
+			const viewport = page.getViewport({ scale: fit * devicePixelRatio });
+			const canvas = document.createElement("canvas");
+			canvas.className = "pdf-page";
+			canvas.width = viewport.width;
+			canvas.height = viewport.height;
+			canvas.style.width = `${viewport.width / devicePixelRatio}px`;
+			canvas.setAttribute("aria-label", `Page ${n}`);
+			view.append(canvas);
+			await page.render({ canvas, canvasContext: canvas.getContext("2d"), viewport }).promise;
+		}
+	} finally {
+		if ( !view.isConnected ) { pdf.destroy() }
+	}
 }
 
 async function tryOpenFile(file){

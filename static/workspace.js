@@ -556,6 +556,7 @@ function treeFolderItem(folder, folders, byFolder, depth){
 		{ swatches: folderColorSwatches(folder) },
 		{ label: "Move to top level", action: () => moveFolder(folder, ""), disabled: !parentFolder(folder) },
 		{ label: "Delete folder", danger: true, action: () => deleteFolder(folder) },
+		...(notebookStorage.fileOf ? folderFileMenuItems(folder) : []), // a folder opened as the notebook (localnotebooks.js)
 		null,
 		...treePanelMenuItems(),
 	]));
@@ -885,6 +886,7 @@ function documentMenuItems(tab){
 		{ label: "Export", action: run(exportDocument) },
 		{ label: "Export as Markdown", action: run(exportMarkdown) },
 		{ label: "Export as PDF", action: run(generatePDF), disabled: true },
+		...(notebookStorage.fileOf ? [null, ...documentFileMenuItems([tab?.savedName])] : []), // localnotebooks.js
 	];
 }
 

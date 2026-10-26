@@ -1,0 +1,2 @@
+pdfjs-dist 6.4.299 (https://github.com/mozilla/pdf.js), Apache License 2.0 (LICENSE).
+The desktop app previews PDFs with it (static/localnotebooks.js); loaded only then.
