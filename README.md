@@ -117,6 +117,9 @@ Settings > Vi mode turns on vi keybindings modeled on Neovim / VSCodeVim:
 - documents are stored in `localStorage`; the app can be installed (PWA) and used offline (service worker, `static/sw.js`)
 - usage monitor and storage consent
 
+## Desktop and mobile app
+- `pyqt_app/`: Write.JS as a PyQt app for macOS, Linux, Android and iOS, the web app from `static/` in a native window, with the documents on the device and cloud sync through the Write.JS server; see `pyqt_app/README.md`
+
 ## Themes
 - styling comes from [milessic-themes](http://mbs.local:9312/) when ``MILESSIC-THEMES`` is set, otherwise the bundled Write.js theme (`static/themes/writejs.css`) is used
 

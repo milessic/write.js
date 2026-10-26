@@ -1,0 +1,14 @@
+	<!-- merge into the app's Info.plist (pyqt_app/README.md, "Android and iOS") -->
+	<!-- the web view loads Write.JS from the app's own server on http://127.0.0.1 -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<!-- exported documents (Documents/) are shown in Files > On My iPhone > Write.JS -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>CFBundleDisplayName</key>
+	<string>Write.JS</string>

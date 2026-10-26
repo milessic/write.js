@@ -1,0 +1,62 @@
+# The pyqtdeploy 3.3 sysroot for Write.JS on Android and iOS (pyqt_app/README.md, "Android and iOS").
+# pyqtdeploy builds only Qt 5.12 - 5.15 and Python 3.7 - 3.11, so the mobile app is PyQt5 / Qt 5.15
+# (writejs_app/mobile.py runs on both PyQt5 and PyQt6). The source archives go next to this file.
+
+[Python]
+version = "3.10.8"
+
+[Qt]
+version = "5.15.2"
+edition = "opensource"
+# the page is shown by QtWebView (WKWebView / Android WebView), QML only: no widgets, no QtWebEngine
+skip = [
+    "qt3d", "qtactiveqt", "qtcharts", "qtconnectivity", "qtdatavis3d", "qtdoc", "qtgamepad", "qtgraphicaleffects",
+    "qtlocation", "qtlottie", "qtmultimedia", "qtnetworkauth", "qtpurchasing", "qtquick3d", "qtquicktimeline",
+    "qtremoteobjects", "qtscript", "qtscxml", "qtsensors", "qtserialbus", "qtserialport", "qtspeech", "qtsvg",
+    "qttools", "qttranslations", "qtvirtualkeyboard", "qtwayland", "qtwebchannel", "qtwebengine", "qtwebglplugin",
+    "qtwebsockets", "qtx11extras", "qtxmlpatterns",
+]
+ssl = "openssl-linked"
+
+    [Qt.android]
+    install_from_source = true
+
+    [Qt.ios]
+    install_from_source = true
+
+# for the Python ssl module (an https:// Write.JS server) and Qt
+[OpenSSL]
+version = "1.1.1w"
+
+    [OpenSSL.ios]
+    install_from_source = true
+
+    [OpenSSL.android]
+    install_from_source = true
+
+[SIP]
+abi_major_version = 12
+module_name = "PyQt5.sip"
+
+[PyQt]
+version = "5.15.10"
+installed_modules = ["QtCore", "QtGui", "QtNetwork", "QtQml", "QtQuick"]
+
+[zlib]
+install_from_source = true
+
+# the templates (index.html, the legal pages) are rendered by Jinja2, like on the server
+[Jinja2]
+plugin = "wheel"
+wheel = "Jinja2-3.1.4-py3-none-any.whl"
+dependencies = ["MarkupSafe"]
+
+[MarkupSafe]
+plugin = "wheel"
+# MarkupSafe has no pure wheel: only the Python of this one is used, without its C extension it falls back
+# to markupsafe/_native.py
+wheel = "MarkupSafe-2.1.5-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+exclusions = [
+    "markupsafe/_speedups.cpython-310-x86_64-linux-gnu.so", "markupsafe/_speedups.c", "markupsafe/_speedups.pyi",
+    "MarkupSafe.libs",
+]
