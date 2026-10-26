@@ -124,7 +124,7 @@ Settings > Vi mode turns on vi keybindings modeled on Neovim / VSCodeVim:
   - `.html` files hold a document as the editor stores it (every feature); Markdown and text files are converted when opened and saved back as Markdown / text
   - documents are named by their files, without the extension for `.html`, `.md` and `.txt` (`plan`, `data.csv`)
   - every other file is listed too, with an icon of its kind (as the documents have); a click or a right click: *Try to open anyway* (text becomes a document from then on, anything else is shown as text in a new document and the file stays as it is) or *Open with system default*
-  - pictures and PDFs open in a read-only preview (PDFs drawn by [PDF.js](https://mozilla.github.io/pdf.js/), `static/vendor/pdfjs`)
+  - pictures and PDFs open in a read-only preview (PDFs drawn by [PDF.js](https://mozilla.github.io/pdf.js/), `static/vendor/pdfjs`); with *Settings > Desktop app > Open external files as tabs* (or the preview's *Open as tab*) they open as tabs beside the documents, the preview in the editor's place
   - files, documents and folders can be shown in the system's file manager: *Show in Finder* / *Show in File Explorer* / *Show in file manager*
   - new documents are `.html` or `.md`, picked for each folder in menu > Notebooks; one named like a text file (`todo.yaml`) is that file
   - creating, saving, moving and renaming documents and folders changes the files; deleted documents and folders go to the trash (a folder with the other files in it, the confirmation counts them)

@@ -843,6 +843,7 @@ function createModal(title, html){
 }
 function saveDocumentToLocalStorage(){
 	if ( !validateUserConsent() ) { return }
+	if ( getActiveTab()?.file ) { createNotification("A file's preview is read-only, there is nothing to save", "info"); return } // workspace.js
 	let documentNameValue = ''
 	try { 
 		documentNameValue = getDocumentName();

@@ -267,6 +267,43 @@ def test_other_files_can_be_tried_as_text(app, folders):
 	app.evaluate("closeTab(getActiveTab().id)")
 
 
+def test_pictures_and_pdfs_can_open_as_tabs(app):
+	# Settings > Desktop app > Open external files as tabs
+	app.evaluate("createSettingsModal()")
+	app.check("#setting-file-tabs")
+	app.evaluate("closeAllModals()")
+	documents = names(app)
+	app.click('#file-tree-list .tree-file[data-path="photo.png"]')
+	assert app.locator(".preview-modal").count() == 0
+	app.wait_for_function("document.querySelector('.editor-pane.focused.previewing .pane-preview img')?.naturalWidth === 4")
+	assert app.evaluate("getActiveTab().file.path") == "photo.png"
+	assert app.inner_text("#tabs .tab.active .tab-name") == "photo.png"
+	assert app.evaluate("[documentNameObject.value, documentNameObject.readOnly, documentNameObject.placeholder]") == ["", True, "photo.png"]
+	assert app.get_attribute("#editor", "contenteditable") == "false"
+	assert app.locator('#file-tree-list .tree-file.active[data-path="photo.png"]').count() == 1
+	# read-only: nothing is saved, typing changes nothing
+	app.keyboard.type("x")
+	app.click("#save-btn")
+	app.click('#file-tree-list .tree-file[data-path="manual.pdf"]')
+	app.wait_for_function("document.querySelectorAll('.editor-pane.focused .pane-preview canvas.pdf-page').length === 2", timeout=10000)
+	assert app.evaluate("tabs.filter(t => t.file).map(t => t.file.name)") == ["photo.png", "manual.pdf"]
+	# the picture's tab again: focused, not opened twice
+	app.click('#file-tree-list .tree-file[data-path="photo.png"]')
+	assert app.evaluate("tabs.filter(t => t.file).length") == 2
+	# a document in the same editor: the editor is back
+	app.evaluate("openDocumentInTab('Plan')")
+	assert app.evaluate("document.querySelector('.editor-pane.focused').classList.contains('previewing')") is False
+	assert app.get_attribute("#editor", "contenteditable") == "true"
+	assert app.evaluate("documentNameObject.readOnly") is False
+	assert names(app) == documents
+	# not kept with the opened tabs, and not the last opened document
+	app.reload()
+	app.wait_for_function("window.localNotebook && document.readyState === 'complete'")
+	assert app.evaluate("tabs.filter(t => t.file).length") == 0
+	assert app.evaluate("getActiveTab().name") == "Plan"
+	app.evaluate("notebookStorage.setItem('__fileTabs__', '0')")
+
+
 def test_a_folder_goes_with_its_other_files(app, folders):
 	app.evaluate("deleteFolder('Media')")
 	wait_until(lambda: not (folders / "notes/Media").exists())

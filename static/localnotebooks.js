@@ -32,6 +32,7 @@ const localNotebookScopedKeys = ["__lastOpened__", "__openedTabs__", "__openedEd
 const localDocPrefix = "__doc__"; // docPrefix, script.js
 const localFoldersKey = "__folders__"; // foldersKey, workspace.js
 const localNotebookReloadDelay = 200;
+const fileTabsKey = "__fileTabs__"; // "1" when pictures and PDFs open as tabs, not in a preview window (Settings > Desktop app)
 
 function isLocalNotebookKey(key){
 	return key === localNotebookKey || key.startsWith(localNotebookPrefix);
@@ -508,6 +509,7 @@ function treeFileItem(file, depth){
 		null,
 		...treePanelMenuItems(),
 	]);
+	if ( getActiveTab()?.file?.path === file.path ) { row.classList.add("active") }
 	row.addEventListener("click", (e) => preview ? openFilePreview(file) : menu(e));
 	row.addEventListener("contextmenu", menu);
 	li.append(row);
@@ -542,21 +544,54 @@ function rawFileUrl(path){
 }
 
 function openFilePreview(file){
-	// read-only: a picture or a PDF as it is, and what else can be done with it
-	const kind = previewKind(file.name);
+	// a preview window, or a tab (Settings > Desktop app > Open external files as tabs)
+	if ( notebookStorage.getItem(fileTabsKey) === "1" ) { return openFileTab(file) }
 	createModal(escapeHtmlText(file.name), `
-	<p class="muted small preview-info">Read-only preview<span class="preview-pages"></span> · <span class="preview-path"></span></p>
-	<div class="file-preview" data-kind="${kind}" tabindex="0"></div>
+	<div class="file-preview-host"></div>
 	<div class="row">
+		<button class="btn" type="button" data-action="tab">Open as tab</button>
 		<button class="btn" type="button" data-action="system">Open with system default</button>
 		<button class="btn" type="button" data-action="show">${showInFolderLabel()}</button>
 	</div>`);
 	const modal = document.getElementById("modal");
 	modal.classList.add("preview-modal");
-	modal.querySelector(".preview-path").textContent = file.path;
+	modal.querySelector('[data-action="tab"]').addEventListener("click", () => { closeAllModals(); openFileTab(file) });
 	modal.querySelector('[data-action="system"]').addEventListener("click", () => openWithSystem(file.path));
 	modal.querySelector('[data-action="show"]').addEventListener("click", () => showInFolder(file.path));
-	const view = modal.querySelector(".file-preview");
+	const host = modal.querySelector(".file-preview-host");
+	renderFilePreview(host, file);
+	host.querySelector(".file-preview").focus();
+}
+
+function openFileTab(file){
+	// a tab beside the documents (workspace.js): an untouched untitled tab is used, a file opened already is focused
+	if ( focusEditorsLocked() ) { return }
+	const opened = tabs.find((t) => t.file?.path === file.path);
+	if ( opened ) { switchToTab(opened.id); return }
+	const active = getActiveTab();
+	const tab = active && !active.name && !active.dirty && !active.file && !active.savedName ? active : createTab("");
+	tab.file = { name: file.name, path: file.path, folder: file.folder };
+	tab.folder = file.folder;
+	setPaneTab(focusedPane, tab);
+	closeTreeDrawer();
+}
+
+function fileTabMenuItems(tab){
+	// a file's tab (workspace.js documentMenuItems)
+	return [
+		{ label: "Open with system default", action: () => openWithSystem(tab.file.path) },
+		{ label: showInFolderLabel(), action: () => showInFolder(tab.file.path) },
+	];
+}
+
+function renderFilePreview(host, file){
+	// into a preview window or a file's tab: read-only, a picture or a PDF as it is
+	const kind = previewKind(file.name);
+	host.innerHTML = `
+	<p class="muted small preview-info">Read-only preview<span class="preview-pages"></span> · <span class="preview-path"></span></p>
+	<div class="file-preview" data-kind="${kind}" tabindex="0"></div>`;
+	host.querySelector(".preview-path").textContent = file.path;
+	const view = host.querySelector(".file-preview");
 	if ( kind === "image" ) {
 		const img = document.createElement("img");
 		img.alt = file.name;
@@ -566,10 +601,9 @@ function openFilePreview(file){
 		img.src = rawFileUrl(file.path);
 		view.append(img);
 	} else {
-		renderPdfPreview(view, rawFileUrl(file.path), modal.querySelector(".preview-pages"))
+		renderPdfPreview(view, rawFileUrl(file.path), host.querySelector(".preview-pages"))
 			.catch((err) => { console.error(err); previewFailed(view, `This PDF can't be shown here: ${err.message}`) });
 	}
-	view.focus();
 }
 
 function previewFailed(view, text){
@@ -723,6 +757,8 @@ async function openNotebook(id){
 function desktopSettingsHtml(){
 	return `<h3>Desktop app</h3>
 	<div class="stack">
+		<label class="check"><input id="setting-file-tabs" type="checkbox"${notebookStorage.getItem(fileTabsKey) === "1" ? " checked" : ""}>Open external files as tabs</label>
+		<p class="muted small">Pictures and PDFs of a folder opened as the notebook open as tabs beside the documents (read-only), instead of in a preview window.</p>
 		${desktopServerFieldsHtml()}
 		<div class="row">
 			<button class="btn" id="desktop-settings-save" type="button">Save and reload</button>
@@ -765,6 +801,11 @@ async function saveDesktopServerFields(){
 function initDesktopSettings(){
 	if ( !document.getElementById("desktop-server-url") ) { return }
 	fillDesktopServerFields();
+	document.getElementById("setting-file-tabs").addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = false; return }
+		notebookStorage.setItem(fileTabsKey, e.target.checked ? "1" : "0");
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
 	document.getElementById("desktop-settings-save").addEventListener("click", saveDesktopServerFields);
 	document.getElementById("desktop-notebooks-btn").addEventListener("click", createNotebooksModal);
 }

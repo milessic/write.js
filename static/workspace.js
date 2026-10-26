@@ -17,6 +17,9 @@
  * Every opened document remembers where it was left, the editor's scroll and the caret, while it is opened and,
  * when saved, across visits (docPositionsKey); closing its tab forgets it.
  * The document window (docwindow.js) shows one document and keeps the app's tabs, editors and layout as they are.
+ * In the desktop app a tab can hold a file of the folder opened as the notebook instead of a document (tab.file,
+ * localnotebooks.js): a picture or a PDF, read-only; its editor is hidden and shows the preview, the tab has no name
+ * (nothing saves it) and isn't kept with the opened tabs.
  *
  * The top bar's name field has a v that opens a tray searching the documents, with the tree's rows (docSearch below); a right
  * click on it, on a tab or on an editor's head opens the document's menu (documentMenuItems): search in it, insert into it,
@@ -460,7 +463,7 @@ function refreshFileTree(force=false){
 	const filter = fileTreeSearch.value.trim().toLowerCase();
 	// autosave calls this on every keystroke, so skip rebuilding an unchanged tree
 	const folders = names === null ? null : notebookStorage.getItem(foldersKey);
-	const key = JSON.stringify([names, folders, filter, getDocumentName(), layout.collapsedFolders]);
+	const key = JSON.stringify([names, folders, filter, getDocumentName(), getActiveTab()?.file?.path, layout.collapsedFolders]);
 	if ( !force && key === renderedTreeKey ) { return }
 	renderedTreeKey = key;
 	// deleted documents leave the selection
@@ -874,6 +877,7 @@ function renderDocSearch(){
 // the document's menu: what is done with one document, on its tab, its editor's head and the name field
 function documentMenuItems(tab){
 	// acts on the tab's document: it is shown in the focused editor first (the actions work on that one)
+	if ( tab?.file ) { return fileTabMenuItems(tab) } // a file's preview (localnotebooks.js)
 	const run = (action) => () => {
 		if ( tab && tab.id !== focusedPane?.tabId ) { switchToTab(tab.id) }
 		if ( !tab || tab.id === focusedPane?.tabId ) { action() }
@@ -939,7 +943,7 @@ function openDocumentInTab(name){
 	}
 	if ( !pane && focusEditorsLocked() ) { return false }
 	const active = getActiveTab();
-	if ( !tab && active && !active.name && !active.dirty ) {
+	if ( !tab && active && !active.name && !active.dirty && !active.file ) {
 		// an untouched untitled tab is replaced, not kept beside the document
 		active.name = name;
 		active.savedName = name;
@@ -1338,6 +1342,7 @@ function renderPaneTitle(pane, tab){
 }
 
 function tabLabel(tab){
+	if ( tab.file ) { return tab.file.name }
 	const name = tab.id === focusedPane?.tabId ? getDocumentName() : tab.name;
 	return name || untitledTabLabel;
 }
@@ -1364,6 +1369,7 @@ function renderTabs(){
 		const name = document.createElement("span");
 		name.className = "tab-name";
 		name.textContent = label;
+		if ( tab.file ) { el.classList.add("file-tab"); el.append(fileTypeIcon(tab.file.name)) } // localnotebooks.js
 		if ( pane && panes.length > 1 ) {
 			// which editor shows the tab
 			const badge = document.createElement("span");
@@ -1381,7 +1387,15 @@ function renderTabs(){
 		el.addEventListener("click", () => switchToTab(tab.id));
 		el.addEventListener("keydown", (e) => { if ( e.key === "Enter" || e.key === " " ) { e.preventDefault(); switchToTab(tab.id) } });
 		el.addEventListener("auxclick", (e) => { if ( e.button === 1 ) { e.preventDefault(); closeTab(tab.id) } });
-		el.addEventListener("contextmenu", (e) => openContextMenu(e, [
+		el.addEventListener("contextmenu", (e) => openContextMenu(e, tab.file ? [
+			{ label: "Close", action: () => closeTab(tab.id) },
+			{ label: "Close others", action: () => closeOtherTabs(tab.id), disabled: tabs.length < 2 },
+			{ label: "Open to the side", action: () => splitEditor(tab), disabled: Boolean(pane) || panes.length >= maxEditors },
+			null,
+			...documentMenuItems(tab),
+			null,
+			...tabsPanelMenuItems(),
+		] : [
 			{ label: "Close", action: () => closeTab(tab.id) },
 			{ label: "Close others", action: () => closeOtherTabs(tab.id), disabled: tabs.length < 2 },
 			{ label: "Open to the side", action: () => splitEditor(tab), disabled: Boolean(pane) || panes.length >= maxEditors },
@@ -1467,7 +1481,12 @@ function setupPane(el){
 		}
 	});
 	el.querySelector(".pane-close").addEventListener("click", (e) => { e.stopPropagation(); closePane(pane) });
-	el.querySelector(".pane-head").addEventListener("contextmenu", (e) => openContextMenu(e, [
+	el.querySelector(".pane-head").addEventListener("contextmenu", (e) => openContextMenu(e, tabById(pane.tabId)?.file ? [
+		{ label: "Close editor", action: () => closePane(pane), disabled: panes.length < 2 },
+		{ label: "Split editor", action: () => splitEditor(), disabled: panes.length >= maxEditors },
+		null,
+		...documentMenuItems(tabById(pane.tabId)),
+	] : [
 		{ label: "Close editor", action: () => closePane(pane), disabled: panes.length < 2 },
 		{ label: "Split editor", action: () => splitEditor(), disabled: panes.length >= maxEditors },
 		{ label: "Open in new window", action: () => openDocumentWindow(tabById(pane.tabId)?.name), disabled: !tabById(pane.tabId)?.name || !documentExists(tabById(pane.tabId).name) },
@@ -1550,6 +1569,8 @@ function stashPane(pane){
 
 function loadPane(pane){
 	const tab = tabById(pane.tabId);
+	showPanePreview(pane, tab.file);
+	if ( tab.file ) { return }
 	let html = tab.html;
 	if ( html === null ) {
 		// the stored document's id stays on the tab, the editor shows only the content (doclinks.js)
@@ -1567,6 +1588,20 @@ function loadPane(pane){
 	if ( typeof normalizeChecklists !== "undefined" ) { normalizeChecklists(pane.editor) } // checklist.js loads after this file
 	if ( typeof applyHeadingFolds !== "undefined" ) { applyHeadingFolds(pane.editor); normalizeListFolds(pane.editor) } // folding.js loads after this file
 	restorePanePosition(pane);
+}
+
+function showPanePreview(pane, file){
+	// a file's tab: the editor is hidden and can't be typed into, the preview (localnotebooks.js) is in its place
+	pane.el.classList.toggle("previewing", Boolean(file));
+	pane.editor.contentEditable = file ? "false" : "true";
+	pane.preview?.remove(); // a PDF still being drawn stops
+	pane.preview = null;
+	if ( !file ) { return }
+	pane.editor.replaceChildren();
+	pane.preview = document.createElement("div");
+	pane.preview.className = "pane-preview";
+	pane.el.querySelector(".pane-scroll").append(pane.preview);
+	renderFilePreview(pane.preview, file);
 }
 
 function setPaneTab(pane, tab){
@@ -1601,10 +1636,13 @@ function focusPane(pane){
 }
 
 function showFocusedDocument(){
-	// the top bar, title, word counter and "last opened" follow the focused editor
+	// the top bar, title, word counter and "last opened" follow the focused editor; a file's tab has no name to edit
 	const tab = getActiveTab();
 	fillDocName(tab ? tab.name : "");
-	if ( validateUserConsent(false) ) { saveAsLastOpenedDocument(tab?.name || null) }
+	documentNameObject.readOnly = Boolean(tab?.file);
+	documentNameObject.placeholder = tab?.file ? tab.file.name : "Document Name";
+	document.body.classList.toggle("file-tab-focused", Boolean(tab?.file));
+	if ( validateUserConsent(false) && !tab?.file ) { saveAsLastOpenedDocument(tab?.name || null) }
 	handleWordCounter();
 	updateBlockSelect();
 }
