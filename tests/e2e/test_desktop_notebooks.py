@@ -37,7 +37,12 @@ def folders(tmp_path_factory):
 	(notes / "Plan.md").write_text("# Plan\n\n- [ ] one\n")
 	(notes / "Work/Report.html").write_text("<div>report</div>")
 	(notes / "Work/Daily/log.txt").write_text("line 1\nline 2\n")
-	(notes / "photo.png").write_bytes(b"\x89PNG")
+	(notes / "photo.png").write_bytes(b"\x89PNG\xff\x00")
+	(notes / "data.csv").write_text("name,count\napples,3\n")
+	(notes / "config.yaml").write_text("key: value\nlist:\n  - one\n")
+	(notes / "release.nfo").write_text("plain text, unknown kind\n")
+	(notes / "Media").mkdir()
+	(notes / "Media/clip.mp4").write_bytes(b"\x00\x00\x00\x18ftyp")
 	(base / "saved").mkdir()
 	return base
 
@@ -58,6 +63,7 @@ def desktop(server, folders):
 		# the dialogs' answers, and a trash of the test's own
 		"WRITEJS_PICK_FOLDER": str(folders / "notes"),
 		"WRITEJS_SAVE_DIR": str(folders / "saved"),
+		"WRITEJS_OPEN_LOG": str(folders / "opened.log"),
 		"XDG_DATA_HOME": str(folders / "data"),
 	}
 	process = subprocess.Popen([SERVER_BIN], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -121,8 +127,8 @@ def test_the_page_is_the_desktop_apps(app):
 
 def test_a_folder_opens_as_the_notebook(app, folders):
 	open_folder(app)
-	assert names(app) == ["Plan", "Report", "log"]
-	assert app.evaluate("readFolders().folders") == ["Work", "Work/Daily"]
+	assert names(app) == ["Plan", "Report", "config.yaml", "data.csv", "log"]
+	assert app.evaluate("readFolders().folders") == ["Media", "Work", "Work/Daily"]
 	assert app.evaluate("folderOfDocument('log')") == "Work/Daily"
 	assert app.text_content("#documents-tab") == "notes"
 	# the browser's notebook stays where it is, apart
@@ -134,6 +140,71 @@ def test_a_folder_opens_as_the_notebook(app, folders):
 	assert app.locator("#editor li[data-checked=false]").count() == 1
 	app.evaluate("openDocumentInTab('log')")
 	assert app.evaluate("[...document.querySelectorAll('#editor > div')].map(d => d.textContent)") == ["line 1", "line 2"]
+
+
+def test_every_file_shows_with_its_kind(app):
+	kind = lambda selector: app.get_attribute(f"#file-tree-list {selector} .file-icon", "data-kind")
+	assert kind('.tree-document[data-name="Plan"]') == "markdown"
+	assert kind('.tree-document[data-name="data.csv"]') == "table"
+	assert kind('.tree-document[data-name="config.yaml"]') == "data"
+	assert kind('.tree-file[data-path="photo.png"]') == "image"
+	assert kind('.tree-file[data-path="release.nfo"]') == "other"
+	app.evaluate("expandFolder('Media'); refreshFileTree(true)")
+	assert kind('.tree-file[data-path="Media/clip.mp4"]') == "video"
+
+
+def test_text_files_open_and_save_as_they_are(app, folders):
+	app.evaluate("openDocumentInTab('data.csv')")
+	assert app.evaluate("[...document.querySelectorAll('#editor > div')].map(d => d.textContent)") == ["name,count", "apples,3"]
+	app.click("#editor > div:last-child")
+	app.keyboard.press("End")
+	app.keyboard.press("Enter")
+	app.keyboard.type("pears,5")
+	app.click("#save-btn")
+	wait_until(lambda: (folders / "notes/data.csv").read_text() == "name,count\napples,3\npears,5\n")
+	# a new document named as a text file is that file
+	app.evaluate("createNewDocument()")
+	app.fill("#doc-name", "todo.yaml")
+	app.click("#editor")
+	app.keyboard.type("done: false")
+	app.click("#save-btn")
+	wait_until(lambda: (folders / "notes/todo.yaml").is_file())
+	assert (folders / "notes/todo.yaml").read_text() == "done: false\n"
+
+
+def file_menu(app, path):
+	app.click(f'#file-tree-list .tree-file[data-path="{path}"]')
+	return app.locator("#context-menu button").all_inner_texts()
+
+
+def test_other_files_open_with_the_system(app, folders):
+	assert file_menu(app, "photo.png")[:2] == ["Try to open anyway", "Open with system default"]
+	app.click("#context-menu button:text('Open with system default')")
+	wait_until(lambda: (folders / "opened.log").is_file())
+	assert (folders / "opened.log").read_text().strip() == str(folders / "notes/photo.png")
+
+
+def test_other_files_can_be_tried_as_text(app, folders):
+	# text: a document from then on
+	file_menu(app, "release.nfo")
+	app.click("#context-menu button:text('Try to open anyway')")
+	app.wait_for_function("getActiveTab()?.name === 'release.nfo'")
+	assert app.inner_text("#editor") .strip() == "plain text, unknown kind"
+	assert app.locator('#file-tree-list .tree-document[data-name="release.nfo"]').count() == 1
+	assert app.locator('#file-tree-list .tree-file[data-path="release.nfo"]').count() == 0
+	# not text: shown in a new document, the file stays as it is
+	file_menu(app, "photo.png")
+	app.click("#context-menu button:text('Try to open anyway')")
+	app.wait_for_function("getActiveTab()?.name === 'photo.png (as text)'")
+	assert (folders / "notes/photo.png").read_bytes() == b"\x89PNG\xff\x00"
+	app.evaluate("closeTab(getActiveTab().id)")
+
+
+def test_a_folder_goes_with_its_other_files(app, folders):
+	app.evaluate("deleteFolder('Media')")
+	wait_until(lambda: not (folders / "notes/Media").exists())
+	assert list((folders / "data/Trash/files").glob("Media*"))
+	assert app.locator('#file-tree-list .tree-file[data-path="Media/clip.mp4"]').count() == 0
 
 
 def test_saving_writes_the_file(app, folders):

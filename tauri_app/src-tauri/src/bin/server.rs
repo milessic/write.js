@@ -1,6 +1,6 @@
 //! The app's local server without a window, for the browser tests (tests/e2e/test_desktop_*.py) and development:
 //! the dialogs are answered from the environment, WRITEJS_PICK_FOLDER (the folder "picked") and WRITEJS_SAVE_DIR
-//! (where saved files go). WRITEJS_PORT, WRITEJS_CONFIG_DIR, WRITEJS_SERVER, WRITEJS_THEMES and WRITEJS_STATIC as in the app.
+//! (where saved files go); files opened with the system's app are listed in WRITEJS_OPEN_LOG. WRITEJS_PORT, WRITEJS_CONFIG_DIR, WRITEJS_SERVER, WRITEJS_THEMES and WRITEJS_STATIC as in the app.
 use std::path::{Path, PathBuf};
 use writejs_lib::{
     server::{self, AppState, Native},
@@ -20,6 +20,14 @@ impl Native for Headless {
 
     fn reveal(&self, path: &Path) {
         println!("reveal {}", path.display());
+    }
+
+    /// written to WRITEJS_OPEN_LOG, one path a line
+    fn open_path(&self, path: &Path) -> Result<(), String> {
+        use std::io::Write;
+        let log = std::env::var_os("WRITEJS_OPEN_LOG").ok_or("no WRITEJS_OPEN_LOG")?;
+        let mut file = std::fs::OpenOptions::new().create(true).append(true).open(log).map_err(|e| e.to_string())?;
+        writeln!(file, "{}", path.display()).map_err(|e| e.to_string())
     }
 }
 

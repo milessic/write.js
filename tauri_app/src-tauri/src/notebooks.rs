@@ -1,8 +1,10 @@
 //! Folders of this computer opened as notebooks (the page's side is static/localnotebooks.js).
 //! A notebook's folders are the sub-folders of its folder, up to MAX_FOLDER_DEPTH levels, and its documents are
-//! the .html (a Write.JS document as the editor stores it), .md / .markdown and .txt files in them; hidden files
-//! and folders (".name") are left out. Documents have one name in a notebook: a name taken by a file of another
-//! folder gets " (2)", " (3)"... The page keeps documents by name and a folder for each, this module keeps where
+//! the .html (a Write.JS document as the editor stores it), .md / .markdown and text files (.txt, .csv, .json, .yaml,
+//! code... TEXT_EXTENSIONS) in them; hidden files and folders (".name") are left out. The other files are listed too
+//! (files), they can be opened with the system's app, or tried as text: a text file is a document from then on.
+//! A document is named by its file, without the extension for .html, Markdown and .txt. Documents have one name in
+//! a notebook: a name taken by a file of another folder gets " (2)", " (3)"... The page keeps documents by name and a folder for each, this module keeps where
 //! each one is on the disk: a new document is written into its folder, a document moved to another folder is moved
 //! there, a deleted one goes to the trash. Nothing of a notebook goes to the Write.JS server.
 //!
@@ -53,13 +55,41 @@ pub enum Format {
     Txt,
 }
 
+/// opened as plain text, besides .txt: data, code, logs...
+pub const TEXT_EXTENSIONS: &[&str] = &[
+    "txt", "text", "log", "csv", "tsv", "json", "jsonc", "json5", "ndjson", "yaml", "yml", "toml", "ini", "cfg", "conf",
+    "env", "properties", "xml", "plist", "rst", "adoc", "asciidoc", "org", "tex", "bib", "js", "mjs", "cjs", "ts", "tsx",
+    "jsx", "py", "rb", "rs", "go", "java", "kt", "kts", "scala", "c", "h", "cpp", "cc", "hpp", "cs", "php", "pl", "swift",
+    "dart", "lua", "r", "sql", "sh", "bash", "zsh", "fish", "ps1", "bat", "cmd", "css", "scss", "sass", "less", "vue",
+    "svelte", "graphql", "gql", "proto", "gradle", "mk", "diff", "patch", "srt", "vtt",
+];
+/// text files known by their name, they have no extension
+const TEXT_NAMES: &[&str] = &[
+    "readme", "license", "licence", "changelog", "authors", "contributing", "notice", "todo", "makefile", "dockerfile",
+    "procfile", "gemfile", "rakefile", "vagrantfile", "jenkinsfile",
+];
+/// named without their extension: the notebook's own kinds of documents
+const PLAIN_NAMED: &[&str] = &["html", "htm", "md", "markdown", "txt"];
+
+fn extension_of(file_name: &str) -> Option<String> {
+    Path::new(file_name).extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase)
+}
+
 impl Format {
     fn from_extension(ext: &str) -> Option<Self> {
         match ext.to_ascii_lowercase().as_str() {
             "html" | "htm" => Some(Format::Html),
             "md" | "markdown" => Some(Format::Md),
-            "txt" => Some(Format::Txt),
+            ext if TEXT_EXTENSIONS.contains(&ext) => Some(Format::Txt),
             _ => None,
+        }
+    }
+
+    /// the format of a file, by its name; None for the files that aren't documents
+    fn of_file(file_name: &str) -> Option<Self> {
+        match extension_of(file_name) {
+            Some(ext) => Self::from_extension(&ext),
+            None => TEXT_NAMES.contains(&file_name.to_ascii_lowercase().as_str()).then_some(Format::Txt),
         }
     }
 
@@ -82,6 +112,9 @@ struct DocumentExtra {
     id: Option<String>,
     #[serde(default, skip_serializing_if = "is_empty_meta")]
     meta: Value,
+    /// a file of another kind opened as text (adopt_file): a document from then on
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    text: bool,
 }
 
 fn is_empty_meta(meta: &Value) -> bool {
@@ -115,12 +148,14 @@ struct Snapshot {
 #[derive(Default)]
 struct State {
     docs: BTreeMap<String, Doc>,
+    /// the files that aren't documents, by their path in the notebook
+    files: Vec<String>,
     folders: Vec<String>,
     /// document name -> folder, as the page placed them
     placement: BTreeMap<String, String>,
     sidecar: Sidecar,
     snapshot: Snapshot,
-    /// files left out: too big, not UTF-8, or deeper than MAX_FOLDER_DEPTH
+    /// what is in folders deeper than MAX_FOLDER_DEPTH, left out
     skipped: usize,
     /// loaded with the scan, handed to the page on its next load
     contents: BTreeMap<String, String>,
@@ -185,6 +220,35 @@ fn is_hidden(name: &str) -> bool {
     name.starts_with('.')
 }
 
+fn file_name_of(rel: &str) -> &str {
+    rel.rsplit('/').next().unwrap_or(rel)
+}
+
+fn is_under(rel: &str, dir: &str) -> bool {
+    rel == dir || rel.starts_with(&format!("{dir}/"))
+}
+
+/// a document's name from its file: "plan.md" -> "plan", "data.csv" -> "data.csv"
+fn document_name_of(file_name: &str) -> String {
+    match extension_of(file_name) {
+        Some(ext) if PLAIN_NAMED.contains(&ext.as_str()) => {
+            Path::new(file_name).file_stem().and_then(|s| s.to_str()).unwrap_or(file_name).to_string()
+        }
+        _ => file_name.to_string(),
+    }
+}
+
+/// the file of a new document: (stem, extension). A name with the extension of its format keeps it: "data.csv"
+fn new_file_parts(name: &str, format: Format) -> (String, String) {
+    let file = file_stem_for(name);
+    if Format::of_file(&file) == Some(format) {
+        if let (Some(stem), Some(ext)) = (Path::new(&file).file_stem().and_then(|s| s.to_str()), Path::new(&file).extension().and_then(|e| e.to_str())) {
+            return (stem.to_string(), ext.to_string());
+        }
+    }
+    (file, format.extension().to_string())
+}
+
 impl Notebook {
     fn abs(&self, rel: &str) -> PathBuf {
         rel.split('/').filter(|c| !c.is_empty()).fold(self.root.clone(), |p, c| p.join(c))
@@ -218,12 +282,8 @@ impl Notebook {
                 } else {
                     *skipped += 1;
                 }
-            } else if Path::new(&name).extension().and_then(|e| e.to_str()).and_then(Format::from_extension).is_some() {
-                if meta.len() > MAX_FILE_SIZE {
-                    *skipped += 1;
-                } else {
-                    out.push((child, false, meta));
-                }
+            } else {
+                out.push((child, false, meta));
             }
         }
     }
@@ -259,13 +319,16 @@ impl Notebook {
                 state.folders.push(rel);
                 continue;
             }
-            let path = Path::new(&rel);
-            let format = path.extension().and_then(|e| e.to_str()).and_then(Format::from_extension).unwrap();
-            let Ok(content) = fs::read_to_string(self.abs(&rel)) else {
-                state.skipped += 1; // not UTF-8 text
+            state.snapshot.files.insert(rel.clone(), (meta.modified().ok(), meta.len()));
+            let adopted = state.sidecar.documents.get(&rel).is_some_and(|e| e.text);
+            let format = Format::of_file(file_name_of(&rel)).or(adopted.then_some(Format::Txt));
+            // too big or not UTF-8 text: listed with the other files
+            let content = format.filter(|_| meta.len() <= MAX_FILE_SIZE).and_then(|_| fs::read_to_string(self.abs(&rel)).ok());
+            let (Some(format), Some(content)) = (format, content) else {
+                state.files.push(rel);
                 continue;
             };
-            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Untitled").to_string();
+            let stem = document_name_of(file_name_of(&rel));
             let mut name = stem.clone();
             for i in 2.. {
                 if !state.docs.contains_key(&name) {
@@ -277,7 +340,6 @@ impl Notebook {
             if !folder.is_empty() {
                 state.placement.insert(name.clone(), folder);
             }
-            state.snapshot.files.insert(rel.clone(), (meta.modified().ok(), meta.len()));
             state.contents.insert(name.clone(), content);
             state.docs.insert(name, Doc { rel, format });
         }
@@ -343,6 +405,8 @@ impl Notebook {
                 "documents": state.placement,
                 "colors": state.sidecar.colors,
             },
+            "files": state.files.iter().map(|rel| json!({ "name": file_name_of(rel), "path": rel, "folder": parent_rel(rel) })).collect::<Vec<_>>(),
+            "textExtensions": TEXT_EXTENSIONS,
             "skipped": state.skipped,
         })
     }
@@ -357,13 +421,15 @@ impl Notebook {
                 let folder = state.placement.get(&req.name).filter(|f| state.folders.contains(f)).cloned().unwrap_or_default();
                 let dir = folder_dir(&folder);
                 fs::create_dir_all(self.abs(&dir))?;
-                Doc { rel: self.free_file(&dir, &file_stem_for(&req.name), format.extension()), format }
+                let (stem, ext) = new_file_parts(&req.name, format);
+                Doc { rel: self.free_file(&dir, &stem, &ext), format }
             }
         };
         write_atomic(&self.abs(&doc.rel), req.content.as_bytes())?;
         if doc.format != Format::Html {
             // the ids and metadata the Markdown / text can't hold
-            let extra = DocumentExtra { id: req.id, meta: req.meta };
+            let text = state.sidecar.documents.get(&doc.rel).is_some_and(|e| e.text);
+            let extra = DocumentExtra { id: req.id, meta: req.meta, text };
             if state.sidecar.documents.get(&doc.rel) != Some(&extra) {
                 state.sidecar.documents.insert(doc.rel.clone(), extra);
                 self.save_sidecar(&state)?;
@@ -460,6 +526,11 @@ impl Notebook {
                 doc.rel = rel;
             }
         }
+        for file in state.files.iter_mut() {
+            if let Some(rel) = moved_rel(file, &from_dir, &to_dir) {
+                *file = rel;
+            }
+        }
         state.sidecar.documents = std::mem::take(&mut state.sidecar.documents)
             .into_iter()
             .map(|(rel, extra)| (moved_rel(&rel, &from_dir, &to_dir).unwrap_or(rel), extra))
@@ -479,6 +550,79 @@ impl Notebook {
         drop(state);
         self.changed(origin);
         Ok(())
+    }
+
+    /// a folder deleted by the page, after its documents: to the trash, with the other files in it
+    pub fn delete_folder(&self, folder: &str, origin: &str) -> Result<()> {
+        if !valid_folder(folder) {
+            return Err(NotebookError(400, "Invalid folder".into()));
+        }
+        let mut state = self.state.lock().unwrap();
+        let dir = folder_dir(folder);
+        let path = self.abs(&dir);
+        if path.is_dir() {
+            trash::delete(&path).map_err(|e| NotebookError(500, format!("Could not move '{dir}' to the trash: {e}")))?;
+        }
+        state.docs.retain(|_, doc| !is_under(&doc.rel, &dir));
+        state.files.retain(|rel| !is_under(rel, &dir));
+        state.sidecar.documents.retain(|rel, _| !is_under(rel, &dir));
+        state.sidecar.colors.retain(|f, _| !is_under(f, folder));
+        state.folders.retain(|f| !is_under(f, folder));
+        state.placement.retain(|_, f| !is_under(f, folder));
+        self.save_sidecar(&state)?;
+        state.snapshot = self.snapshot();
+        drop(state);
+        self.changed(origin);
+        Ok(())
+    }
+
+    /// "try to open anyway": a file that isn't a document, as text. UTF-8 text becomes a document of the notebook
+    /// (remembered: .writejs/notebook.json), anything else comes back as text to look at, the file stays as it is
+    pub fn adopt_file(&self, rel: &str, origin: &str) -> Result<Value> {
+        let mut state = self.state.lock().unwrap();
+        let Some(index) = state.files.iter().position(|f| f == rel) else {
+            return Err(NotebookError(404, format!("'{rel}' is not in the notebook")));
+        };
+        let path = self.abs(rel);
+        if fs::metadata(&path)?.len() > MAX_FILE_SIZE {
+            return Err(NotebookError(413, format!("'{}' is too big to open (over 8 MB)", file_name_of(rel))));
+        }
+        let content = match String::from_utf8(fs::read(&path)?) {
+            Ok(content) => content,
+            Err(err) => {
+                let bytes = err.into_bytes();
+                let shown = &bytes[..bytes.len().min(1024 * 1024)];
+                return Ok(json!({ "binary": true, "text": String::from_utf8_lossy(shown) }));
+            }
+        };
+        state.files.remove(index);
+        let base = file_name_of(rel).to_string();
+        let mut name = base.clone();
+        for i in 2.. {
+            if !state.docs.contains_key(&name) {
+                break;
+            }
+            name = format!("{base} ({i})");
+        }
+        state.sidecar.documents.entry(rel.to_string()).or_default().text = true;
+        self.save_sidecar(&state)?;
+        let folder = parent_rel(rel).to_string();
+        if !folder.is_empty() {
+            state.placement.insert(name.clone(), folder);
+        }
+        state.docs.insert(name.clone(), Doc { rel: rel.to_string(), format: Format::Txt });
+        drop(state);
+        self.changed(origin);
+        Ok(json!({ "document": { "name": name, "path": rel, "format": Format::Txt, "content": content, "id": null, "meta": {} } }))
+    }
+
+    /// a file or a document of the notebook on the disk, to open it with the system's app
+    pub fn path_of(&self, rel: &str) -> Result<PathBuf> {
+        let state = self.state.lock().unwrap();
+        if !state.files.iter().any(|f| f == rel) && !state.docs.values().any(|d| d.rel == rel) {
+            return Err(NotebookError(404, format!("'{rel}' is not in the notebook")));
+        }
+        Ok(self.abs(rel))
     }
 
     /// after a change on the disk: tells the pages when it changed what the notebook shows
@@ -604,12 +748,41 @@ mod tests {
         fs::write(dir.join("Work/a.html"), "<div>a</div>").unwrap();
         fs::write(dir.join("Work/Daily/b.txt"), "b").unwrap();
         fs::write(dir.join("image.png"), [0u8, 1]).unwrap();
+        fs::write(dir.join("Work/data.csv"), "a,b\n1,2\n").unwrap();
+        fs::write(dir.join("Work/broken.json"), [0xffu8, 0xfe]).unwrap();
+        fs::write(dir.join("Makefile"), "all:\n").unwrap();
         fs::write(dir.join(".hidden.md"), "x").unwrap();
         let data = notebook(&dir).data();
         let names: Vec<_> = data["documents"].as_array().unwrap().iter().map(|d| d["name"].as_str().unwrap()).collect();
-        assert_eq!(names, ["a", "a (2)", "b"]);
+        assert_eq!(names, ["Makefile", "a", "a (2)", "b", "data.csv"]);
+        // not text: listed as files
+        let files: Vec<_> = data["files"].as_array().unwrap().iter().map(|f| f["path"].as_str().unwrap()).collect();
+        assert_eq!(files, ["image.png", "Work/broken.json"]);
         assert_eq!(data["folders"]["folders"], json!(["Work", "Work/Daily"]));
-        assert_eq!(data["folders"]["documents"], json!({"a (2)": "Work", "b": "Work/Daily"}));
+        assert_eq!(data["folders"]["documents"], json!({"a (2)": "Work", "b": "Work/Daily", "data.csv": "Work"}));
+    }
+
+    #[test]
+    fn files_are_opened_as_text() {
+        let dir = tmp("adopt");
+        fs::write(dir.join("notes.conf2"), "key = value\n").unwrap();
+        fs::write(dir.join("photo.png"), [0x89u8, b'P', b'N', b'G', 0xff]).unwrap();
+        let nb = notebook(&dir);
+        nb.data();
+        let adopted = nb.adopt_file("notes.conf2", "c").unwrap();
+        assert_eq!(adopted["document"]["name"], "notes.conf2");
+        let binary = nb.adopt_file("photo.png", "c").unwrap();
+        assert_eq!(binary["binary"], true);
+        // remembered as a document, the picture stays a file
+        let data = nb.data();
+        assert_eq!(data["documents"][0]["name"], "notes.conf2");
+        assert_eq!(data["files"], json!([{"name": "photo.png", "path": "photo.png", "folder": ""}]));
+        // a new document named with a text extension keeps it
+        let doc = |name: &str| WriteDocument { name: name.into(), format: Some("txt".into()), content: "x".into(), id: None, meta: json!({}) };
+        nb.write_document(doc("todo.yaml"), "c").unwrap();
+        assert!(dir.join("todo.yaml").is_file());
+        nb.write_document(doc("plain"), "c").unwrap();
+        assert!(dir.join("plain.txt").is_file());
     }
 
     #[test]

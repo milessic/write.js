@@ -4,9 +4,11 @@
  *
  * Notebooks (menu > Notebooks): besides the app's notebook (localStorage, synced with the cloud when logged in), a
  * folder of the computer can be opened as the notebook. Its sub-folders are the notebook's folders and its .html, .md
- * and .txt files the documents: an .html file holds the document as the editor stores it (every feature), Markdown and
- * text files are converted when they are opened and when they are saved. Nothing of such a notebook goes to the cloud,
- * only the settings still sync (cloudsync.js).
+ * and text files (.txt, .csv, .json, .yaml, code...) the documents: an .html file holds the document as the editor
+ * stores it (every feature), Markdown and text files are converted when they are opened and when they are saved.
+ * The other files show in the tree too, with an icon of their kind (as the documents have); their menu opens them with
+ * the system's app, or tries them as text. Nothing of such a notebook goes to the cloud, only the settings still sync
+ * (cloudsync.js).
  * Which notebook is opened is a preference of this device (localNotebookKey); opening another one reloads the page.
  *
  * While a folder is opened, notebookStorage (script.js) is a LocalNotebookStorage: the documents and the folders are
@@ -146,6 +148,8 @@ class LocalNotebookStorage {
 			return [doc.name, unchanged ? known : doc];
 		}));
 		this.folders = JSON.stringify(data.folders);
+		this.files = data.files; // {name, path, folder}: the files that aren't documents
+		this.textExtensions = new Set(data.textExtensions);
 		this.keysCache = null;
 		return before;
 	}
@@ -174,7 +178,7 @@ class LocalNotebookStorage {
 			let doc = this.documents.get(name);
 			if ( doc && localDocumentHtml(doc) === value ) { return }
 			if ( !doc ) {
-				doc = { name, path: "", format: this.notebook.newFormat, content: "" };
+				doc = { name, path: "", format: this.formatOfName(name), content: "" };
 				this.documents.set(name, doc);
 			}
 			doc.html = value;
@@ -234,6 +238,45 @@ class LocalNotebookStorage {
 		localStorage.clear();
 	}
 
+	formatOfName(name){
+		// a new document named "data.csv" is a .csv file, "Plan" one in the notebook's format for new documents
+		const ext = fileExtension(name);
+		if ( ext === "html" || ext === "htm" ) { return "html" }
+		if ( ext === "md" || ext === "markdown" ) { return "md" }
+		return this.textExtensions.has(ext) ? "txt" : this.notebook.newFormat;
+	}
+
+	otherFiles(){
+		return this.files;
+	}
+
+	fileOf(name){
+		// the file of a document: its name on the disk (a new one's from its name and format), its path when written
+		const doc = this.documents.get(name);
+		if ( !doc ) { return null }
+		const fileName = doc.path ? doc.path.split("/").pop() : fileExtension(name) ? name : `${name}.${doc.format}`;
+		return { fileName, path: doc.path || null };
+	}
+
+	addDocument(doc){
+		// a file opened as text (tryOpenFile): a document, in its folder
+		this.documents.set(doc.name, doc);
+		this.files = this.files.filter((f) => f.path !== doc.path);
+		const folder = doc.path.includes("/") ? doc.path.slice(0, doc.path.lastIndexOf("/")) : "";
+		if ( folder ) {
+			const store = JSON.parse(this.folders);
+			store.documents[doc.name] = folder;
+			this.folders = JSON.stringify(store); // the app has it so already
+		}
+		this.keysCache = null;
+	}
+
+	deleteFolder(folder){
+		// after its documents: the folder goes to the trash with the other files in it
+		this.files = this.files.filter((f) => !isInFolder(f.folder, folder));
+		this.enqueue({ type: "delete-folder", folder });
+	}
+
 	relocateFolder(from, to){
 		// a folder renamed or moved (workspace.js): moved on the disk with everything in it, before the folders are written
 		this.enqueue({ type: "rename-folder", from, to });
@@ -242,8 +285,8 @@ class LocalNotebookStorage {
 	// writing to the folder
 	enqueue(op){
 		// a write that is waiting writes what the document holds by then: another one isn't needed
-		const waiting = this.queue.findLast((o) => op.type === "write" ? o.name === op.name : o.type === "folders" || o.type === "rename-folder");
-		if ( waiting && waiting.type === op.type && op.type !== "rename-folder" && op.type !== "delete" ) { return }
+		const waiting = this.queue.findLast((o) => op.type === "write" ? o.name === op.name : ["folders", "rename-folder", "delete-folder"].includes(o.type));
+		if ( waiting && waiting.type === op.type && (op.type === "write" || op.type === "folders") ) { return }
 		this.queue.push(op);
 		this.running ??= this.flush();
 	}
@@ -274,6 +317,8 @@ class LocalNotebookStorage {
 			await desktopRequest(`${base}/folders`, { method: "PUT", body: JSON.parse(this.folders) });
 		} else if ( op.type === "rename-folder" ) {
 			await desktopRequest(`${base}/folders/rename`, { method: "POST", body: { from: op.from, to: op.to } });
+		} else if ( op.type === "delete-folder" ) {
+			await desktopRequest(`${base}/folders/delete`, { method: "POST", body: { folder: op.folder } });
 		}
 	}
 
@@ -282,7 +327,7 @@ class LocalNotebookStorage {
 		// one at a time, a broken folder would fill the screen
 		if ( Date.now() - this.errorShown < notificationTimeoutLong ) { return }
 		this.errorShown = Date.now();
-		const what = op.name ? `'${escapeHtmlText(op.name)}'` : "the folders";
+		const what = op.name ? `'${escapeHtmlText(op.name)}'` : op.folder ? `'${escapeHtmlText(op.folder)}'` : "the folders";
 		createNotification(`Could not write ${what} to the notebook's folder: ${escapeHtmlText(err.message)}`, "error", notificationTimeoutLong, true);
 	}
 
@@ -330,7 +375,7 @@ function showLocalNotebook(){
 	tab.title = `${path}\nDrag to another side, or right-click for options`;
 	document.body.dataset.localNotebook = name;
 	if ( skipped ) {
-		createNotification(`${skipped} file${skipped === 1 ? " was" : "s were"} left out of '${escapeHtmlText(name)}': bigger than 8 MB, not text, or in folders nested deeper than ${maxFolderDepth} levels`, "info", notificationTimeoutLong, true);
+		createNotification(`${skipped} folder${skipped === 1 ? " was" : "s were"} left out of '${escapeHtmlText(name)}': folders can be nested up to ${maxFolderDepth} levels`, "info", notificationTimeoutLong, true);
 	}
 	// changes made elsewhere: outside of the app or in another window
 	const events = new EventSource(`/__writejs_app__/notebooks/${encodeURIComponent(window.localNotebook.id)}/events?token=${encodeURIComponent(desktopApp.token)}`);
@@ -369,6 +414,122 @@ async function reloadLocalNotebook(){
 	refreshFileTree(true);
 	renderTabs();
 	scheduleToc(); // toc.js
+}
+
+// the files in the tree
+const fileKinds = {
+	writejs: ["html", "htm"],
+	markdown: ["md", "markdown"],
+	text: ["txt", "text", "log", "rst", "adoc", "asciidoc", "org", "tex", "bib", "srt", "vtt"],
+	table: ["csv", "tsv", "xlsx", "xls", "ods", "numbers"],
+	data: ["json", "jsonc", "json5", "ndjson", "yaml", "yml", "toml", "ini", "cfg", "conf", "env", "properties", "xml", "plist"],
+	image: ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "tif", "tiff", "heic", "avif"],
+	pdf: ["pdf"],
+	office: ["doc", "docx", "odt", "rtf", "pages", "ppt", "pptx", "odp", "key", "epub"],
+	audio: ["mp3", "wav", "flac", "ogg", "oga", "m4a", "aac", "opus"],
+	video: ["mp4", "m4v", "mov", "mkv", "webm", "avi", "wmv"],
+	archive: ["zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "zst", "dmg", "iso"],
+};
+// the inside of the file icon (24x24, under the folded corner), a kind's mark
+const fileKindMarks = {
+	writejs: '<path d="M9 18l.6-2.4 4.6-4.6 1.8 1.8-4.6 4.6z"/>',
+	markdown: '<path d="M7.5 18v-5l2 2 2-2v5M15.5 13v5M13.5 16l2 2 2-2"/>',
+	text: '<path d="M8 13h8M8 17h5"/>',
+	table: '<path d="M8 12h8v6H8zM8 15h8M12 12v6"/>',
+	data: '<path d="M10 12c-1 0-1 .7-1 1.5S9 15 8 15c1 0 1 .7 1 1.5S9 18 10 18M14 12c1 0 1 .7 1 1.5s0 1.5 1 1.5c-1 0-1 .7-1 1.5s0 1.5-1 1.5"/>',
+	code: '<path d="M10 12.5 8 15l2 2.5M14 12.5l2 2.5-2 2.5"/>',
+	image: '<circle cx="10" cy="12.5" r="1.3"/><path d="M8 18l3-3 2 1.5 3-3.5"/>',
+	pdf: '<path d="M8 13h8M8 16h8M8 19h4"/>',
+	office: '<path d="M8 13h8M8 16h8M8 19h6"/>',
+	audio: '<path d="M11 18v-5.5l4-1V17"/><circle cx="10" cy="18" r="1"/><circle cx="14" cy="17" r="1"/>',
+	video: '<path d="M10 12.5v5l4.5-2.5z"/>',
+	archive: '<path d="M11 4h2M11 7h2M11 10h2M10.5 13h3v4h-3z"/>',
+	other: "",
+};
+
+function fileExtension(fileName){
+	const dot = fileName.lastIndexOf(".");
+	return dot > 0 ? fileName.slice(dot + 1).toLowerCase() : "";
+}
+
+function fileKind(fileName){
+	const ext = fileExtension(fileName);
+	const kind = Object.keys(fileKinds).find((k) => fileKinds[k].includes(ext));
+	if ( kind ) { return kind }
+	return window.localNotebookStorage?.textExtensions.has(ext) ? "code" : "other";
+}
+
+function fileTypeIcon(fileName){
+	const kind = fileKind(fileName);
+	const icon = document.createElement("span");
+	icon.className = "file-icon";
+	icon.dataset.kind = kind;
+	icon.setAttribute("aria-hidden", "true");
+	icon.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>${fileKindMarks[kind]}</svg>`;
+	return icon;
+}
+
+function addFileIcon(row, name){
+	// a document's row in the tree (workspace.js): the icon of its file's kind
+	const file = window.localNotebookStorage?.fileOf(name);
+	if ( !file ) { return }
+	row.classList.add("has-icon");
+	row.prepend(fileTypeIcon(file.fileName));
+}
+
+function treeFileItem(file, depth){
+	// a file that isn't a document: a click or a right click shows what can be done with it
+	const li = document.createElement("li");
+	li.setAttribute("role", "treeitem");
+	const row = treeRow("tree-file has-icon", file.name, depth);
+	row.prepend(fileTypeIcon(file.name));
+	row.dataset.path = file.path;
+	row.title = `${file.path}\nNot a document: click for what can be done with it`;
+	const menu = (e) => openContextMenu(e, [
+		{ label: "Try to open anyway", action: () => tryOpenFile(file) },
+		{ label: "Open with system default", action: () => openWithSystem(file.path) },
+		null,
+		...treePanelMenuItems(),
+	]);
+	row.addEventListener("click", menu);
+	row.addEventListener("contextmenu", menu);
+	li.append(row);
+	return li;
+}
+
+function documentFileMenuItems(names){
+	// in a document's menu in the tree (workspace.js)
+	const file = names.length === 1 ? window.localNotebookStorage?.fileOf(names[0]) : null;
+	if ( !file ) { return [] }
+	return [{ label: "Open with system default", action: () => openWithSystem(file.path), disabled: !file.path }];
+}
+
+async function tryOpenFile(file){
+	// text: a document of the notebook from then on; anything else: its text to look at, in a new tab, the file stays
+	let result;
+	try {
+		result = await desktopRequest(`/notebooks/${encodeURIComponent(window.localNotebook.id)}/files/open`, { method: "POST", body: { path: file.path } });
+	} catch ( err ) {
+		showDesktopError(err);
+		return;
+	}
+	if ( result.document ) {
+		window.localNotebookStorage.addDocument(result.document);
+		refreshFileTree(true);
+		openDocumentFromTree(result.document.name);
+		return;
+	}
+	const html = result.text.split(/\r?\n/).map((line) => `<div>${line ? escapeHtmlText(line) : "<br>"}</div>`).join("");
+	openNewTab(`${file.name} (as text)`, html, true);
+	createNotification(`'${escapeHtmlText(file.name)}' is not text: it is shown as text in a new document, the file stays as it is`, "warning", notificationTimeoutLong, true);
+}
+
+async function openWithSystem(path){
+	try {
+		await desktopRequest(`/notebooks/${encodeURIComponent(window.localNotebook.id)}/files/system`, { method: "POST", body: { path } });
+	} catch ( err ) {
+		showDesktopError(err);
+	}
 }
 
 // menu > Notebooks

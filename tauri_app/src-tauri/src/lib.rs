@@ -48,6 +48,10 @@ impl Native for TauriNative {
     fn reveal(&self, path: &Path) {
         let _ = tauri_plugin_opener::open_path(path, None::<&str>);
     }
+
+    fn open_path(&self, path: &Path) -> Result<(), String> {
+        tauri_plugin_opener::open_path(path, None::<&str>).map_err(|e| e.to_string())
+    }
 }
 
 fn is_local(url: &Url, origin: &str) -> bool {

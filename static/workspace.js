@@ -478,8 +478,11 @@ function renderDocumentTree(list, names, filter){
 	} else if ( filter ) {
 		const matches = names.filter(name => name.toLowerCase().includes(filter));
 		matches.forEach(name => list.append(treeMatchItem(name)));
-		if ( !matches.length ) { list.append(treeMessage("No matching documents.")) }
-	} else if ( !names.length && !readFolders().folders.length ) {
+		// a folder opened as the notebook: its other files too (localnotebooks.js)
+		const files = (notebookStorage.otherFiles?.() ?? []).filter(f => f.name.toLowerCase().includes(filter));
+		files.forEach(f => list.append(treeFileItem(f, 0)));
+		if ( !matches.length && !files.length ) { list.append(treeMessage("No matching documents.")) }
+	} else if ( !names.length && !readFolders().folders.length && !notebookStorage.otherFiles?.().length ) {
 		list.append(treeMessage("You don't have any saved documents yet. Just create one :)"));
 	} else {
 		renderFolders(list, names);
@@ -507,6 +510,12 @@ function renderFolders(list, names){
 	}
 	renderFolderLevel(list, "", store.folders, byFolder, 0);
 	loose.forEach(name => list.append(treeDocumentItem(name, name, 0)));
+	folderFiles("").forEach(f => list.append(treeFileItem(f, 0)));
+}
+
+function folderFiles(folder){
+	// a folder opened as the notebook lists its files that aren't documents too, after the documents (localnotebooks.js)
+	return (notebookStorage.otherFiles?.() ?? []).filter(f => f.folder === folder).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function renderFolderLevel(list, parent, folders, byFolder, depth){
@@ -556,6 +565,7 @@ function treeFolderItem(folder, folders, byFolder, depth){
 		group.setAttribute("role", "group");
 		renderFolderLevel(group, folder, folders, byFolder, depth + 1);
 		names.forEach(name => group.append(treeDocumentItem(name, name, depth + 1)));
+		folderFiles(folder).forEach(f => group.append(treeFileItem(f, depth + 1)));
 		if ( !group.children.length ) { group.append(treeMessage("Empty folder", depth + 1)) }
 		li.append(group);
 	}
@@ -567,6 +577,7 @@ function treeDocumentItem(name, label, depth){
 	li.setAttribute("role", "treeitem");
 	const row = treeRow("tree-document", label, depth);
 	row.dataset.name = name;
+	if ( notebookStorage.fileOf ) { addFileIcon(row, name) } // localnotebooks.js
 	const folder = folderOfDocument(name);
 	row.title = folder ? `${displayFolder(folder)} / ${name}` : name;
 	row.draggable = true;
@@ -595,6 +606,7 @@ function treeDocumentItem(name, label, depth){
 			{ label: "Open in new window" + (names.length > 1 ? "s" : ""), action: () => names.forEach(openDocumentWindow) },
 			{ label: "Duplicate" + count, action: () => duplicateDocuments(names) },
 			{ label: "Get Document Id", action: () => documentIdNotification(name), disabled: names.length > 1 },
+			...(notebookStorage.fileOf ? documentFileMenuItems(names) : []), // localnotebooks.js
 			{ label: "Delete" + count, danger: true, action: () => names.length > 1 ? deleteDocuments(names) : deleteDocumentInLocalStorage(name) },
 			...(names.length > 1 ? [{ label: "Clear selection", action: clearDocumentSelection }] : []),
 			null,
@@ -1942,11 +1954,14 @@ function deleteFolder(folder){
 	const store = readFolders();
 	const subfolders = store.folders.filter(f => f !== folder && isInFolder(f, folder));
 	const names = getDocumentNamesFromLocalStorage().filter(name => isInFolder(store.documents[name] || "", folder)).sort((a, b) => a.localeCompare(b));
-	if ( names.length || subfolders.length ) {
+	// a folder opened as the notebook: the folder's other files go to the trash with it (localnotebooks.js)
+	const files = (notebookStorage.otherFiles?.() ?? []).filter(f => isInFolder(f.folder, folder));
+	if ( names.length || subfolders.length || files.length ) {
 		const counts = [
 			names.length ? `${names.length} document${names.length === 1 ? "" : "s"}` : "",
 			subfolders.length ? `${subfolders.length} sub-folder${subfolders.length === 1 ? "" : "s"}` : "",
-		].filter(Boolean).join(" and ");
+			files.length ? `${files.length} other file${files.length === 1 ? "" : "s"}` : "",
+		].filter(Boolean).join(", ").replace(/, ([^,]*)$/, " and $1");
 		const shown = names.slice(0, 10).map(name => `- ${name}`).join("\n") + (names.length > 10 ? `\n...and ${names.length - 10} more` : "");
 		if ( !showConfirm(`Folder '${displayFolder(folder)}' is not empty. Delete it together with its ${counts}?` + (shown ? `\n\n${shown}` : "")) ) { return }
 	}
@@ -1954,6 +1969,7 @@ function deleteFolder(folder){
 		notebookStorage.removeItem(docPrefix + name);
 		closeTabsOfDocument(name);
 	}
+	notebookStorage.deleteFolder?.(folder);
 	store.folders = store.folders.filter(f => !isInFolder(f, folder));
 	for ( const [doc, f] of Object.entries(store.documents) ) {
 		if ( isInFolder(f, folder) ) { delete store.documents[doc] }

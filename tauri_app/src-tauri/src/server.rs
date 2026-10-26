@@ -52,6 +52,8 @@ pub trait Native: Send + Sync + 'static {
     fn pick_folder(&self) -> Option<PathBuf>;
     fn save_file(&self, file_name: &str) -> Option<PathBuf>;
     fn reveal(&self, path: &Path);
+    /// with the app the system opens it with
+    fn open_path(&self, path: &Path) -> Result<(), String>;
 }
 
 pub struct AppState {
@@ -147,6 +149,9 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/notebooks/{id}/documents/delete", post(delete_document))
         .route("/notebooks/{id}/folders", put(write_folders))
         .route("/notebooks/{id}/folders/rename", post(rename_folder))
+        .route("/notebooks/{id}/folders/delete", post(delete_folder))
+        .route("/notebooks/{id}/files/open", post(adopt_file))
+        .route("/notebooks/{id}/files/system", post(open_with_system))
         .route("/notebooks/{id}/reveal", post(reveal_notebook))
         .route("/notebooks/{id}/events", get(notebook_events))
         .route("/save", post(save_file))
@@ -510,6 +515,34 @@ async fn rename_folder(State(app): State<Arc<AppState>>, UrlPath(id): UrlPath<St
     let origin = client_of(&headers);
     with_notebook(&app, &id, move |nb| nb.rename_folder(&req.from, &req.to, &origin)).await?;
     Ok(Json(json!({ "renamed": true })))
+}
+
+#[derive(Deserialize)]
+struct FolderPath {
+    folder: String,
+}
+
+async fn delete_folder(State(app): State<Arc<AppState>>, UrlPath(id): UrlPath<String>, headers: HeaderMap, Json(req): Json<FolderPath>) -> AppResult<Json<Value>> {
+    let origin = client_of(&headers);
+    with_notebook(&app, &id, move |nb| nb.delete_folder(&req.folder, &origin)).await?;
+    Ok(Json(json!({ "deleted": true })))
+}
+
+#[derive(Deserialize)]
+struct FilePath {
+    path: String,
+}
+
+async fn adopt_file(State(app): State<Arc<AppState>>, UrlPath(id): UrlPath<String>, headers: HeaderMap, Json(req): Json<FilePath>) -> AppResult<Json<Value>> {
+    let origin = client_of(&headers);
+    Ok(Json(with_notebook(&app, &id, move |nb| nb.adopt_file(&req.path, &origin)).await?))
+}
+
+async fn open_with_system(State(app): State<Arc<AppState>>, UrlPath(id): UrlPath<String>, Json(req): Json<FilePath>) -> AppResult<Json<Value>> {
+    let path = with_notebook(&app, &id, move |nb| nb.path_of(&req.path)).await?;
+    let state = app.clone();
+    blocking(move || state.native.open_path(&path)).await?.map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, format!("No app opens it: {e}")))?;
+    Ok(Json(json!({ "opened": true })))
 }
 
 async fn reveal_notebook(State(app): State<Arc<AppState>>, UrlPath(id): UrlPath<String>) -> AppResult<Json<Value>> {

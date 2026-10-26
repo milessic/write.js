@@ -120,10 +120,12 @@ Settings > Vi mode turns on vi keybindings modeled on Neovim / VSCodeVim:
 ## Desktop app
 - Write.JS as an app for Linux, macOS and Windows (``tauri_app/``, [Tauri](https://tauri.app/)), the same app as in the browser
 - **Notebooks** (menu > Notebooks): besides the app's own notebook, a **folder of the computer can be opened as a notebook**
-  - its sub-folders are the notebook's folders (up to 5 levels), its `.html`, `.md` / `.markdown` and `.txt` files the documents; hidden files and folders are left out
+  - its sub-folders are the notebook's folders (up to 5 levels), its `.html`, `.md` / `.markdown` and text files (`.txt`, `.csv`, `.json`, `.yaml`, `.toml`, `.xml`, code, logs, `README`, `Makefile`...) the documents; hidden files and folders are left out
   - `.html` files hold a document as the editor stores it (every feature); Markdown and text files are converted when opened and saved back as Markdown / text
-  - new documents are `.html` or `.md`, picked for each folder in menu > Notebooks
-  - creating, saving, moving and renaming documents and folders changes the files; deleted documents go to the trash; other files in the folder are left as they are
+  - documents are named by their files, without the extension for `.html`, `.md` and `.txt` (`plan`, `data.csv`)
+  - every other file is listed too, with an icon of its kind (as the documents have); a click or a right click: *Try to open anyway* (text becomes a document from then on, anything else is shown as text in a new document and the file stays as it is) or *Open with system default*
+  - new documents are `.html` or `.md`, picked for each folder in menu > Notebooks; one named like a text file (`todo.yaml`) is that file
+  - creating, saving, moving and renaming documents and folders changes the files; deleted documents and folders go to the trash (a folder with the other files in it, the confirmation counts them)
   - what files can't hold (folder colors, the ids and metadata of Markdown / text documents) is kept in `.writejs/notebook.json` in the folder
   - changes made outside of the app (another editor, a sync tool) show right away
   - nothing of a folder goes to the cloud: logged in, only the settings sync, the cloud keeps the app's notebook as it was; Notebook cron runs for the app's notebook only

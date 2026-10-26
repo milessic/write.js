@@ -2455,3 +2455,33 @@ body.focus-mode .floating-headings-inner {
 .notebook-path {
 	overflow-wrap: anywhere;
 }
+
+/* desktop app, a folder opened as the notebook: the kind of each file in the tree (localnotebooks.js) */
+.tree-row.has-icon::before {
+	content: none;
+}
+.file-icon {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	width: 1.25em;
+	color: var(--muted);
+}
+.file-icon svg {
+	width: .95em;
+	height: .95em;
+}
+.file-icon[data-kind="writejs"] { color: var(--accent); }
+.file-icon[data-kind="markdown"] { color: var(--ink-2); }
+.file-icon[data-kind="table"] { color: var(--tone-ok); }
+.file-icon[data-kind="data"] { color: var(--tone-caution); }
+.file-icon[data-kind="code"] { color: var(--tone-warn); }
+.file-icon[data-kind="pdf"] { color: var(--tone-fail); }
+.file-icon[data-kind="image"],
+.file-icon[data-kind="video"],
+.file-icon[data-kind="audio"] { color: var(--accent); }
+/* not a document: quieter than the documents */
+.tree-file {
+	color: var(--muted);
+	font-style: italic;
+}
