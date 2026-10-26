@@ -5,25 +5,31 @@ import urllib.request
 from utils.controller import controller as c
 
 THEMES_URL = c.MILESSIC_THEMES
-THEMES_VERSION = "1.8.0"
+THEMES_VERSION = "1.12.0"
 DEFAULT_THEME = "writejs"
 THEME_COOKIE = "theme"
 # served from static/ when the themes server is unreachable
 BACKUP_STYLESHEET = f"static/themes/{DEFAULT_THEME}.css?v={THEMES_VERSION}"
 
 _RETRY_AFTER_SECONDS = 60
+# new themes are added to the registry without a version bump, so it is refreshed periodically
+_REGISTRY_TTL_SECONDS = 600
 _registry = None
+_registry_fetched_at = None
 _registry_failed_at = None
 
 
 def registry() -> dict | None:
-    """Theme registry from the milessic-themes server, cached in the process.
-    Returns None when the server is not configured or unreachable (retried after a minute)."""
-    global _registry, _registry_failed_at
-    if _registry is not None or not THEMES_URL:
+    """Theme registry from the milessic-themes server, cached in the process for ten minutes.
+    A failed refresh keeps the last good copy; returns None when the server is not configured
+    or has never been reachable (retried after a minute)."""
+    global _registry, _registry_fetched_at, _registry_failed_at
+    if not THEMES_URL:
+        return None
+    if _registry is not None and time.monotonic() - _registry_fetched_at < _REGISTRY_TTL_SECONDS:
         return _registry
     if _registry_failed_at and time.monotonic() - _registry_failed_at < _RETRY_AFTER_SECONDS:
-        return None
+        return _registry
     try:
         # some hosts reject urllib's default "Python-urllib/x.y" User-Agent with a 403
         request = urllib.request.Request(
@@ -31,6 +37,8 @@ def registry() -> dict | None:
         )
         with urllib.request.urlopen(request, timeout=3) as response:
             _registry = json.load(response)
+        _registry_fetched_at = time.monotonic()
+        _registry_failed_at = None
     except (OSError, ValueError):
         _registry_failed_at = time.monotonic()
     return _registry

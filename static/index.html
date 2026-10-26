@@ -19,7 +19,8 @@
 	<link rel="stylesheet" data-milessic-theme crossorigin="anonymous" href="{{ theme_stylesheet or 'static/themes/writejs.css' }}"
 		onerror="this.onerror=null;document.documentElement.dataset.theme='{{ default_theme or 'writejs' }}';this.href='{{ theme_backup_stylesheet or 'static/themes/writejs.css' }}'">
 	{% if themes_available %}
-	<script src="{{ themes_url }}/js/themes.js?v={{ themes_version }}" data-persist="false" data-restore="false"></script>
+	<!-- so=1: the picker lists recently used themes first (localStorage, see the privacy notice) -->
+	<script src="{{ themes_url }}/js/themes.js?v={{ themes_version }}&so=1" data-restore="false"></script>
 	{% endif %}
     <link rel="stylesheet" href="{{ static_url('styles.css') }}">
 	<link rel="preconnect" href="https://fonts.googleapis.com">

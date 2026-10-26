@@ -4,6 +4,9 @@
    Every other theme is an overlay (themes/<key>.css) keyed on
    <html data-theme="<key>"> that re-defines tokens and restyles components.
    ======================================================================== */
+/* picker previews live in their own unversioned file, so new themes need no version bump */
+@import url("/css/previews.css");
+
 :root {
   color-scheme: light;
   --page: #f9f9f7;
@@ -297,7 +300,7 @@ table.selectable tbody tr.selected :is(.status, .btn.ghost) { color: inherit; }
 .meter { display: inline-block; width: 60px; height: 6px; border-radius: 3px; background: var(--surface-2); vertical-align: middle; margin-right: .4rem; overflow: hidden; }
 .meter-fill { display: block; height: 100%; background: var(--tone, var(--tone-ok)); border-radius: 3px; }
 
-/* theme picker: each preview is a hard-coded miniature of its theme */
+/* theme picker: each preview is a hard-coded miniature of its theme, defined in previews.css */
 .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: .6rem; }
 .theme-option { position: relative; cursor: pointer; gap: .35rem; color: var(--ink); }
 .theme-option input { position: absolute; opacity: 0; pointer-events: none; }
@@ -315,31 +318,26 @@ table.selectable tbody tr.selected :is(.status, .btn.ghost) { color: inherit; }
 }
 .tp-bar { position: absolute; left: 0; right: 0; top: 0; height: 9px; background: var(--tp-bar); border-radius: var(--tp-r, 4px) var(--tp-r, 4px) 0 0; }
 .tp-btn { position: absolute; right: 6px; bottom: 5px; width: 22px; height: 8px; background: var(--tp-accent); border-radius: calc(var(--tp-r, 4px) / 2); }
-.tp-system { --tp-bg: linear-gradient(135deg, #f9f9f7 50%, #0d0d0d 50%); --tp-win: linear-gradient(135deg, #fcfcfb 50%, #1a1a19 50%); --tp-bar: transparent; --tp-accent: #2a78d6; }
-.tp-light { --tp-bg: #f9f9f7; --tp-win: #fcfcfb; --tp-bar: transparent; --tp-accent: #2a78d6; }
-.tp-dark { --tp-bg: #0d0d0d; --tp-win: #1a1a19; --tp-bar: transparent; --tp-accent: #3987e5; --tp-win-border: 1px solid rgba(255, 255, 255, .15); }
-.tp-aurora { --tp-bg: linear-gradient(160deg, #6fa8ff, #b88cf5 60%, #f7a8c8); --tp-win: rgba(255, 255, 255, .92); --tp-bar: linear-gradient(90deg, #ff5f57 0 4px, transparent 4px 6px, #febc2e 6px 10px, transparent 10px 12px, #28c840 12px 16px, transparent 16px) 5px 2.5px / 20px 4px no-repeat; --tp-accent: #007aff; --tp-r: 6px; --tp-shadow: 0 4px 10px rgba(0, 0, 0, .25); }
-.tp-pinstripe { --tp-bg: #6e7fa6; --tp-win: #dddddd; --tp-bar: repeating-linear-gradient(#eee 0 1px, #999 1px 2px); --tp-accent: linear-gradient(#fff, #bbb); --tp-r: 0; --tp-win-border: 1px solid #000; --tp-shadow: 2px 2px 0 rgba(0, 0, 0, .45); }
-.tp-onebit { --tp-bg: repeating-conic-gradient(#000 0 25%, #fff 0 50%) 0 0 / 2px 2px; --tp-win: #fff; --tp-bar: repeating-linear-gradient(#000 0 1px, #fff 1px 2px); --tp-accent: #000; --tp-r: 0; --tp-win-border: 1px solid #000; --tp-shadow: 1px 1px 0 #000; }
-.tp-slate { --tp-bg: linear-gradient(160deg, #d9e6f7, #eef2f8); --tp-win: #f3f3f3; --tp-bar: transparent; --tp-accent: #005fb8; --tp-r: 6px; --tp-shadow: 0 4px 10px rgba(0, 0, 0, .15); }
-.tp-bevel { --tp-bg: #008080; --tp-win: #c0c0c0; --tp-bar: linear-gradient(90deg, #000080, #1084d0); --tp-accent: #c0c0c0; --tp-r: 0; --tp-win-border: 1px solid #000; --tp-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #808080; }
-.tp-bevel .tp-bar { left: 2px; right: 2px; top: 2px; }
-.tp-bevel .tp-btn { box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #000; }
-.tp-rainbox { --tp-bg: linear-gradient(160deg, #e6f4ff, #ffe3ea); --tp-win: #fff; --tp-bar: linear-gradient(90deg, #e63946, #ffd60a, #2a9d4b, #1d6fd8); --tp-accent: #111; --tp-r: 8px; --tp-win-border: 1px solid #111; --tp-shadow: 2px 2px 0 #111; }
-.tp-rainbox .tp-btn { border-radius: 999px; }
-.tp-robin { --tp-bg: #81d8d0; --tp-win: #fff; --tp-bar: linear-gradient(90deg, transparent 45%, #fff 45% 55%, transparent 55%), #81d8d0; --tp-accent: #111; --tp-r: 2px; --tp-win-border: 1px solid #5fbfb6; --tp-shadow: 0 3px 8px rgba(0, 80, 75, .2); }
-.tp-bubbles { --tp-bg: radial-gradient(circle at 18% 30%, rgba(255, 255, 255, .95) 0 3px, transparent 4px), radial-gradient(circle at 88% 72%, rgba(255, 255, 255, .25) 0 6px, rgba(255, 255, 255, .9) 7px, transparent 8px), linear-gradient(#5ab9f5, #c9ecff 70%, #8fd14f); --tp-win: #fff; --tp-bar: linear-gradient(#fdfeff, #c9e2f6); --tp-accent: linear-gradient(#8fd2ff, #0a6fd0); --tp-r: 8px; --tp-win-border: 1px solid #8db8dc; }
-.tp-bubbles .tp-btn { border-radius: 999px; }
-.tp-glass { --tp-bg: radial-gradient(circle at 20% 30%, #ff4ecd, transparent 55%), radial-gradient(circle at 85% 70%, #22d3ee, transparent 55%), #1e1b4b; --tp-win: rgba(255, 255, 255, .18); --tp-bar: transparent; --tp-accent: linear-gradient(135deg, #67e8f9, #a78bfa); --tp-r: 8px; --tp-win-border: 1px solid rgba(255, 255, 255, .5); --tp-shadow: 0 4px 10px rgba(0, 0, 0, .3); }
-.tp-glass .tp-window { -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
-.tp-console { --tp-bg: #030603; --tp-win: #000; --tp-bar: #33ff66; --tp-accent: #33ff66; --tp-r: 0; --tp-win-border: 1px solid #33ff66; --tp-shadow: 0 0 6px rgba(51, 255, 102, .5); }
-.tp-writejs { --tp-bg: #f4f4f4; --tp-win: #fff; --tp-bar: #333; --tp-accent: #ff5722; --tp-r: 4px; --tp-win-border: 0; --tp-shadow: 0 2px 6px rgba(0, 0, 0, .15); }
-.tp-holistic-developer { --tp-bg: linear-gradient(135deg, #fff 50%, #222 50%); --tp-win: #fff; --tp-bar: transparent; --tp-accent: #9e9e9e; --tp-r: 3px; --tp-win-border: 1px solid #010101; }
-.tp-holistic-developer .tp-btn { border-radius: 0; box-shadow: 0 2px 0 #020202; }
-.tp-contrast-light { --tp-bg: #fff; --tp-win: #fff; --tp-bar: #000; --tp-accent: #0038b8; --tp-r: 2px; --tp-win-border: 2px solid #000; }
-.tp-contrast-dark { --tp-bg: #000; --tp-win: #000; --tp-bar: #fff; --tp-accent: #ffe600; --tp-r: 2px; --tp-win-border: 2px solid #fff; }
-.tp-colorblind-rg { --tp-bg: #f7f8fa; --tp-win: #fff; --tp-bar: linear-gradient(90deg, #0072b2 0 25%, #e69f00 25% 50%, #f0e442 50% 75%, #d55e00 75%); --tp-accent: #0063a0; }
-.tp-colorblind-by { --tp-bg: #f8f7f7; --tp-win: #fff; --tp-bar: linear-gradient(90deg, #009e8f 0 25%, #f06292 25% 50%, #4e342e 50% 75%, #c62828 75%); --tp-accent: #00695c; }
+/* theme dropdown (themes.js default): a lookup input with the active preview on its left, options in a .menu.
+   .theme-swatch shows a full-size preview scaled to 40%, so previews.css needs nothing extra. */
+.theme-swatch { display: inline-block; flex: none; width: 40px; height: 25px; overflow: hidden; border-radius: 3px; }
+.theme-swatch .theme-preview { width: 100px; height: 62px; border-width: 2.5px; border-radius: 7px; transform: scale(.4); transform-origin: 0 0; }
+.theme-dropdown { position: relative; max-width: 340px; }
+.theme-dropdown > input[role="combobox"] { width: 100%; padding-left: calc(40px + 1rem); padding-right: 2.2rem; text-overflow: ellipsis; }
+.theme-dropdown-toggle {
+  position: absolute; right: 2px; top: 2px; bottom: 2px; width: 2rem; padding: 0; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; background: none; border: 0; color: var(--ink-2);
+}
+.theme-dropdown-toggle:hover { color: var(--ink); }
+.theme-dropdown-toggle > span { width: .45rem; height: .45rem; margin-top: -.2rem; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); transition: transform .15s; }
+.theme-dropdown > input[aria-expanded="true"] ~ .theme-dropdown-toggle > span { margin-top: .2rem; transform: rotate(-135deg); }
+.theme-dropdown > .theme-swatch { position: absolute; left: .5rem; top: 50%; transform: translateY(-50%); pointer-events: none; }
+.theme-dropdown > .menu { position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px); max-height: min(360px, 60vh); overflow-y: auto; }
+.theme-dropdown > .menu[hidden] { display: none; }
+.theme-dropdown > .menu > [role="option"] { display: flex; align-items: center; gap: .6rem; }
+.theme-dropdown > .menu > [aria-selected="true"] .theme-label { font-weight: 700; }
+.theme-dropdown > .menu > p { margin: .4rem .7rem; }
+.theme-dropdown > .menu > .theme-dropdown-forget { font-size: .8rem; color: var(--ink-2); }
 
 @media (max-width: 640px) {
   .topbar { gap: .5rem; }

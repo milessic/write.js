@@ -1585,12 +1585,6 @@ body.show-line-numbers .line-numbers {
 .settings-search {
 	width: 100%;
 }
-/* the themes scroll in a strip of their own, not over the whole of Settings */
-.settings-modal #theme-picker {
-	max-height: 13.5rem;
-	overflow-y: auto;
-	padding: .2rem;
-}
 .search-hidden {
 	display: none !important;
 }
@@ -1660,11 +1654,11 @@ body.show-line-numbers .line-numbers {
 	color: var(--muted);
 }
 .diff-count-removed {
-	color: var(--tone-fail);
+	color: var(--danger);
 	font-weight: 600;
 }
 .diff-count-added {
-	color: var(--tone-ok);
+	color: var(--success-text);
 	font-weight: 600;
 }
 .compare-view .diff-removed,
@@ -1678,11 +1672,11 @@ body.show-line-numbers .line-numbers {
 }
 .compare-view .diff-removed {
 	background: color-mix(in srgb, var(--tone-fail) 16%, transparent);
-	border-left: 3px solid var(--tone-fail);
+	border-left: 3px solid var(--danger);
 }
 .compare-view .diff-added {
 	background: color-mix(in srgb, var(--tone-ok) 16%, transparent);
-	border-left: 3px solid var(--tone-ok);
+	border-left: 3px solid var(--success-text);
 }
 @media (max-width: 999px) {
 	.compare-grid {
@@ -2035,7 +2029,7 @@ body.apple-platform.doc-window-toc-open .doc-window-toc {
 	padding: 0;
 	border: 0;
 	background: none;
-	color: var(--tone-fail, #c62828);
+	color: var(--danger);
 	cursor: pointer;
 	pointer-events: auto;
 }
@@ -2072,7 +2066,7 @@ body.apple-platform.doc-window-toc-open .doc-window-toc {
 	border-radius: calc(var(--radius) / 2);
 }
 .line-comment.resolved {
-	color: var(--tone-ok, #2e7d32);
+	color: var(--success-text);
 }
 .line-comment:hover {
 	filter: brightness(1.2);
@@ -2107,7 +2101,7 @@ body.apple-platform.doc-window-toc-open .doc-window-toc {
 }
 .comments-list > .comment {
 	padding: .4rem .5rem;
-	border-left: 3px solid var(--tone-fail, #c62828);
+	border-left: 3px solid var(--danger);
 	border-radius: calc(var(--radius) / 4);
 	background: var(--surface);
 }
@@ -2115,7 +2109,7 @@ body.apple-platform.doc-window-toc-open .doc-window-toc {
 	margin-top: .4rem;
 }
 .comments-list > .comment.resolved {
-	border-left-color: var(--tone-ok, #2e7d32);
+	border-left-color: var(--success-text);
 	opacity: .75;
 }
 .comment-meta {
@@ -2134,7 +2128,7 @@ body.apple-platform.doc-window-toc-open .doc-window-toc {
 	margin-left: auto;
 }
 .comment-badge {
-	color: var(--tone-ok, #2e7d32);
+	color: var(--success-text);
 	font-weight: 600;
 }
 .comment-text {
@@ -2238,8 +2232,8 @@ body.apple-platform.doc-window-toc-open .doc-window-toc {
 	background: var(--muted);
 }
 .sync-dot[data-status="synced"] { background: var(--success-text, #2e9e4f) }
-.sync-dot[data-status="queued"] { background: #e0b020 }
-.sync-dot[data-status="progress"] { background: #2a78d6; animation: sync-pulse 1s ease-in-out infinite alternate }
+.sync-dot[data-status="queued"] { background: var(--tone-warn) }
+.sync-dot[data-status="progress"] { background: var(--accent); animation: sync-pulse 1s ease-in-out infinite alternate }
 .sync-dot[data-status="error"] { background: var(--danger, #d03b3b) }
 .sync-dot[data-status="pending"] { background: var(--muted, #898781) }
 .cloud-sync-tree [data-status="error"] .sync-status { color: var(--danger) }
@@ -2355,8 +2349,8 @@ body.apple-platform.doc-window-toc-open .doc-window-toc {
 .cron-mobile-label { display: none; }
 .cron-help p { margin: .3rem 0; }
 .cron-log { margin: 0; padding: 0; list-style: none; max-height: 14rem; overflow: auto; display: grid; gap: .2rem; }
-.cron-log li { display: flex; gap: .5rem; padding: .15rem .4rem; border-left: 3px solid var(--tone-ok, var(--line)); overflow-wrap: anywhere; }
-.cron-log li.cron-log-error { border-left-color: var(--tone-fail, #c62828); }
+.cron-log li { display: flex; gap: .5rem; padding: .15rem .4rem; border-left: 3px solid var(--success-text); overflow-wrap: anywhere; }
+.cron-log li.cron-log-error { border-left-color: var(--danger); }
 .cron-log-time { flex: none; font-family: "Cousine", ui-monospace, monospace; }
 @media (max-width: 760px) {
 	.cron-head { display: none; }
