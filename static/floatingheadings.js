@@ -40,7 +40,7 @@ function floatingHeadingsMode(){
 
 function focusTitleFloats(){
 	// on until turned off
-	return localStorage.getItem(focusTitleKey) !== "0";
+	return notebookStorage.getItem(focusTitleKey) !== "0";
 }
 
 function scheduleFloatingHeadings(){
@@ -158,14 +158,14 @@ function initFloatingHeadingsSettings(){
 			if ( !validateUserConsent() ) { e.target.checked = false; return }
 			const modes = readFloatingHeadings();
 			modes[device.key] = e.target.value;
-			localStorage.setItem(floatingHeadingsKey, JSON.stringify(modes));
+			notebookStorage.setItem(floatingHeadingsKey, JSON.stringify(modes));
 			scheduleFloatingHeadings();
 			if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 		}));
 	}
 	document.getElementById("setting-focus-title")?.addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
-		localStorage.setItem(focusTitleKey, e.target.checked ? "1" : "0");
+		notebookStorage.setItem(focusTitleKey, e.target.checked ? "1" : "0");
 		scheduleFloatingHeadings();
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});

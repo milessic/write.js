@@ -16,7 +16,7 @@ let lineSelectAnchor = null; // {editor, index}: the line a Shift+click or a dra
 
 function lineNumbersEnabled(){
 	// off until turned on
-	return validateUserConsent(false) && localStorage.getItem(lineNumbersKey) === "1";
+	return validateUserConsent(false) && notebookStorage.getItem(lineNumbersKey) === "1";
 }
 
 function applyLineNumbersSetting(){
@@ -292,7 +292,7 @@ function lineNumbersSettingsHtml(){
 function setLineNumbers(show){
 	// false without the consent to store the setting
 	if ( !validateUserConsent() ) { return false }
-	localStorage.setItem(lineNumbersKey, show ? "1" : "0");
+	notebookStorage.setItem(lineNumbersKey, show ? "1" : "0");
 	applyLineNumbersSetting();
 	if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	return true;

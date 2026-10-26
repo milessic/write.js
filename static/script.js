@@ -25,6 +25,9 @@ const tableCopyKey = "__tableCopy__"; // "html" when a copied table's text is it
 const viWrapNavigationKey = "__viWrapNavigation__"; // "0" when vi's j / k move by the lines of the text like Vim, not by the wrapped lines (Settings), goes with the notebook
 const viAltEscKey = "__viAltEsc__"; // the keys that also work as Esc in vi, e.g. ["j", "k"] or ["<C-Space>"] (Settings), goes with the notebook
 const viEscButtonKey = "__viEscButton__"; // "1" shows the vi Esc button on touch screens, this device only
+// the documents and the folders of the opened notebook: this browser's localStorage, or in the desktop app a folder of
+// the computer opened as a notebook (localnotebooks.js); the rest (settings, layout...) is in localStorage either way
+const notebookStorage = window.localNotebookStorage ?? localStorage;
 const viScriptUrl = document.currentScript?.dataset.viSrc || "static/vi.js"; // content-versioned by the server, see utils/static_files.py
 const docWindowParam = "window";
 // ?window={document id}: the document on its own, in a browser window (tab) of its own (docwindow.js)
@@ -54,7 +57,7 @@ document.body.classList.toggle("apple-platform",
 // set before anything is drawn: the document window never shows the app around the document
 document.body.classList.toggle("doc-window", isDocWindow);
 
-let userConsent = localStorage.getItem(userConsentKey);
+let userConsent = notebookStorage.getItem(userConsentKey);
 
 document.querySelector("body").classList.add("transitions-enabled");
 const fontStyleMark = `
@@ -263,7 +266,7 @@ function updateBlockSelect(){
 }
 
 function headingBreaksEnabled(){
-	return validateUserConsent(false) && localStorage.getItem(headingBreaksKey) === "1";
+	return validateUserConsent(false) && notebookStorage.getItem(headingBreaksKey) === "1";
 }
 
 function isHeadingBreak(el){
@@ -384,6 +387,7 @@ function createSettingsModal(){
 	// a search at the top hides the settings that don't match it (filterSettings)
 	const modal = createModal("Settings", `<input type="search" id="settings-search" class="settings-search" placeholder="Search settings" aria-label="Search settings" autocomplete="off" spellcheck="false">
 	<p class="muted small settings-empty" hidden>No settings match.</p>`
+	+ ( typeof desktopSettingsHtml !== "undefined" ? desktopSettingsHtml() : "" ) // the desktop app only (localnotebooks.js)
 	+ ( typeof cloudSyncSettingsHtml !== "undefined" ? cloudSyncSettingsHtml() : "" ) // logged in only (cloudsync.js)
 	+ `
 	<h3>Theme</h3>
@@ -413,7 +417,7 @@ function createSettingsModal(){
 			<button type="button" class="btn small" id="setting-vi-alt-esc-clear"${viModeEnabled() && viAltEscKeys().length ? "" : " hidden"}>Clear</button>
 			<button type="button" class="btn small" id="setting-vi-alt-esc-cancel" hidden>Cancel</button></div>
 		<p class="muted small">Click <em>Set</em>, press the keys, then <em>Save</em>: one key (like <kbd>Ctrl+Space</kbd>) or keys typed one after another (like <kbd>j</kbd><kbd>k</kbd>, within a second). <kbd>Backspace</kbd> takes back the last key.</p>
-		<label class="check"><input id="setting-vi-esc" type="checkbox"${localStorage.getItem(viEscButtonKey) === "1" ? " checked" : ""}${viModeEnabled() ? "" : " disabled"}>Show Esc on mobiles <span class="muted small">(this device only)</span></label>
+		<label class="check"><input id="setting-vi-esc" type="checkbox"${notebookStorage.getItem(viEscButtonKey) === "1" ? " checked" : ""}${viModeEnabled() ? "" : " disabled"}>Show Esc on mobiles <span class="muted small">(this device only)</span></label>
 		<p class="muted small">Starts in NORMAL mode: <kbd>i</kbd> to type, <kbd>Esc</kbd> to go back, <kbd>v</kbd> / <kbd>V</kbd> to select, <kbd>:w</kbd> saves, <kbd>:q</kbd> closes the tab, <kbd>:help</kbd> lists all the commands. The mode is shown in the top right corner.</p>
 	</div>
 	<h3>Focus mode</h3>
@@ -450,6 +454,7 @@ function createSettingsModal(){
 	initSettingsSearch(modal);
 	initThemeSettings();
 	initFloatingHeadingsSettings(); // floatingheadings.js
+	if ( typeof initDesktopSettings !== "undefined" ) { initDesktopSettings() }
 	if ( typeof initCloudSyncSettings !== "undefined" ) { initCloudSyncSettings() }
 	initLineNumbersSettings();
 	initTocSettings();
@@ -462,7 +467,7 @@ function createSettingsModal(){
 	initCronSettings();
 	document.querySelectorAll('input[name="setting-focus-mode"]').forEach((input) => input.addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
-		localStorage.setItem(focusModeKey, e.target.value);
+		notebookStorage.setItem(focusModeKey, e.target.value);
 		// already in focus mode: it shows the new way
 		if ( document.body.classList.contains("focus-mode") ) { toggleFocusMode(false); toggleFocusMode(true) }
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
@@ -475,24 +480,24 @@ function createSettingsModal(){
 	});
 	document.getElementById("setting-spellcheck").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
-		localStorage.setItem(spellcheckKey, e.target.checked ? "1" : "0");
+		notebookStorage.setItem(spellcheckKey, e.target.checked ? "1" : "0");
 		applySpellcheckSetting();
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
 	document.getElementById("setting-formatting-bar").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
-		localStorage.setItem(formattingBarKey, e.target.checked ? "1" : "0");
+		notebookStorage.setItem(formattingBarKey, e.target.checked ? "1" : "0");
 		applyFormattingBarSetting();
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
 	document.getElementById("setting-heading-breaks").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
-		localStorage.setItem(headingBreaksKey, e.target.checked ? "1" : "0");
+		notebookStorage.setItem(headingBreaksKey, e.target.checked ? "1" : "0");
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
 	document.getElementById("setting-vi-mode").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
-		localStorage.setItem(viModeKey, e.target.checked ? "1" : "0");
+		notebookStorage.setItem(viModeKey, e.target.checked ? "1" : "0");
 		document.getElementById("setting-vi-esc").disabled = !e.target.checked;
 		document.getElementById("setting-vi-wrap").disabled = !e.target.checked;
 		document.getElementById("setting-vi-alt-esc-set").disabled = !e.target.checked;
@@ -501,13 +506,13 @@ function createSettingsModal(){
 	});
 	document.getElementById("setting-vi-esc").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
-		localStorage.setItem(viEscButtonKey, e.target.checked ? "1" : "0");
+		notebookStorage.setItem(viEscButtonKey, e.target.checked ? "1" : "0");
 		window.WriteVi?.setEscButton(e.target.checked);
 	});
 	initViAltEscSettings();
 	document.getElementById("setting-vi-wrap").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
-		localStorage.setItem(viWrapNavigationKey, e.target.checked ? "1" : "0");
+		notebookStorage.setItem(viWrapNavigationKey, e.target.checked ? "1" : "0");
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
 }
@@ -606,14 +611,14 @@ function initViAltEscSettings(){
 			show();
 			return
 		}
-		localStorage.setItem(viAltEscKey, JSON.stringify(recorded));
+		notebookStorage.setItem(viAltEscKey, JSON.stringify(recorded));
 		stop();
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
 	cancelButton.addEventListener("click", stop);
 	clearButton.addEventListener("click", () => {
 		if ( !validateUserConsent() ) { return }
-		localStorage.removeItem(viAltEscKey);
+		notebookStorage.removeItem(viAltEscKey);
 		show();
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
@@ -621,7 +626,7 @@ function initViAltEscSettings(){
 
 function viAltEscKeys(){
 	try {
-		const keys = JSON.parse(localStorage.getItem(viAltEscKey));
+		const keys = JSON.parse(notebookStorage.getItem(viAltEscKey));
 		return Array.isArray(keys) ? keys.filter((key) => typeof key === "string" && key) : [];
 	} catch {
 		return [];
@@ -651,11 +656,11 @@ function viAltEscLabel(keys){
 
 function viWrapNavigationEnabled(){
 	// on unless turned off: j / k follow the wrapped lines
-	return localStorage.getItem(viWrapNavigationKey) !== "0";
+	return notebookStorage.getItem(viWrapNavigationKey) !== "0";
 }
 
 function viModeEnabled(){
-	return validateUserConsent(false) && localStorage.getItem(viModeKey) === "1";
+	return validateUserConsent(false) && notebookStorage.getItem(viModeKey) === "1";
 }
 
 function applyViMode(){
@@ -713,18 +718,8 @@ function exportDocument(){
     	const docName = document.getElementById("doc-name").value || "Untitled Document";
     	const content = getDocumntContentToExport();
     	const blob = new Blob([content], { type: "html" });
-    	const link = document.createElement("a");
-    	link.href = URL.createObjectURL(blob);
-		link.download = assignFileExtension(docName, "html");
-		/*
-		if ( docName.endsWith(".html")){
-    		link.download = docName;
-		} else{
-    		link.download = `${docName}.html`;
-		}
-		*/
-    	link.click();
-		createNotification(`Document '${link.download}' saved on the machine!`, 'info')
+		const fileName = assignFileExtension(docName, "html");
+		saveFileOnDevice(blob, fileName, `Document '${escapeHtmlText(fileName)}' saved on the machine!`);
 	} catch ( err ) {
 		informError("C,.markdown,.MD,mdould not export file as HTML!\n\nPlease report a bug", err)
 	}
@@ -799,7 +794,7 @@ function insertHTMLAtLastCaret(html){
 
 function formattingBarEnabled(){
 	// on until turned off
-	return localStorage.getItem(formattingBarKey) !== "0";
+	return notebookStorage.getItem(formattingBarKey) !== "0";
 }
 
 function applyFormattingBarSetting(){
@@ -808,7 +803,7 @@ function applyFormattingBarSetting(){
 
 function spellcheckEnabled(){
 	// on until turned off; stored, so the browser's own default (which iOS Safari drops) doesn't decide it
-	return !validateUserConsent(false) || localStorage.getItem(spellcheckKey) !== "0";
+	return !validateUserConsent(false) || notebookStorage.getItem(spellcheckKey) !== "0";
 }
 
 function applySpellcheckSetting(){
@@ -853,7 +848,7 @@ function saveDocumentToLocalStorage(){
 		documentNameValue = getDocumentName();
 		if ( !validateDocumentName() ){return}
 		let documentText = documentHtmlToStore();
-		localStorage.setItem(docPrefix + documentNameValue, documentText);
+		notebookStorage.setItem(docPrefix + documentNameValue, documentText);
 		setUserLoggedIn(null);
 		setUserConsent(userConsent);
 		saveAsLastOpenedDocument(documentNameValue);
@@ -871,8 +866,8 @@ function saveDocumentToLocalStorage(){
 function getDocumentNamesFromLocalStorage(){
 	if ( !validateUserConsent() ) { return }
 	const documentNames = [];
-	for ( let ls_object of Object.entries(localStorage) ){
-		let key = ls_object[0];
+	for ( let i = 0; i < notebookStorage.length; i++ ){
+		const key = notebookStorage.key(i);
 		if ( key.startsWith(docPrefix)){
 			let documentName = key.replace(docPrefix, '');
 			documentNames.push(documentName);
@@ -893,7 +888,7 @@ function performAutoSave(){
 		if (!validateDocumentName(false)){return};
 		let name = getDocumentName();
 		if (!getDocumentText()){return}
-		localStorage.setItem(docPrefix + name, documentHtmlToStore());
+		notebookStorage.setItem(docPrefix + name, documentHtmlToStore());
 		saveAsLastOpenedDocument(name)
 		markActiveTabSaved();
 		if ( typeof handleRemoteAutosave !== "undefined" ){
@@ -939,7 +934,7 @@ function deleteOverlay(){
 
 function getDocumentTextFromLocalStorage(name){
 	if ( !validateUserConsent() ) { return }
-	let text = localStorage.getItem(docPrefix + name);
+	let text = notebookStorage.getItem(docPrefix + name);
 	if (!text) {
 		informError(`Document with name "${name}" has not been found!`, '');
 		return null
@@ -956,7 +951,7 @@ function loadDocumentFromLocalStorage(name){
 function deleteDocumentInLocalStorage(name){
 	if ( !validateUserConsent() ) { return }
 	if ( showConfirm(`Delete document '${name}' ?`) ){
-		localStorage.removeItem(docPrefix + name);
+		notebookStorage.removeItem(docPrefix + name);
 		forgetDocumentFolder(name);
 		closeTabsOfDocument(name);
 		refreshFileTree();
@@ -1020,12 +1015,12 @@ function saveAsLastOpenedDocument(name=null){
 	if ( name === null ) {
 		name = getDocumentName();
 	}
-	localStorage.setItem(lastOpenedKey, name)
+	notebookStorage.setItem(lastOpenedKey, name)
 }
 
 function loadLastOpenedDocument(){
 	if ( !validateUserConsent() ) { return }
-	let documentName = localStorage.getItem(lastOpenedKey);
+	let documentName = notebookStorage.getItem(lastOpenedKey);
 	if ( documentName && documentName != "null"){
 		if ( loadDocumentFromLocalStorage(documentName)) {return};
 		saveAsLastOpenedDocument(null);
@@ -1123,16 +1118,22 @@ function exportMarkdown(){
 		const docName = getDocumentName();
 		const mdContent = getContentAsMarkdown(withoutScripts(withoutDocumentLinks(getDocumentText()))); // doclinks.js, scripting.js
 		const blob = new Blob([mdContent], { type: "text"});
-		const link = document.createElement("a");
-		link.href = URL.createObjectURL(blob);
-		fileName = assignFileExtension(docName,"markdown");
-		link.download = fileName;
-		link.click();
-		createNotification(`Document '${link.download}' saved on the machine!`, 'info')
+		const fileName = assignFileExtension(docName,"markdown");
+		saveFileOnDevice(blob, fileName, `Document '${escapeHtmlText(fileName)}' saved on the machine!`);
 	} catch ( err ) {
 		informError("Cannot export Markdown!\n\nPlese report this bug", err);
 	}
 	
+}
+
+function saveFileOnDevice(blob, fileName, message, timeout=notificationTimeout){
+	// a browser downloads the file; the desktop app asks where to save it (localnotebooks.js)
+	if ( typeof saveFileWithDialog !== "undefined" ) { return saveFileWithDialog(blob, fileName, message, timeout) }
+	const link = document.createElement("a");
+	link.href = URL.createObjectURL(blob);
+	link.download = fileName;
+	link.click();
+	createNotification(message, "info", timeout, true);
 }
 
 function generatePDF(){
@@ -1180,7 +1181,7 @@ function handleWordCounter(){
 }
 
 function focusModeShowsEditors(){
-	return localStorage.getItem(focusModeKey) === "editors";
+	return notebookStorage.getItem(focusModeKey) === "editors";
 }
 
 function toggleFocusMode(force){
@@ -1222,7 +1223,7 @@ function updateWordCounter(){
 
 function loadAutosaveSetting(){
 	if ( !validateUserConsent() ) { return }
-	let ls_setting = parseInt(localStorage.getItem(autosaveKey));
+	let ls_setting = parseInt(notebookStorage.getItem(autosaveKey));
 
 	if ( ls_setting ){
 		autosaveEnabled = 1;
@@ -1232,7 +1233,7 @@ function loadAutosaveSetting(){
 }
 function saveAutosaveSetting(){
 	if ( !validateUserConsent() ) { return }
-	localStorage.setItem(autosaveKey, autosaveEnabled);
+	notebookStorage.setItem(autosaveKey, autosaveEnabled);
 }
 function createNewDocument(){
 	let previousAutosave = autosaveEnabled;
@@ -1402,16 +1403,18 @@ function simulateEnter() {
 function isDeviceOnlyKey(key){
 	// state of this device that never goes to the cloud or a notebook backup
 	// (the workspace.js keys are looked up on call, that file loads after this one)
-	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viEscButtonKey, openedTabsKey, openedEditorsKey, tocSplitKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey, tocFoldsKey, cronExecutorKey, cronLastTickKey, cronLocalKey].includes(key);
+	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viEscButtonKey, openedTabsKey, openedEditorsKey, tocSplitKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey, tocFoldsKey, cronExecutorKey, cronLastTickKey, cronLocalKey].includes(key)
+		|| ( typeof isLocalNotebookKey !== "undefined" && isLocalNotebookKey(key) ); // the desktop app's notebooks (localnotebooks.js)
 }
 
-function getAllLocalStorageItems() {
+function getAllLocalStorageItems(storage=notebookStorage) {
+	// storage: localStorage for the cloud, which keeps this browser's notebook while a folder is opened (cloudsync.js)
 	if ( !validateUserConsent() ) { return [] }
 	const data = {}
-	for ( var i = 0, len = localStorage.length; i < len; ++i ) {
-	  const key = localStorage.key( i );
+	for ( var i = 0, len = storage.length; i < len; ++i ) {
+	  const key = storage.key( i );
 	  if ( isDeviceOnlyKey(key) ) { continue }
-	  data[key] = localStorage.getItem( localStorage.key( i ) );
+	  data[key] = storage.getItem( key );
 	}
 	return data
 }
@@ -1443,7 +1446,7 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 		}
 		const name = key.startsWith(docPrefix) ? key.replace(docPrefix, "") : null;
 		const unsaved = name === null ? null : unsavedDocumentHtml(name);
-		const existingDocument = localStorage.getItem(key)
+		const existingDocument = notebookStorage.getItem(key)
 		if ( existingDocument === value ) { synced[key] = value; continue }
 		if ( fromCloud && base[key] === hashText(value) ) { continue } // only this device changed it
 		const editedHere = existingDocument != null && ( !fromCloud || unsaved !== null || base[key] !== hashText(existingDocument) );
@@ -1454,7 +1457,7 @@ function loadDataFromLocalStorageJson(jsonObject, excludeCurrentDocument=false, 
 		if ( editedHere && !showConfirm(`!Do you want to overwrite '${key}'?`) ) { continue }
 
 		// set remote value
-		localStorage.setItem(key, value);
+		notebookStorage.setItem(key, value);
 		synced[key] = value;
 		if ( name !== null ) { reloadDocumentTabs(name) }
 	}
@@ -1516,12 +1519,12 @@ function resolveSyncConflicts(conflicts, sourceLabel, fromCloud, onResolved=null
 	modal.querySelectorAll("[data-pick]").forEach((btn) => btn.addEventListener("click", () => {
 		const pick = btn.dataset.pick;
 		if ( pick === "remote" ) {
-			localStorage.setItem(key, remote);
+			notebookStorage.setItem(key, remote);
 			reloadDocumentTabs(name, true);
 		} else if ( pick === "both" ) {
 			let copyName = `${name} (${sourceLabel.toLowerCase()})`;
 			for ( let i = 2; documentExists(copyName); i++ ) { copyName = `${name} (${sourceLabel.toLowerCase()} ${i})` }
-			localStorage.setItem(docPrefix + copyName, withDocumentId(remote, newDocumentId()));
+			notebookStorage.setItem(docPrefix + copyName, withDocumentId(remote, newDocumentId()));
 			const folder = folderOfDocument(name);
 			if ( folder ) { assignDocumentFolder(copyName, folder) }
 		}
@@ -1619,14 +1622,14 @@ function hashText(text){
 }
 
 function readSyncBase(){
-	try { return JSON.parse(localStorage.getItem(syncBaseKey)) || {} } catch ( err ) { return {} }
+	try { return JSON.parse(notebookStorage.getItem(syncBaseKey)) || {} } catch ( err ) { return {} }
 }
 
 function rememberSynced(entries, replace=false){
 	// entries: {key: value} the cloud holds now; replace after a push, when the cloud holds exactly them
 	const base = replace ? {} : readSyncBase();
 	for ( const [key, value] of Object.entries(entries) ) { base[key] = hashText(value) }
-	localStorage.setItem(syncBaseKey, JSON.stringify(base));
+	notebookStorage.setItem(syncBaseKey, JSON.stringify(base));
 }
 
 
@@ -1645,6 +1648,7 @@ function notebookDataHtml(){
 }
 
 function purgeLocalStorage(doConfirm=true){
+	// a folder opened as a notebook keeps its files, only what is in localStorage goes
 	if ( !doConfirm ){
 		localStorage.clear();
 	} else if ( confirm("Do you really want to delete everything from Browser?") ){
@@ -1890,7 +1894,7 @@ function countWords() {
 
 function saveSetting(key, value){
 	if ( !validateUserConsent() ) { return }
-	localStorage.setItem(key, value);
+	notebookStorage.setItem(key, value);
 }
 
 function adjustSelectionRange(n) {
@@ -2431,7 +2435,7 @@ function userConsentModal(force=false){
 function setUserConsent(value, reloadAfter=false){
 	if ( value == 1 ){
 		userConsent = 1
-		localStorage.setItem(userConsentKey, value);
+		notebookStorage.setItem(userConsentKey, value);
 		closeAllModals("Login");
 		if ( reloadAfter ) {
 			window.location.reload()
@@ -2439,7 +2443,7 @@ function setUserConsent(value, reloadAfter=false){
 	} else {
 		userConsent = 0;
 		// forget a previously given consent, so it isn't restored on the next visit
-		localStorage.removeItem(userConsentKey);
+		notebookStorage.removeItem(userConsentKey);
 		closeAllModals();
 	}
 }
@@ -2498,11 +2502,7 @@ function saveBackup(){
 		const data = JSON.stringify(getAllLocalStorageItems());
 		const compressedData = compressObject(data);
 		const blob = new Blob([compressedData], { type: "writejs"});
-		const link = document.createElement("a");
-		link.href = URL.createObjectURL(blob);
-		link.download = "writejs_backup.writejs";
-		link.click();
-		createNotification("Backup 'writejs_backup.writejs' has been created!<br>To laod it use console and function <b>loadDataFromLocalStorageJson(backupAsString)</b>", "info", notificationTimeoutLong, true);
+		saveFileOnDevice(blob, "writejs_backup.writejs", "Backup 'writejs_backup.writejs' has been created!<br>To laod it use console and function <b>loadDataFromLocalStorageJson(backupAsString)</b>", notificationTimeoutLong);
 	} catch ( err ) {
 		informError("Cannot save backup!", err)
 	}
@@ -2733,7 +2733,7 @@ function setEventForFilteringChildrenNodes(relatedInput, baseElQuerySelector, cl
 }
 
 function getUserLoggedIn(){
-	const val = localStorage.getItem(userLoggedInKey);
+	const val = notebookStorage.getItem(userLoggedInKey);
 	return val === "1" ? true : val === "0" ? false : null
 }
 
@@ -2741,7 +2741,7 @@ function setUserLoggedIn(state){
 	"set true, false or null"
 	const stateAsStr = state === true ? "1" : state === false ? "0" : "null";
 	userLoggedIn = state;
-	localStorage.setItem(userLoggedInKey, stateAsStr)
+	notebookStorage.setItem(userLoggedInKey, stateAsStr)
 }
 
 function createLoginExpiredNotification(){
@@ -2760,13 +2760,7 @@ function createAccountDeletedNotification(){
 }
 
 function countDocuments(){
-	let count = 0;
-	for ( let e of Object.entries(localStorage)){
-		if ( e.startsWith(docPrefix)){
-			count ++;
-		}
-	}
-	return count;
+	return (getDocumentNamesFromLocalStorage() || []).length;
 }
 
 function loadNotebookFromJson(json, excludeCurrentDocument=true, loadLastOpened=true, fromCloud=false){
@@ -2888,7 +2882,8 @@ function createOfflineModal(){
 	});
 }
 
-if ( "serviceWorker" in navigator ) {
+// the desktop app has its server with it, offline or not (localnotebooks.js)
+if ( "serviceWorker" in navigator && typeof desktopApp === "undefined" ) {
 	window.addEventListener("load", () => {
 		navigator.serviceWorker.register("/sw.js").catch((err) => console.warn("Service worker not registered", err));
 	});

@@ -60,7 +60,7 @@ function unescapeHtmlAttribute(text){
 }
 
 function documentIdOf(name){
-	return splitDocumentId(localStorage.getItem(docPrefix + name)).id;
+	return splitDocumentId(notebookStorage.getItem(docPrefix + name)).id;
 }
 
 function documentNameById(id){
@@ -76,11 +76,11 @@ function ensureDocumentIds(withTabs=true){
 	const seen = new Set();
 	for ( const name of getDocumentNamesFromLocalStorage() ) {
 		const key = docPrefix + name;
-		const stored = localStorage.getItem(key);
+		const stored = notebookStorage.getItem(key);
 		let { id } = splitDocumentId(stored);
 		if ( !id || seen.has(id) ) {
 			id = id ? newDocumentId() : legacyDocumentId(name);
-			localStorage.setItem(key, withDocumentId(stored, id));
+			notebookStorage.setItem(key, withDocumentId(stored, id));
 			// on load this runs before workspace.js, which has no tabs yet
 			if ( withTabs ) { tabs.filter(t => t.savedName === name).forEach(t => { t.docId = id }) }
 		}
@@ -105,7 +105,7 @@ function documentHtmlToStore(tab=getActiveTab(), name=getDocumentName(), html=ge
 	id ||= newDocumentId();
 	if ( tab ) { tab.docId = id }
 	if ( !documentFoldsSaved() ) { html = withoutFolds(html) } // folding.js
-	return withDocumentId(html, id, tab?.meta ?? (documentExists(name) ? splitDocumentId(localStorage.getItem(docPrefix + name)).meta : {}));
+	return withDocumentId(html, id, tab?.meta ?? (documentExists(name) ? splitDocumentId(notebookStorage.getItem(docPrefix + name)).meta : {}));
 }
 
 function fillDocumentLinkOptions(datalist){

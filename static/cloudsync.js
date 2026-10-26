@@ -9,6 +9,9 @@
  * - deleted here and unchanged in the cloud: deleted in the cloud, and the other way round
  * Auto-sync runs 5 seconds after the last save, but not sooner than a minute after the last sync;
  * a manual sync (Save, Settings > Cloud sync > Resync) runs right away.
+ * In the desktop app a folder of the computer can be the opened notebook (localnotebooks.js): its documents and
+ * folders stay on the computer, only the settings sync, and the cloud keeps this browser's notebook as it is. That is
+ * why this file reads localStorage, not notebookStorage.
  */
 const cloudFetchChunk = 200; // documents fetched in one request, see MAX_FETCH in routers/notebooks.py
 
@@ -101,9 +104,14 @@ function localDocumentsById(){
 	return docs;
 }
 
+function cloudSettingsOnly(){
+	// a folder opened as a notebook in the desktop app (localnotebooks.js)
+	return Boolean(window.localNotebook);
+}
+
 function collectMeta(){
 	// everything that goes with the notebook besides the documents, in a stable order to hash it
-	const items = getAllLocalStorageItems();
+	const items = getAllLocalStorageItems(localStorage);
 	const meta = {};
 	for ( const key of Object.keys(items).sort() ) {
 		if ( key.startsWith(docPrefix) || key === lastOpenedKey || key === userConsentKey ) { continue }
@@ -155,19 +163,20 @@ async function runCloudSync({ manual=false, onStart=false }={}){
 	if ( !navigator.onLine ) { markSyncPending(); return }
 	try {
 		const notebookId = await cloudDefaultNotebookId();
+		const settingsOnly = cloudSettingsOnly();
 		let manifest = await cloudRequest(`/${notebookId}/documents`);
-		if ( manifest.legacy ) {
+		if ( manifest.legacy && !settingsOnly ) {
 			await moveLegacyNotebook();
 			manifest = await cloudRequest(`/${notebookId}/documents`);
 		}
-		ensureDocumentIds();
+		if ( !settingsOnly ) { ensureDocumentIds() }
 		let state = readCloudState();
 		if ( state.notebookId !== notebookId ) { state = { notebookId, meta: null, docs: {}, lastSync: null } }
 		cloudManifest = new Map(manifest.documents.map(d => [d.doc_id, d]));
-		const welcome = onStart && !manifest.documents.length && !manifest.meta_version && !getDocumentNamesFromLocalStorage().length;
+		const welcome = !settingsOnly && onStart && !manifest.documents.length && !manifest.meta_version && !getDocumentNamesFromLocalStorage().length;
 
 		const conflicts = [];
-		const failed = await syncDocuments(state, conflicts);
+		const failed = settingsOnly ? 0 : await syncDocuments(state, conflicts);
 		await syncMeta(state, manifest.meta_version);
 		state.lastSync = Date.now();
 		writeCloudState(state);
@@ -358,8 +367,9 @@ function applyRemoteMeta(json, changedHere){
 	for ( const [key, value] of Object.entries(meta) ) {
 		if ( isDeviceOnlyKey(key) || key.startsWith(docPrefix) || key === lastOpenedKey || key === userConsentKey ) { continue }
 		if ( key === foldersKey ) {
-			// unchanged here: the cloud's folders, deleted ones go; changed on both sides: both are kept
-			changedHere ? mergeFolders(value) : localStorage.setItem(foldersKey, value);
+			// unchanged here: the cloud's folders, deleted ones go; changed on both sides: both are kept.
+			// With a folder opened (cloudSettingsOnly) they are this browser's notebook's, which doesn't change meanwhile
+			changedHere && !cloudSettingsOnly() ? mergeFolders(value) : localStorage.setItem(foldersKey, value);
 			continue
 		}
 		// settings changed on both sides: the cloud's win
@@ -411,6 +421,12 @@ function documentCloudStatus(state, id, doc){
 }
 
 function cloudSyncSettingsHtml(){
+	if ( cloudSettingsOnly() ) {
+		return `<h3>Cloud sync</h3>
+	<div class="stack">
+		<p class="muted small">The opened notebook is a folder on this computer: its documents stay there, only the settings sync with the cloud.</p>
+	</div>`;
+	}
 	return `<h3>Cloud sync</h3>
 	<div class="stack">
 		<div class="row"><button class="btn" id="cloud-sync-btn" type="button">Cloud sync</button></div>

@@ -36,7 +36,7 @@ const localStorageLimit = 5 * 1024 * 1024;
 function getNotebookWordCount(){
 	let total = 0;
 	for ( const name of getDocumentNamesFromLocalStorage() || [] ){
-		const html = localStorage.getItem(docPrefix + name) || "";
+		const html = notebookStorage.getItem(docPrefix + name) || "";
 		// block tags and line breaks separate words, other tags (b, i, span...) don't
 		const spaced = html.replace(/<(br|\/?(p|div|li|ul|ol|h[1-6]|tr|td|th|blockquote|pre))\b[^>]*>/gi, " ");
 		const text = new DOMParser().parseFromString(spaced, "text/html").body.textContent.trim();
@@ -47,6 +47,7 @@ function getNotebookWordCount(){
 
 function getNotebookUsage(){
 	let used = 0;
+	// the browser's storage, whichever notebook is opened
 	for ( let i = 0; i < localStorage.length; i++ ){
 		const key = localStorage.key(i);
 		used += key.length + (localStorage.getItem(key) || "").length;

@@ -37,7 +37,7 @@ let tocKeys = []; // the entry keys of tocHeadings
 
 function tocHeadingLevels(){
 	try {
-		const levels = JSON.parse(localStorage.getItem(tocHeadingsKey));
+		const levels = JSON.parse(notebookStorage.getItem(tocHeadingsKey));
 		if ( Array.isArray(levels) ) { return tocLevels.filter((level) => levels.includes(level)) }
 	} catch ( err ) {}
 	return tocLevels;
@@ -46,7 +46,7 @@ function tocHeadingLevels(){
 function tocListsChecklist(){
 	// off until turned on
 	try {
-		const levels = JSON.parse(localStorage.getItem(tocHeadingsKey));
+		const levels = JSON.parse(notebookStorage.getItem(tocHeadingsKey));
 		return Array.isArray(levels) && levels.includes(tocChecklistLevel);
 	} catch ( err ) {
 		return false;
@@ -191,7 +191,7 @@ function tocEntryText(el){
 
 function contentsFoldsSaved(){
 	// on until turned off
-	return validateUserConsent(false) && localStorage.getItem(saveContentsFoldsKey) !== "0";
+	return validateUserConsent(false) && notebookStorage.getItem(saveContentsFoldsKey) !== "0";
 }
 
 function tocEntryKeys(headings){
@@ -219,7 +219,7 @@ function saveTocFolds(tab, folds){
 	if ( !contentsFoldsSaved() || !tab?.docId ) { return }
 	const saved = readJsonSetting(tocFoldsKey);
 	if ( folds.size ) { saved[tab.docId] = [...folds] } else { delete saved[tab.docId] }
-	localStorage.setItem(tocFoldsKey, JSON.stringify(saved));
+	notebookStorage.setItem(tocFoldsKey, JSON.stringify(saved));
 }
 
 function renderToc(){
@@ -437,8 +437,8 @@ function applyTocHeight(height){
 function setupTocResizing(){
 	const panel = document.getElementById("toc-panel");
 	const resizer = document.getElementById("toc-resizer");
-	applyTocWidth(Number(localStorage.getItem(tocWidthKey)) || null);
-	applyTocHeight(Number(localStorage.getItem(tocHeightKey)) || null);
+	applyTocWidth(Number(notebookStorage.getItem(tocWidthKey)) || null);
+	applyTocHeight(Number(notebookStorage.getItem(tocHeightKey)) || null);
 	resizer.addEventListener("pointerdown", (e) => {
 		if ( e.button !== 0 ) { return }
 		e.preventDefault();
@@ -459,7 +459,7 @@ function setupTocResizing(){
 			resizer.removeEventListener("pointercancel", end);
 			document.body.classList.remove("tree-resizing", "resizing-rows");
 			const rect = panel.getBoundingClientRect();
-			if ( validateUserConsent(false) ) { localStorage.setItem(rows ? tocHeightKey : tocWidthKey, String(Math.round(rows ? rect.height : rect.width))) }
+			if ( validateUserConsent(false) ) { notebookStorage.setItem(rows ? tocHeightKey : tocWidthKey, String(Math.round(rows ? rect.height : rect.width))) }
 		};
 		resizer.addEventListener("pointermove", move);
 		resizer.addEventListener("pointerup", end);
@@ -468,7 +468,7 @@ function setupTocResizing(){
 	resizer.addEventListener("dblclick", () => {
 		const rows = dockedInRows(layout.tocSide);
 		rows ? applyTocHeight(null) : applyTocWidth(null);
-		localStorage.removeItem(rows ? tocHeightKey : tocWidthKey);
+		notebookStorage.removeItem(rows ? tocHeightKey : tocWidthKey);
 	});
 }
 
@@ -482,7 +482,7 @@ function applySplitShare(share){
 function setupSplitResizing(){
 	const dock = document.getElementById("side-dock");
 	const resizer = document.getElementById("split-resizer");
-	applySplitShare(Number(localStorage.getItem(tocSplitKey)) || null);
+	applySplitShare(Number(notebookStorage.getItem(tocSplitKey)) || null);
 	resizer.addEventListener("pointerdown", (e) => {
 		if ( e.button !== 0 ) { return }
 		e.preventDefault();
@@ -501,7 +501,7 @@ function setupSplitResizing(){
 			resizer.removeEventListener("pointercancel", end);
 			document.body.classList.remove("tree-resizing", "resizing-rows");
 			const share = dock.style.getPropertyValue("--split-share");
-			if ( share && validateUserConsent(false) ) { localStorage.setItem(tocSplitKey, String(Number(share).toFixed(3))) }
+			if ( share && validateUserConsent(false) ) { notebookStorage.setItem(tocSplitKey, String(Number(share).toFixed(3))) }
 		};
 		resizer.addEventListener("pointermove", move);
 		resizer.addEventListener("pointerup", end);
@@ -509,7 +509,7 @@ function setupSplitResizing(){
 	});
 	resizer.addEventListener("dblclick", () => {
 		applySplitShare(null);
-		localStorage.removeItem(tocSplitKey);
+		notebookStorage.removeItem(tocSplitKey);
 	});
 }
 
@@ -534,7 +534,7 @@ function initTocSettings(){
 	document.querySelectorAll('input[name="setting-toc-level"]').forEach((input) => input.addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
 		const levels = [...document.querySelectorAll('input[name="setting-toc-level"]:checked')].map((el) => Number(el.value));
-		localStorage.setItem(tocHeadingsKey, JSON.stringify(levels));
+		notebookStorage.setItem(tocHeadingsKey, JSON.stringify(levels));
 		scheduleToc();
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	}));

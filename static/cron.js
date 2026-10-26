@@ -56,7 +56,8 @@ window.addEventListener("load", applyCronSetting);
 
 // the setting
 function cronEnabled(){
-	return validateUserConsent(false) && localStorage.getItem(cronEnabledKey) === "1";
+	// the jobs name documents of the app's notebook: none run while a folder is opened as the notebook (localnotebooks.js)
+	return validateUserConsent(false) && notebookStorage.getItem(cronEnabledKey) === "1" && !window.localNotebook;
 }
 
 function cronSettingsHtml(){
@@ -67,7 +68,7 @@ function cronSettingsHtml(){
 function initCronSettings(){
 	document.getElementById("setting-cron")?.addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
-		localStorage.setItem(cronEnabledKey, e.target.checked ? "1" : "0");
+		notebookStorage.setItem(cronEnabledKey, e.target.checked ? "1" : "0");
 		applyCronSetting();
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
@@ -87,7 +88,7 @@ function applyCronSetting(){
 	cronLoaded = null;
 	cronMissedNotified = false;
 	// turned on again, what was due meanwhile wasn't missed
-	if ( validateUserConsent(false) ) { localStorage.removeItem(cronLastTickKey) }
+	if ( validateUserConsent(false) ) { notebookStorage.removeItem(cronLastTickKey) }
 	document.querySelector(".cron-modal")?.remove();
 	if ( !document.querySelector(".modal-container") ) { deleteOverlay() }
 }
@@ -98,7 +99,7 @@ function cronExecutor(){
 	let executor = readJsonSetting(cronExecutorKey);
 	if ( !executor.id ) {
 		executor = { id: newDocumentId(), name: cronBrowserName() };
-		localStorage.setItem(cronExecutorKey, JSON.stringify(executor));
+		notebookStorage.setItem(cronExecutorKey, JSON.stringify(executor));
 	}
 	return executor;
 }
@@ -130,7 +131,7 @@ function readCronLocal(){
 }
 
 function writeCronLocal(store){
-	localStorage.setItem(cronLocalKey, JSON.stringify(store));
+	notebookStorage.setItem(cronLocalKey, JSON.stringify(store));
 }
 
 function loadCronJobs(force=false){
@@ -355,8 +356,8 @@ async function runCronTick(reload){
 	renderCronRows();
 	if ( !cronLeader || !cronEnabled() ) { return }
 	const now = Date.now();
-	const lastTick = Number(localStorage.getItem(cronLastTickKey)) || now;
-	localStorage.setItem(cronLastTickKey, String(now));
+	const lastTick = Number(notebookStorage.getItem(cronLastTickKey)) || now;
+	notebookStorage.setItem(cronLastTickKey, String(now));
 	const missed = [];
 	for ( const job of cronJobs ) {
 		if ( !job.enabled || !isCronExecutor(job) || cronRunning.has(job.cron_id) || cronProblem(job.cron) ) { continue }
@@ -431,7 +432,7 @@ async function executeCronJob(job){
 		editor.className = "editor";
 		editor.dataset.docId = job.doc_id;
 		editor.dataset.docName = name;
-		editor.innerHTML = unsavedDocumentHtml(name) ?? splitDocumentId(localStorage.getItem(docPrefix + name)).html;
+		editor.innerHTML = unsavedDocumentHtml(name) ?? splitDocumentId(notebookStorage.getItem(docPrefix + name)).html;
 	}
 	const activators = [...editor.querySelectorAll(".script-activator")].filter((a) => a.textContent.trim() === job.script);
 	if ( activators.length !== 1 ) { return { ok: false, message: activators.length ? `${activators.length} scripts are named '${job.script}'` : `there is no script '${job.script}'` } }
@@ -515,7 +516,7 @@ function cronScriptNames(name){
 	// the display names of the document's scripts, as it is stored (or edited in its tab)
 	if ( !name || !documentExists(name) ) { return [] }
 	const root = document.createElement("div");
-	root.innerHTML = unsavedDocumentHtml(name) ?? splitDocumentId(localStorage.getItem(docPrefix + name)).html;
+	root.innerHTML = unsavedDocumentHtml(name) ?? splitDocumentId(notebookStorage.getItem(docPrefix + name)).html;
 	return [...new Set([...root.querySelectorAll(".script-activator")].map((a) => a.textContent.trim()).filter(Boolean))];
 }
 

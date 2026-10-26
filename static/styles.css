@@ -2424,3 +2424,34 @@ body.focus-mode .floating-headings-inner {
 .floating-heading:hover {
 	color: var(--accent);
 }
+
+/* desktop app, menu > Notebooks (localnotebooks.js) */
+.notebook-list {
+	display: flex;
+	flex-direction: column;
+	gap: .5rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.notebook-item {
+	display: flex;
+	flex-wrap: wrap;
+	gap: .5rem .75rem;
+	align-items: center;
+	justify-content: space-between;
+	padding: .5rem .75rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius, 8px);
+}
+.notebook-item.current {
+	border-color: var(--accent);
+}
+.notebook-info {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+.notebook-path {
+	overflow-wrap: anywhere;
+}

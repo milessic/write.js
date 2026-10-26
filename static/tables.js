@@ -579,7 +579,7 @@ function handleTableContextMenu(e){
 
 // the setting: a copied table's text is Markdown or HTML (goes with the notebook)
 function tableCopyAsHtml(){
-	return localStorage.getItem(tableCopyKey) === "html";
+	return notebookStorage.getItem(tableCopyKey) === "html";
 }
 
 function tableSettingsHtml(){
@@ -594,7 +594,7 @@ function tableSettingsHtml(){
 function initTableSettings(){
 	document.querySelectorAll('input[name="setting-table-copy"]').forEach((input) => input.addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
-		localStorage.setItem(tableCopyKey, e.target.value);
+		notebookStorage.setItem(tableCopyKey, e.target.value);
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	}));
 }

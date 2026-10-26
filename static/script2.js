@@ -156,7 +156,7 @@ function handleSessionExpired(){
 		return
 	}
 	// edits made offline never reached the cloud, deleting them loses them for good
-	const unsynced = localStorage.getItem(syncPendingKey)
+	const unsynced = notebookStorage.getItem(syncPendingKey)
 		? `<p class="danger"><strong>Some changes were made offline and were never uploaded to the cloud.</strong> If you delete them now, they are lost.</p>`
 		: "";
 	createModal("Session expired", `

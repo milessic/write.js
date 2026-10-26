@@ -49,7 +49,7 @@ const scriptForbidden = [
 	{ pattern: /\\u|\\x/, reason: "\\u and \\x escapes can't be used" },
 ];
 // names a script sees as undefined
-const scriptShadowed = ["localStorage", "sessionStorage", "scriptScopes"];
+const scriptShadowed = ["localStorage", "sessionStorage", "notebookStorage", "scriptScopes"];
 const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
 const scriptScopes = {}; // {document id: scope}: the variables of the document's running script
 // editor -> {undo: [change], redo: [change]}, a change {before, after, beforeKey, afterKey, activator}: the documents

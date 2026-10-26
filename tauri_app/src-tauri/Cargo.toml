@@ -1,0 +1,53 @@
+[package]
+name = "writejs"
+version = "0.1.0"
+description = "Write.JS desktop app"
+authors = ["Miłosz 'milessic' Jura"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.82"
+
+[lib]
+name = "writejs_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "writejs"
+path = "src/main.rs"
+
+# the local server alone, without a window: the browser tests drive it in Chromium (tests/e2e/test_desktop_*.py)
+[[bin]]
+name = "writejs-server"
+path = "src/bin/server.rs"
+required-features = ["test-server"]
+
+[features]
+# builds writejs-server, which isn't shipped with the app
+test-server = []
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+regex = "1"
+
+[dependencies]
+tauri = { version = "2.12", features = [] }
+tauri-plugin-dialog = "2.8"
+tauri-plugin-opener = "2.7"
+tauri-plugin-single-instance = "2.5"
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "fs"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures-util = "0.3"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream", "json"] }
+minijinja = { version = "3", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+md-5 = "0.10"
+base64 = "0.22"
+rand = "0.9"
+mime_guess = "2"
+notify = "8"
+trash = "5"
+dirs = "6"
+regex = "1"
+percent-encoding = "2"

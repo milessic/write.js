@@ -77,7 +77,7 @@ const folderTints = {
 	tabStrong: { light: 55, dark: [12, 26] },
 };
 
-let treePinned = localStorage.getItem(treePinnedKey) === "true";
+let treePinned = notebookStorage.getItem(treePinnedKey) === "true";
 // treeSide "left" / "right" / "top" / "bottom";
 // the table of contents (toc.js): tocSide "left" / "right" / "top" / "bottom" on its own or "tree" as a tab next to the documents,
 // treeTab is the tab the tree shows then
@@ -238,7 +238,7 @@ if ( window.visualViewport ) {
 // preferences
 function readJsonSetting(key){
 	try {
-		return JSON.parse(localStorage.getItem(key)) || {};
+		return JSON.parse(notebookStorage.getItem(key)) || {};
 	} catch ( err ) {
 		return {};
 	}
@@ -246,7 +246,7 @@ function readJsonSetting(key){
 
 function saveLayout(){
 	applyLayout();
-	if ( validateUserConsent(false) && !isDocWindow ) { localStorage.setItem(layoutKey, JSON.stringify(layout)) }
+	if ( validateUserConsent(false) && !isDocWindow ) { notebookStorage.setItem(layoutKey, JSON.stringify(layout)) }
 }
 
 function applyLayout(){
@@ -267,9 +267,9 @@ function setupTreeResizing(){
 	// the edge of the tree next to the editors is dragged to set its width, or its height above or below them
 	const tree = document.getElementById("file-tree");
 	const resizer = document.getElementById("file-tree-resizer");
-	applyTreeWidth(Number(localStorage.getItem(treeWidthKey)) || null, false);
-	applyTreeWidth(Number(localStorage.getItem(treeWidthMobileKey)) || null, true);
-	applyTreeHeight(Number(localStorage.getItem(treeHeightKey)) || null);
+	applyTreeWidth(Number(notebookStorage.getItem(treeWidthKey)) || null, false);
+	applyTreeWidth(Number(notebookStorage.getItem(treeWidthMobileKey)) || null, true);
+	applyTreeHeight(Number(notebookStorage.getItem(treeHeightKey)) || null);
 
 	resizer.addEventListener("pointerdown", (e) => {
 		if ( e.button !== 0 ) { return }
@@ -321,8 +321,8 @@ function applyTreeHeight(height){
 
 function saveTreeHeight(height){
 	if ( !validateUserConsent(false) ) { return }
-	if ( height ) { localStorage.setItem(treeHeightKey, String(height)) }
-	else { localStorage.removeItem(treeHeightKey) }
+	if ( height ) { notebookStorage.setItem(treeHeightKey, String(height)) }
+	else { notebookStorage.removeItem(treeHeightKey) }
 }
 
 function applyTreeWidth(width, mobile){
@@ -337,8 +337,8 @@ function applyTreeWidth(width, mobile){
 function saveTreeWidth(width, mobile){
 	if ( !validateUserConsent(false) ) { return }
 	const key = mobile ? treeWidthMobileKey : treeWidthKey;
-	if ( width ) { localStorage.setItem(key, String(width)) }
-	else { localStorage.removeItem(key) }
+	if ( width ) { notebookStorage.setItem(key, String(width)) }
+	else { notebookStorage.removeItem(key) }
 }
 
 function applyTreePinned(){
@@ -352,8 +352,8 @@ function toggleTreePinned(){
 	treePinned = !treePinned;
 	applyTreePinned();
 	if ( !validateUserConsent(false) ) { return }
-	if ( treePinned ) { localStorage.setItem(treePinnedKey, "true") }
-	else { localStorage.removeItem(treePinnedKey) }
+	if ( treePinned ) { notebookStorage.setItem(treePinnedKey, "true") }
+	else { notebookStorage.removeItem(treePinnedKey) }
 }
 
 function setTreeSide(side){
@@ -371,7 +371,7 @@ function saveOpenedTabs(){
 	if ( !validateUserConsent(false) || isDocWindow ) { return }
 	saveOpenedEditors();
 	const names = tabs.map(t => t.name).filter(name => name && documentExists(name));
-	localStorage.setItem(openedTabsKey, JSON.stringify([...new Set(names)]));
+	notebookStorage.setItem(openedTabsKey, JSON.stringify([...new Set(names)]));
 	savePositions();
 }
 
@@ -381,7 +381,7 @@ function saveOpenedEditors(){
 	const shownTabIds = focusLayout ? focusLayout.tabIds : panes.map(p => p.tabId);
 	const names = shownTabIds.map(id => tabById(id)?.name || "");
 	const focused = focusLayout ? Math.max(0, focusLayout.tabIds.indexOf(focusLayout.focused)) : panes.indexOf(focusedPane);
-	localStorage.setItem(openedEditorsKey, JSON.stringify({ names, focused }));
+	notebookStorage.setItem(openedEditorsKey, JSON.stringify({ names, focused }));
 }
 
 function restoreEditors(){
@@ -404,7 +404,7 @@ function restoreOpenedTabs(){
 	if ( !validateUserConsent(false) || isDocWindow ) { return }
 	let names = [];
 	try {
-		names = JSON.parse(localStorage.getItem(openedTabsKey)) || [];
+		names = JSON.parse(notebookStorage.getItem(openedTabsKey)) || [];
 	} catch ( err ) {}
 	for ( const name of names ) {
 		if ( documentExists(name) ) { createTab(name) }
@@ -412,7 +412,7 @@ function restoreOpenedTabs(){
 }
 
 function documentExists(name){
-	return validateUserConsent(false) && localStorage.getItem(docPrefix + name) !== null;
+	return validateUserConsent(false) && notebookStorage.getItem(docPrefix + name) !== null;
 }
 
 
@@ -459,7 +459,7 @@ function refreshFileTree(force=false){
 	const names = validateUserConsent(false) ? getDocumentNamesFromLocalStorage().sort((a, b) => a.localeCompare(b)) : null;
 	const filter = fileTreeSearch.value.trim().toLowerCase();
 	// autosave calls this on every keystroke, so skip rebuilding an unchanged tree
-	const folders = names === null ? null : localStorage.getItem(foldersKey);
+	const folders = names === null ? null : notebookStorage.getItem(foldersKey);
 	const key = JSON.stringify([names, folders, filter, getDocumentName(), layout.collapsedFolders]);
 	if ( !force && key === renderedTreeKey ) { return }
 	renderedTreeKey = key;
@@ -1005,7 +1005,7 @@ function renameDocumentTabs(oldName, newName){
 		if ( tab.id === focusedPane?.tabId ) { documentNameObject.value = newName }
 	}
 	if ( !renamed.length ) { return }
-	if ( localStorage.getItem(lastOpenedKey) === oldName ) { saveAsLastOpenedDocument(newName) }
+	if ( notebookStorage.getItem(lastOpenedKey) === oldName ) { saveAsLastOpenedDocument(newName) }
 	renderTabs();
 	saveOpenedTabs();
 }
@@ -1059,7 +1059,7 @@ function saveAllTabs(){
 		for ( const tab of unsaved.filter(t => tabLabelName(t)) ) {
 			const name = tabLabelName(tab);
 			const pane = paneOfTab(tab);
-			localStorage.setItem(docPrefix + name, documentHtmlToStore(tab, name, pane ? pane.editor.innerHTML : tab.html));
+			notebookStorage.setItem(docPrefix + name, documentHtmlToStore(tab, name, pane ? pane.editor.innerHTML : tab.html));
 			markTabSaved(tab, name);
 			// a tab that isn't shown reloads its document from localStorage (loadPane)
 			if ( !pane ) { tab.html = null }
@@ -1089,7 +1089,7 @@ function tabLabelName(tab){
 function removeRenamedDocument(oldName){
 	// the document was saved under a new name: the old one goes, unless another tab still holds it
 	if ( tabs.some(t => t.name === oldName) ) { return }
-	localStorage.removeItem(docPrefix + oldName);
+	notebookStorage.removeItem(docPrefix + oldName);
 	forgetDocumentFolder(oldName);
 }
 
@@ -1107,10 +1107,10 @@ function duplicateDocuments(names){
 	try {
 		for ( const name of names.filter(documentExists) ) {
 			const copy = duplicateName(name);
-			const stored = splitDocumentId(localStorage.getItem(docPrefix + name));
+			const stored = splitDocumentId(notebookStorage.getItem(docPrefix + name));
 			const html = unsavedDocumentHtml(name) ?? stored.html;
 			const meta = tabs.find(t => t.name === name && t.dirty)?.meta ?? stored.meta;
-			localStorage.setItem(docPrefix + copy, withDocumentId(html, newDocumentId(), meta));
+			notebookStorage.setItem(docPrefix + copy, withDocumentId(html, newDocumentId(), meta));
 			assignDocumentFolder(copy, folderOfDocument(name));
 			copies.push(copy);
 		}
@@ -1181,13 +1181,13 @@ function changeDocument(name, change){
 function changeStoredDocument(name, change){
 	// folds aren't saved with documents (Settings > Save folding state): a document that isn't opened stays as it is
 	if ( !documentExists(name) || (change.folds && !documentFoldsSaved()) ) { return 0 }
-	const stored = splitDocumentId(localStorage.getItem(docPrefix + name));
+	const stored = splitDocumentId(notebookStorage.getItem(docPrefix + name));
 	const root = document.createElement("div");
 	root.innerHTML = stored.html;
 	const changed = change(root, stored.meta);
 	if ( !changed ) { return changed }
 	try {
-		localStorage.setItem(docPrefix + name, withDocumentId(root.innerHTML, stored.id || documentIdOf(name) || newDocumentId(), stored.meta));
+		notebookStorage.setItem(docPrefix + name, withDocumentId(root.innerHTML, stored.id || documentIdOf(name) || newDocumentId(), stored.meta));
 	} catch ( err ) {
 		informError("Could not save document!", err);
 		return 0;
@@ -1214,7 +1214,7 @@ function storedDocumentMeta(name){
 	// the metadata of a document as its opened tab has it, else as it is stored
 	const tab = tabs.find(t => t.name === name && (paneOfTab(t) || t.html !== null));
 	if ( tab ) { return tab.meta ?? {} }
-	return documentExists(name) ? splitDocumentId(localStorage.getItem(docPrefix + name)).meta : {};
+	return documentExists(name) ? splitDocumentId(notebookStorage.getItem(docPrefix + name)).meta : {};
 }
 
 function tabDocumentMeta(tab){
@@ -1539,7 +1539,7 @@ function loadPane(pane){
 	let html = tab.html;
 	if ( html === null ) {
 		// the stored document's id stays on the tab, the editor shows only the content (doclinks.js)
-		const stored = splitDocumentId(documentExists(tab.name) ? localStorage.getItem(docPrefix + tab.name) : "");
+		const stored = splitDocumentId(documentExists(tab.name) ? notebookStorage.getItem(docPrefix + tab.name) : "");
 		html = stored.html;
 		if ( stored.id ) { tab.docId = stored.id }
 		tab.meta = stored.meta;
@@ -1765,7 +1765,7 @@ function savePositions(){
 	if ( !validateUserConsent(false) || isDocWindow ) { return }
 	tabs.forEach(t => { const pane = paneOfTab(t); if ( pane ) { t.position = { scroll: pane.el.querySelector(".pane-scroll").scrollTop, caret: t.position?.caret || null } } });
 	const positions = Object.fromEntries(tabs.filter(t => t.savedName && t.position).map(t => [t.savedName, t.position]));
-	localStorage.setItem(docPositionsKey, JSON.stringify(positions));
+	notebookStorage.setItem(docPositionsKey, JSON.stringify(positions));
 }
 
 document.addEventListener("selectionchange", () => {
@@ -1789,7 +1789,7 @@ function readFolders(){
 
 function writeFolders(store){
 	if ( !validateUserConsent() ) { return }
-	localStorage.setItem(foldersKey, JSON.stringify(store));
+	notebookStorage.setItem(foldersKey, JSON.stringify(store));
 	refreshFileTree();
 }
 
@@ -1930,6 +1930,8 @@ function relocateFolder(folder, path){
 	layout.collapsedFolders = layout.collapsedFolders.map(moved);
 	expandFolder(parentFolder(path));
 	saveLayout();
+	// a folder opened as the notebook moves the folder on the disk, with whatever else is in it (localnotebooks.js)
+	notebookStorage.relocateFolder?.(folder, path);
 	writeFolders(store);
 	renderTabs();
 	syncFolders();
@@ -1949,7 +1951,7 @@ function deleteFolder(folder){
 		if ( !showConfirm(`Folder '${displayFolder(folder)}' is not empty. Delete it together with its ${counts}?` + (shown ? `\n\n${shown}` : "")) ) { return }
 	}
 	for ( const name of names ) {
-		localStorage.removeItem(docPrefix + name);
+		notebookStorage.removeItem(docPrefix + name);
 		closeTabsOfDocument(name);
 	}
 	store.folders = store.folders.filter(f => !isInFolder(f, folder));
@@ -2064,7 +2066,7 @@ function deleteDocuments(names){
 	if ( !showConfirm(`Delete ${names.length} documents?\n\n${shown}`) ) { return }
 	const store = readFolders();
 	for ( const name of names ) {
-		localStorage.removeItem(docPrefix + name);
+		notebookStorage.removeItem(docPrefix + name);
 		delete store.documents[name];
 		closeTabsOfDocument(name);
 	}
@@ -2093,7 +2095,7 @@ function mergeFolders(json){
 	store.folders = normalizeFolders([...store.folders, ...folders]);
 	Object.assign(store.documents, incoming.documents && typeof incoming.documents === "object" ? incoming.documents : {});
 	Object.assign(store.colors, incoming.colors && typeof incoming.colors === "object" ? incoming.colors : {});
-	localStorage.setItem(foldersKey, JSON.stringify(store));
+	notebookStorage.setItem(foldersKey, JSON.stringify(store));
 	renderTabs();
 }
 
@@ -2105,7 +2107,7 @@ function normalizeFolders(folders){
 
 function migratePathFolders(){
 	// documents named "folder/name" were shown in folders before folders existed; keep them there
-	if ( !validateUserConsent(false) || localStorage.getItem(foldersKey) !== null ) { return }
+	if ( !validateUserConsent(false) || notebookStorage.getItem(foldersKey) !== null ) { return }
 	const store = { folders: [], documents: {} };
 	for ( const name of getDocumentNamesFromLocalStorage() ) {
 		const parts = name.split(folderSeparator);
@@ -2116,7 +2118,7 @@ function migratePathFolders(){
 		store.documents[name] = folder;
 	}
 	store.folders = normalizeFolders(store.folders);
-	if ( store.folders.length ) { localStorage.setItem(foldersKey, JSON.stringify(store)) }
+	if ( store.folders.length ) { notebookStorage.setItem(foldersKey, JSON.stringify(store)) }
 }
 
 

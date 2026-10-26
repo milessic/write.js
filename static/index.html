@@ -15,6 +15,10 @@
 	<meta name="description" content="Write.js: A satile app for creating, editing, and managing documents. Save locally with localStorage, sync to a remote database after login, and easily import/export in HTML or Markdown formats. Streamline your writing workflow!">
 	<meta name="keywords" content="document editor, online writing app, save documents, localStorage, remote database, document management, export HTML, import HTML, export Markdown, import Markdown, writing tool, document synchronization, write and save, markdown editor, HTML editor">
 		<title>Write.JS</title>
+	{% if desktop_app %}
+	<!-- the desktop app (tauri_app/): the page's key to the app's own API (localnotebooks.js) -->
+	<meta name="writejs-app-token" content="{{ app_token }}">
+	{% endif %}
 	<!-- milessic-themes: falls back to the bundled Write.js theme if the themes server fails -->
 	<link rel="stylesheet" data-milessic-theme crossorigin="anonymous" href="{{ theme_stylesheet or 'static/themes/writejs.css' }}"
 		onerror="this.onerror=null;document.documentElement.dataset.theme='{{ default_theme or 'writejs' }}';this.href='{{ theme_backup_stylesheet or 'static/themes/writejs.css' }}'">
@@ -49,6 +53,10 @@
 					<button role="menuitem" id="open-doc-btn">File Explorer</button>
 					<button role="menuitem" id="toc-btn">Table Of Contents</button>
 					<button role="menuitem" id="import-doc-btn">Import Document</button>
+					{% if desktop_app %}
+					<!-- the app's notebook or a folder of the computer (localnotebooks.js) -->
+					<button role="menuitem" id="notebooks-btn">Notebooks</button>
+					{% endif %}
 					<!-- the document's own options (search, insert, export...) are in its right-click menu: a tab, an editor's
 					     head or the name above (documentMenuItems, workspace.js) -->
 					<hr>
@@ -66,7 +74,7 @@
 					<button role="menuitem" id="cron-btn" hidden>Notebook Cron</button>
 					<button role="menuitem" id="focus-mode-btn">Focus Mode</button>
 					<hr>
-					<button role="menuitem" id="offline-btn">Install / Use offline</button>
+					<button role="menuitem" id="offline-btn"{% if desktop_app %} hidden{% endif %}>Install / Use offline</button>
 					<a role="menuitem" id="privacy-link" href="/privacy" target="_blank">Privacy Policy</a>
 					<a role="menuitem" id="terms-link" href="/terms" target="_blank">Terms of Service</a>
 					<button role="menuitem" id="consent-btn" onclick="userConsentModal(true)">Storage consent</button>
@@ -240,6 +248,9 @@
 	-->
 	<script src="{{ static_url('showdown.min.js') }}"></script>
 	<script src="{{ static_url('pako.js') }}"></script>
+	{% if desktop_app %}
+	<script src="{{ static_url('localnotebooks.js') }}"></script>
+	{% endif %}
     <script src="{{ static_url('script.js') }}" data-vi-src="{{ static_url('vi.js') }}"></script>
     <script src="{{ static_url('doclinks.js') }}"></script>
     <script src="{{ static_url('workspace.js') }}"></script>

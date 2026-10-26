@@ -93,7 +93,7 @@ window.WriteVi = {
 		// the editors change size without the window: a side panel opened, closed or resized
 		layoutObserver.observe(document.getElementById("editor-grid") || document.body);
 		setMode("normal");
-		WriteVi.setEscButton(localStorage.getItem(viEscButtonKey) === "1");
+		WriteVi.setEscButton(notebookStorage.getItem(viEscButtonKey) === "1");
 	},
 	disable(){
 		if ( !enabled ) { return }

@@ -35,7 +35,7 @@ const autoDetectInlineCode = [
 function readAutoDetectSettings(){
 	// {enabled, rules: {id: bool}}; everything is on until turned off
 	let stored = {};
-	try { stored = JSON.parse(localStorage.getItem(autoDetectKey)) || {} } catch ( err ) {}
+	try { stored = JSON.parse(notebookStorage.getItem(autoDetectKey)) || {} } catch ( err ) {}
 	const rules = {};
 	for ( const rule of autoDetectRules ) { rules[rule.id] = stored.rules?.[rule.id] !== false }
 	return { enabled: stored.enabled !== false, rules };
@@ -43,7 +43,7 @@ function readAutoDetectSettings(){
 
 function saveAutoDetectSettings(settings){
 	if ( !validateUserConsent() ) { return }
-	localStorage.setItem(autoDetectKey, JSON.stringify(settings));
+	notebookStorage.setItem(autoDetectKey, JSON.stringify(settings));
 	if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 }
 

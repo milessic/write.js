@@ -117,6 +117,19 @@ Settings > Vi mode turns on vi keybindings modeled on Neovim / VSCodeVim:
 - documents are stored in `localStorage`; the app can be installed (PWA) and used offline (service worker, `static/sw.js`)
 - usage monitor and storage consent
 
+## Desktop app
+- Write.JS as an app for Linux, macOS and Windows (``tauri_app/``, [Tauri](https://tauri.app/)), the same app as in the browser
+- **Notebooks** (menu > Notebooks): besides the app's own notebook, a **folder of the computer can be opened as a notebook**
+  - its sub-folders are the notebook's folders (up to 5 levels), its `.html`, `.md` / `.markdown` and `.txt` files the documents; hidden files and folders are left out
+  - `.html` files hold a document as the editor stores it (every feature); Markdown and text files are converted when opened and saved back as Markdown / text
+  - new documents are `.html` or `.md`, picked for each folder in menu > Notebooks
+  - creating, saving, moving and renaming documents and folders changes the files; deleted documents go to the trash; other files in the folder are left as they are
+  - what files can't hold (folder colors, the ids and metadata of Markdown / text documents) is kept in `.writejs/notebook.json` in the folder
+  - changes made outside of the app (another editor, a sync tool) show right away
+  - nothing of a folder goes to the cloud: logged in, only the settings sync, the cloud keeps the app's notebook as it was; Notebook cron runs for the app's notebook only
+- exports and backups are saved where you pick, links to other sites open in the system's browser
+- Settings > Desktop app: the Write.JS server (empty: no account, everything stays on the computer) and the themes server; asked on the first start
+
 ## Themes
 - styling comes from [milessic-themes](http://mbs.local:9312/) when ``MILESSIC-THEMES`` is set, otherwise the bundled Write.js theme (`static/themes/writejs.css`) is used
 
@@ -127,6 +140,7 @@ Settings > Vi mode turns on vi keybindings modeled on Neovim / VSCodeVim:
 ├── routers
 ├── scripts
 ├── static          (the web app: index.html, script.js, workspace.js, vi.js, ... one file per feature)
+├── tauri_app       (the desktop app: src-tauri/ in Rust)
 │   ├── legal
 │   └── themes
 ├── templates/
@@ -156,6 +170,13 @@ Settings > Vi mode turns on vi keybindings modeled on Neovim / VSCodeVim:
 - a notebook stored as a whole before (``/api/notebooks/notebook``) is moved to documents by the first device that syncs
 - the Notebook Cron jobs and their log are kept apart, in ``notebook_crons`` and ``notebook_cron_log`` (``/api/notebooks/{id}/crons``), they don't sync with the documents
 
+
+## Desktop app
+- ``tauri_app/src-tauri``: the window (``lib.rs``) loads the page from a local server inside the app (``server.rs``) on a fixed origin, ``http://127.0.0.1:38211``, so the page's storage stays the same between starts
+- the server renders ``static/`` like ``routers/web.py`` and passes ``/api`` to the Write.JS server from the app's settings, rewriting its cookies for the local origin
+- ``/__writejs_app__`` is the app's own API: its settings, the folders opened as notebooks (``notebooks.rs``) and saving files; only the app's pages get its token
+- in the page, ``notebookStorage`` (``static/script.js``) is where the documents and folders are read and written: ``localStorage``, or the opened folder (``static/localnotebooks.js``)
+- the app's settings are ``settings.json`` in the system's config folder (``~/.config/writejs`` on Linux)
 
 ## Localizations
 - Translation files are stored as ``json`` files under ``utils/localizations/translations/``
@@ -198,6 +219,12 @@ MILESSIC-THEMES= milessic-themes server url, e.g. http://mbs.local:9312/ (option
 5. run as uvicorn ``python3 -m uvicorn main:app --reload --host 0.0.0.0 --port 8990``, you can change host or port for your needs
 
 
+## Desktop app
+1. install [Rust](https://rustup.rs/), Node.js and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) of your system (on Linux: ``libwebkit2gtk-4.1-dev``, ``librsvg2-dev``, ``libayatana-appindicator3-dev``)
+2. ``cd tauri_app && npm install``
+3. ``npm run dev`` runs it from the sources (``static/`` is read on every reload), ``npm run build`` makes the installers (``tauri_app/src-tauri/target/release/bundle``)
+4. ``WRITEJS_SERVER`` and ``WRITEJS_THEMES`` override the servers of the app's settings, e.g. ``WRITEJS_SERVER=http://localhost:8990 npm run dev``
+
 # Testing
 ### Unit tests
 You can run tests with [pytest](https://docs.pytest.org/en/stable/) - ``python3 -m pytest -v``
@@ -208,6 +235,14 @@ You can run tests with [pytest](https://docs.pytest.org/en/stable/) - ``python3 
 pip install -r requirements-dev.txt && playwright install chromium
 python3 -m pytest tests/e2e -v
 ```
+
+### Desktop app
+``tests/e2e/test_desktop_*.py`` drive the app's local server (``writejs-server``, the app without its window), build it first:
+```
+cargo build --manifest-path tauri_app/src-tauri/Cargo.toml --features test-server --bin writejs-server
+python3 -m pytest tests/e2e/test_desktop_notebooks.py -v
+```
+The Rust unit tests: ``cargo test --manifest-path tauri_app/src-tauri/Cargo.toml --lib``
 
 ### Web app
 The Write.JS app (with register/login/logout) is served on the ``/`` endpoint. Just go to ``http://localhost:8990`` after following steps described under __Environment setup__ and you will be able to test all functionalities.

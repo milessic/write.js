@@ -17,7 +17,7 @@ const foldableHeadings = "h1, h2, h3, h4";
 
 function headingFoldingEnabled(){
 	// on until turned off
-	return !validateUserConsent(false) || localStorage.getItem(headingFoldingKey) !== "0";
+	return !validateUserConsent(false) || notebookStorage.getItem(headingFoldingKey) !== "0";
 }
 
 function headingLevel(el){
@@ -30,7 +30,7 @@ function isFoldableHeading(el){
 
 function listFoldingEnabled(){
 	// on until turned off
-	return !validateUserConsent(false) || localStorage.getItem(listFoldingKey) !== "0";
+	return !validateUserConsent(false) || notebookStorage.getItem(listFoldingKey) !== "0";
 }
 
 function applyFoldingSettings(){
@@ -41,7 +41,7 @@ function applyFoldingSettings(){
 
 function documentFoldsSaved(){
 	// on until turned off
-	return !validateUserConsent(false) || localStorage.getItem(saveDocumentFoldsKey) !== "0";
+	return !validateUserConsent(false) || notebookStorage.getItem(saveDocumentFoldsKey) !== "0";
 }
 
 function foldsChanged(editor){
@@ -75,14 +75,14 @@ function foldStateSettingsHtml(){
 function initFoldStateSettings(){
 	document.getElementById("setting-save-contents-folds").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
-		localStorage.setItem(saveContentsFoldsKey, e.target.checked ? "1" : "0");
+		notebookStorage.setItem(saveContentsFoldsKey, e.target.checked ? "1" : "0");
 		// turned off, what was remembered is forgotten (toc.js); this visit's folds stay
-		if ( !e.target.checked ) { localStorage.removeItem(tocFoldsKey) }
+		if ( !e.target.checked ) { notebookStorage.removeItem(tocFoldsKey) }
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
 	document.getElementById("setting-save-document-folds").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
-		localStorage.setItem(saveDocumentFoldsKey, e.target.checked ? "1" : "0");
+		notebookStorage.setItem(saveDocumentFoldsKey, e.target.checked ? "1" : "0");
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
 }
@@ -225,7 +225,7 @@ function headingFoldingSettingsHtml(){
 function initHeadingFoldingSettings(){
 	document.getElementById("setting-heading-folding").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
-		localStorage.setItem(headingFoldingKey, e.target.checked ? "1" : "0");
+		notebookStorage.setItem(headingFoldingKey, e.target.checked ? "1" : "0");
 		applyFoldingSettings();
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
@@ -234,7 +234,7 @@ function initHeadingFoldingSettings(){
 function initListFoldingSettings(){
 	document.getElementById("setting-list-folding").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
-		localStorage.setItem(listFoldingKey, e.target.checked ? "1" : "0");
+		notebookStorage.setItem(listFoldingKey, e.target.checked ? "1" : "0");
 		applyFoldingSettings();
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});

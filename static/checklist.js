@@ -90,7 +90,7 @@ function taskItemsToBullets(){
 
 function autoCheckParentsEnabled(){
 	// on until turned off
-	return !validateUserConsent(false) || localStorage.getItem(autoCheckParentsKey) !== "0";
+	return !validateUserConsent(false) || notebookStorage.getItem(autoCheckParentsKey) !== "0";
 }
 
 function childTaskItems(li){
@@ -140,7 +140,7 @@ function autoCheckParentsSettingsHtml(){
 function initAutoCheckParentsSettings(){
 	document.getElementById("setting-auto-check-parents").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
-		localStorage.setItem(autoCheckParentsKey, e.target.checked ? "1" : "0");
+		notebookStorage.setItem(autoCheckParentsKey, e.target.checked ? "1" : "0");
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
 }
