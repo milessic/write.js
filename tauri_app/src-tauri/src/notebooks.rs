@@ -29,8 +29,10 @@ use tokio::sync::{broadcast, mpsc};
 
 /// maxFolderDepth in static/workspace.js
 pub const MAX_FOLDER_DEPTH: usize = 5;
-/// bigger files aren't notes, they are left out
-const MAX_FILE_SIZE: u64 = 8 * 1024 * 1024;
+/// documents up to this size come with the notebook, bigger ones are read when they are opened (any size)
+const EAGER_SIZE: u64 = 1024 * 1024;
+/// of a bigger document, what tells it is text
+const SNIFF_SIZE: u64 = 64 * 1024;
 const SIDECAR_DIR: &str = ".writejs";
 const SIDECAR_FILE: &str = "notebook.json";
 /// changes on the disk are looked at once they have settled for this long
@@ -157,8 +159,8 @@ struct State {
     snapshot: Snapshot,
     /// what is in folders deeper than MAX_FOLDER_DEPTH, left out
     skipped: usize,
-    /// loaded with the scan, handed to the page on its next load
-    contents: BTreeMap<String, String>,
+    /// read with the scan, handed to the page on its next load
+    reads: BTreeMap<String, DocumentRead>,
 }
 
 pub struct Notebook {
@@ -213,6 +215,40 @@ fn moved_rel(rel: &str, from: &str, to: &str) -> Option<String> {
         Some(to.to_string())
     } else {
         rel.strip_prefix(&format!("{from}/")).map(|rest| format!("{to}/{rest}"))
+    }
+}
+
+/// a document as the scan read it
+struct DocumentRead {
+    /// None for a document bigger than EAGER_SIZE: the page asks for it when it is opened (document_content)
+    content: Option<String>,
+    /// tells whether the file changed: the hash of a document's text, the time and size of a bigger one's file
+    version: String,
+    /// the id an .html file of the app's starts with (doclinks.js), so the page knows it without the text
+    file_id: Option<String>,
+}
+
+fn version_of(text: Option<&[u8]>, meta: &fs::Metadata) -> String {
+    match text {
+        Some(bytes) if meta.len() <= EAGER_SIZE => format!("{:x}", <md5::Md5 as md5::Digest>::digest(bytes)),
+        _ => {
+            let time = meta.modified().ok().and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
+            format!("{time}-{}", meta.len())
+        }
+    }
+}
+
+fn embedded_id(text: &str) -> Option<String> {
+    static PATTERN: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let pattern = PATTERN.get_or_init(|| regex::Regex::new(r#"^<div style="display:none;" data-id="([^"]+)"></div>"#).unwrap());
+    pattern.captures(text).map(|c| c[1].to_string())
+}
+
+/// UTF-8 text, maybe cut short in the middle of a character at its end
+fn starts_as_text(bytes: &[u8]) -> bool {
+    match std::str::from_utf8(bytes) {
+        Ok(_) => true,
+        Err(err) => err.error_len().is_none(),
     }
 }
 
@@ -323,8 +359,8 @@ impl Notebook {
             let adopted = state.sidecar.documents.get(&rel).is_some_and(|e| e.text);
             let format = Format::of_file(file_name_of(&rel)).or(adopted.then_some(Format::Txt));
             // too big or not UTF-8 text: listed with the other files
-            let content = format.filter(|_| meta.len() <= MAX_FILE_SIZE).and_then(|_| fs::read_to_string(self.abs(&rel)).ok());
-            let (Some(format), Some(content)) = (format, content) else {
+            let read = format.and_then(|_| self.read_document(&rel, &meta));
+            let (Some(format), Some(read)) = (format, read) else {
                 state.files.push(rel);
                 continue;
             };
@@ -340,10 +376,36 @@ impl Notebook {
             if !folder.is_empty() {
                 state.placement.insert(name.clone(), folder);
             }
-            state.contents.insert(name.clone(), content);
+            state.reads.insert(name.clone(), read);
             state.docs.insert(name, Doc { rel, format });
         }
         state
+    }
+
+    /// a document's file, if it is UTF-8 text: read whole up to EAGER_SIZE, a bigger one only looked at
+    fn read_document(&self, rel: &str, meta: &fs::Metadata) -> Option<DocumentRead> {
+        use std::io::Read;
+        if meta.len() <= EAGER_SIZE {
+            let content = fs::read_to_string(self.abs(rel)).ok()?;
+            return Some(DocumentRead { version: version_of(Some(content.as_bytes()), meta), file_id: embedded_id(&content), content: Some(content) });
+        }
+        let mut start = vec![];
+        fs::File::open(self.abs(rel)).ok()?.take(SNIFF_SIZE).read_to_end(&mut start).ok()?;
+        starts_as_text(&start).then(|| DocumentRead {
+            content: None,
+            version: version_of(None, meta),
+            file_id: embedded_id(&String::from_utf8_lossy(&start)),
+        })
+    }
+
+    /// a bigger document's text, when the page opens it
+    pub fn document_content(&self, name: &str) -> Result<Value> {
+        let state = self.state.lock().unwrap();
+        let doc = state.docs.get(name).ok_or_else(|| NotebookError(404, format!("'{name}' is not in the notebook")))?;
+        let path = self.abs(&doc.rel);
+        let bytes = fs::read(&path)?;
+        let meta = fs::metadata(&path)?;
+        Ok(json!({ "content": String::from_utf8_lossy(&bytes), "version": version_of(Some(&bytes), &meta) }))
     }
 
     fn save_sidecar(&self, state: &State) -> Result<()> {
@@ -376,7 +438,7 @@ impl Notebook {
     pub fn data(&self) -> Value {
         let mut state = self.state.lock().unwrap();
         let mut scanned = self.scan();
-        let contents = std::mem::take(&mut scanned.contents);
+        let mut reads = std::mem::take(&mut scanned.reads);
         *state = scanned;
         let entry = self.entry.lock().unwrap().clone();
         let documents: Vec<Value> = state
@@ -384,11 +446,14 @@ impl Notebook {
             .iter()
             .map(|(name, doc)| {
                 let extra = state.sidecar.documents.get(&doc.rel).cloned().unwrap_or_default();
+                let read = reads.remove(name);
                 json!({
                     "name": name,
                     "path": doc.rel,
                     "format": doc.format,
-                    "content": contents.get(name).cloned().unwrap_or_default(),
+                    "content": read.as_ref().and_then(|r| r.content.clone()),
+                    "version": read.as_ref().map(|r| r.version.clone()),
+                    "fileId": read.and_then(|r| r.file_id),
                     "id": extra.id,
                     "meta": if is_empty_meta(&extra.meta) { json!({}) } else { extra.meta },
                 })
@@ -411,8 +476,9 @@ impl Notebook {
         })
     }
 
-    /// a document saved by the page; a new one is written into its folder, in the notebook's format for new documents
-    pub fn write_document(&self, req: WriteDocument, origin: &str) -> Result<()> {
+    /// a document saved by the page; a new one is written into its folder, in the notebook's format for new documents.
+    /// Returns the version of the file now (DocumentRead)
+    pub fn write_document(&self, req: WriteDocument, origin: &str) -> Result<String> {
         let mut state = self.state.lock().unwrap();
         let doc = match state.docs.get(&req.name) {
             Some(doc) => doc.clone(),
@@ -426,6 +492,7 @@ impl Notebook {
             }
         };
         write_atomic(&self.abs(&doc.rel), req.content.as_bytes())?;
+        let version = version_of(Some(req.content.as_bytes()), &fs::metadata(self.abs(&doc.rel))?);
         if doc.format != Format::Html {
             // the ids and metadata the Markdown / text can't hold
             let text = state.sidecar.documents.get(&doc.rel).is_some_and(|e| e.text);
@@ -439,7 +506,7 @@ impl Notebook {
         state.snapshot = self.snapshot();
         drop(state);
         self.changed(origin);
-        Ok(())
+        Ok(version)
     }
 
     /// a deleted document goes to the trash; a document the notebook doesn't hold is fine
@@ -584,9 +651,6 @@ impl Notebook {
             return Err(NotebookError(404, format!("'{rel}' is not in the notebook")));
         };
         let path = self.abs(rel);
-        if fs::metadata(&path)?.len() > MAX_FILE_SIZE {
-            return Err(NotebookError(413, format!("'{}' is too big to open (over 8 MB)", file_name_of(rel))));
-        }
         let content = match String::from_utf8(fs::read(&path)?) {
             Ok(content) => content,
             Err(err) => {
@@ -613,7 +677,8 @@ impl Notebook {
         state.docs.insert(name.clone(), Doc { rel: rel.to_string(), format: Format::Txt });
         drop(state);
         self.changed(origin);
-        Ok(json!({ "document": { "name": name, "path": rel, "format": Format::Txt, "content": content, "id": null, "meta": {} } }))
+        let version = version_of(Some(content.as_bytes()), &fs::metadata(&path)?);
+        Ok(json!({ "document": { "name": name, "path": rel, "format": Format::Txt, "content": content, "version": version, "id": null, "meta": {} } }))
     }
 
     /// a file, a document or a folder of the notebook on the disk ("" the notebook's own), to open or show it
@@ -764,6 +829,20 @@ mod tests {
         assert_eq!(files, ["image.png", "Work/broken.json"]);
         assert_eq!(data["folders"]["folders"], json!(["Work", "Work/Daily"]));
         assert_eq!(data["folders"]["documents"], json!({"a (2)": "Work", "b": "Work/Daily", "data.csv": "Work"}));
+    }
+
+    #[test]
+    fn big_documents_are_read_when_opened() {
+        let dir = tmp("big");
+        let big = "line of a long log\n".repeat(200_000); // 3.8 MB
+        fs::write(dir.join("server.log"), &big).unwrap();
+        fs::write(dir.join("movie.mp4"), vec![0u8; 2 * 1024 * 1024]).unwrap();
+        let nb = notebook(&dir);
+        let data = nb.data();
+        assert_eq!(data["documents"][0]["name"], "server.log");
+        assert!(data["documents"][0]["content"].is_null());
+        assert_eq!(data["files"][0]["path"], "movie.mp4");
+        assert_eq!(nb.document_content("server.log").unwrap()["content"], big);
     }
 
     #[test]

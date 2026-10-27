@@ -60,6 +60,8 @@ function unescapeHtmlAttribute(text){
 }
 
 function documentIdOf(name){
+	// a folder opened as the notebook knows the ids without reading the documents (localnotebooks.js)
+	if ( notebookStorage.documentId ) { return notebookStorage.documentId(name) }
 	return splitDocumentId(notebookStorage.getItem(docPrefix + name)).id;
 }
 
@@ -76,9 +78,9 @@ function ensureDocumentIds(withTabs=true){
 	const seen = new Set();
 	for ( const name of getDocumentNamesFromLocalStorage() ) {
 		const key = docPrefix + name;
-		const stored = notebookStorage.getItem(key);
-		let { id } = splitDocumentId(stored);
+		let id = documentIdOf(name);
 		if ( !id || seen.has(id) ) {
+			const stored = notebookStorage.getItem(key);
 			id = id ? newDocumentId() : legacyDocumentId(name);
 			notebookStorage.setItem(key, withDocumentId(stored, id));
 			// on load this runs before workspace.js, which has no tabs yet

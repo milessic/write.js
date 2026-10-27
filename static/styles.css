@@ -2555,3 +2555,16 @@ body.file-tab-focused .format-bar {
 .tab.file-tab .file-icon {
 	order: -1;
 }
+.file-preview[data-kind="video"],
+.file-preview[data-kind="audio"] {
+	display: grid;
+	place-items: center;
+}
+.file-preview video {
+	max-width: 100%;
+	max-height: 100%;
+	background: #000;
+}
+.file-preview audio {
+	width: min(100%, 480px);
+}

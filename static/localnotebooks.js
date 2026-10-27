@@ -13,7 +13,8 @@
  * Which notebook is opened is a preference of this device (localNotebookKey); opening another one reloads the page.
  *
  * While a folder is opened, notebookStorage (script.js) is a LocalNotebookStorage: the documents and the folders are
- * read from the folder on load, and every change is written back to it, one after another (a document typed into is
+ * read from the folder on load (a document over 1 MB when it is opened, documents can be of any size), and every change
+ * is written back to it, one after another (a document typed into is
  * written once more after the write under way). What this device keeps for each notebook (the opened tabs, where
  * each document was left...) gets the notebook's own key in localStorage; the rest is localStorage as always.
  * A change made outside of the app, or in another window, comes as an event: the folder is read again and the tabs
@@ -67,9 +68,19 @@ function localDocumentHtml(doc){
 	return doc.html;
 }
 
+function fileDocumentId(doc){
+	// an .html file of the app's has its id; any other gets one from its place, the same on every load (doclinks.js)
+	return doc.fileId || doc.id || legacyDocumentId(`${window.localNotebook.id}/${doc.path}`);
+}
+
 function documentFromFile(doc){
-	// a document without an id (any file but the app's .html ones) gets one from its place, the same on every load
-	const id = doc.id || legacyDocumentId(`${window.localNotebook.id}/${doc.path}`); // doclinks.js
+	if ( doc.content === null ) {
+		// a big document: read now that it is opened
+		const read = desktopRequestSync(`/notebooks/${encodeURIComponent(window.localNotebook.id)}/documents/content?name=${encodeURIComponent(doc.name)}`);
+		doc.content = read.content;
+		doc.version = read.version;
+	}
+	const id = fileDocumentId(doc);
 	let html;
 	if ( doc.format === "md" && !markdownReady() ) {
 		// the tabs opened on load read their documents before checklist.js and tables.js are loaded: plain Markdown
@@ -146,7 +157,7 @@ class LocalNotebookStorage {
 		const before = this.documents ?? new Map();
 		this.documents = new Map(data.documents.map((doc) => {
 			const known = before.get(doc.name);
-			const unchanged = known && known.format === doc.format && (known.written ?? known.content) === doc.content;
+			const unchanged = known && known.format === doc.format && known.version === doc.version;
 			return [doc.name, unchanged ? known : doc];
 		}));
 		this.folders = JSON.stringify(data.folders);
@@ -248,6 +259,13 @@ class LocalNotebookStorage {
 		return this.textExtensions.has(ext) ? "txt" : this.notebook.newFormat;
 	}
 
+	documentId(name){
+		// a document's id without reading it (doclinks.js): links and the checks on load don't read big documents
+		const doc = this.documents.get(name);
+		if ( !doc ) { return null }
+		return doc.html === undefined ? fileDocumentId(doc) : splitDocumentId(doc.html).id;
+	}
+
 	otherFiles(){
 		return this.files;
 	}
@@ -311,8 +329,8 @@ class LocalNotebookStorage {
 			const doc = this.documents.get(op.name);
 			if ( !doc || doc.html === undefined ) { return }
 			const file = documentToFile(doc);
-			await desktopRequest(`${base}/documents`, { method: "PUT", body: { name: op.name, format: doc.format, ...file } });
-			doc.written = file.content;
+			const { version } = await desktopRequest(`${base}/documents`, { method: "PUT", body: { name: op.name, format: doc.format, ...file } });
+			doc.version = version;
 		} else if ( op.type === "delete" ) {
 			await desktopRequest(`${base}/documents/delete`, { method: "POST", body: { name: op.name } });
 		} else if ( op.type === "folders" ) {
@@ -479,12 +497,17 @@ function addFileIcon(row, name){
 	row.prepend(fileTypeIcon(file.fileName));
 }
 
-// what the app's web view shows itself
-const previewImageExtensions = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif"];
+// what has a preview; HEIC and TIFF are converted by the app where the web view can't show them (Safari can)
+const previewExtensions = {
+	pdf: ["pdf"],
+	image: ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif", "heic", "heif", "tif", "tiff"],
+	video: ["mp4", "m4v", "mov", "webm", "ogv", "mkv", "avi"],
+	audio: ["mp3", "wav", "flac", "ogg", "oga", "m4a", "aac", "opus"],
+};
 
 function previewKind(fileName){
-	if ( fileExtension(fileName) === "pdf" ) { return "pdf" }
-	return previewImageExtensions.includes(fileExtension(fileName)) ? "image" : null;
+	const ext = fileExtension(fileName);
+	return Object.keys(previewExtensions).find((kind) => previewExtensions[kind].includes(ext)) ?? null;
 }
 
 function showInFolderLabel(){
@@ -539,8 +562,9 @@ async function showInFolder(path){
 	}
 }
 
-function rawFileUrl(path){
-	return `/__writejs_app__/notebooks/${encodeURIComponent(window.localNotebook.id)}/files/raw?path=${encodeURIComponent(path)}&token=${encodeURIComponent(desktopApp.token)}`;
+function rawFileUrl(path, as="raw"){
+	// as "image": a picture converted to JPEG by the app
+	return `/__writejs_app__/notebooks/${encodeURIComponent(window.localNotebook.id)}/files/${as}?path=${encodeURIComponent(path)}&token=${encodeURIComponent(desktopApp.token)}`;
 }
 
 function openFilePreview(file){
@@ -595,11 +619,23 @@ function renderFilePreview(host, file){
 	if ( kind === "image" ) {
 		const img = document.createElement("img");
 		img.alt = file.name;
-		img.addEventListener("error", () => previewFailed(view, "This picture can't be shown here."));
+		// the web view can't show it (HEIC, TIFF...): converted by the app, if the system has a program for it
+		img.addEventListener("error", () => {
+			if ( img.dataset.converted ) { previewFailed(view, "This picture can't be shown here."); return }
+			img.dataset.converted = "1";
+			img.src = rawFileUrl(file.path, "image");
+		});
 		// a click shows it in its own size, and fitted again
 		img.addEventListener("click", () => view.classList.toggle("actual-size"));
 		img.src = rawFileUrl(file.path);
 		view.append(img);
+	} else if ( kind === "video" || kind === "audio" ) {
+		const media = document.createElement(kind);
+		media.controls = true;
+		media.preload = "metadata";
+		media.addEventListener("error", () => previewFailed(view, `This ${kind === "video" ? "video" : "recording"} can't be played here.`));
+		media.src = rawFileUrl(file.path);
+		view.append(media);
 	} else {
 		renderPdfPreview(view, rawFileUrl(file.path), host.querySelector(".preview-pages"))
 			.catch((err) => { console.error(err); previewFailed(view, `This PDF can't be shown here: ${err.message}`) });

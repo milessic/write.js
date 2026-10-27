@@ -148,6 +148,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/notebooks/{id}", axum::routing::patch(update_notebook).delete(remove_notebook))
         .route("/notebooks/{id}/data", get(notebook_data))
         .route("/notebooks/{id}/documents", put(write_document))
+        .route("/notebooks/{id}/documents/content", get(document_content))
         .route("/notebooks/{id}/documents/delete", post(delete_document))
         .route("/notebooks/{id}/folders", put(write_folders))
         .route("/notebooks/{id}/folders/rename", post(rename_folder))
@@ -156,9 +157,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/notebooks/{id}/files/system", post(open_with_system))
         .route("/notebooks/{id}/files/show", post(show_in_folder))
         .route("/notebooks/{id}/files/raw", get(raw_file))
+        .route("/notebooks/{id}/files/image", get(converted_image))
         .route("/notebooks/{id}/reveal", post(reveal_notebook))
         .route("/notebooks/{id}/events", get(notebook_events))
         .route("/save", post(save_file))
+        // the folder's documents and the exports can be of any size, not only localStorage's
+        .layer(axum::extract::DefaultBodyLimit::disable())
         .layer(middleware::from_fn_with_state(state.clone(), require_token));
     Router::new()
         .route("/", get(index))
@@ -488,8 +492,13 @@ async fn notebook_data(State(app): State<Arc<AppState>>, UrlPath(id): UrlPath<St
 
 async fn write_document(State(app): State<Arc<AppState>>, UrlPath(id): UrlPath<String>, headers: HeaderMap, Json(doc): Json<WriteDocument>) -> AppResult<Json<Value>> {
     let origin = client_of(&headers);
-    with_notebook(&app, &id, move |nb| nb.write_document(doc, &origin)).await?;
-    Ok(Json(json!({ "saved": true })))
+    let version = with_notebook(&app, &id, move |nb| nb.write_document(doc, &origin)).await?;
+    Ok(Json(json!({ "saved": true, "version": version })))
+}
+
+async fn document_content(State(app): State<Arc<AppState>>, UrlPath(id): UrlPath<String>, Query(q): Query<HashMap<String, String>>) -> AppResult<Json<Value>> {
+    let name = q.get("name").cloned().unwrap_or_default();
+    Ok(Json(with_notebook(&app, &id, move |nb| nb.document_content(&name)).await?))
 }
 
 #[derive(Deserialize)]
@@ -556,23 +565,90 @@ async fn show_in_folder(State(app): State<Arc<AppState>>, UrlPath(id): UrlPath<S
     Ok(Json(json!({ "shown": true })))
 }
 
-/// a file of the notebook as it is, for the previews of pictures and PDFs (an img or PDF.js reads it, the token comes
-/// in the query); sandboxed, so nothing in it runs on this origin
-async fn raw_file(State(app): State<Arc<AppState>>, UrlPath(id): UrlPath<String>, Query(q): Query<HashMap<String, String>>) -> AppResult<Response> {
+/// a file of the notebook as it is, for the previews (an img, a video or PDF.js reads it, the token comes in the
+/// query): streamed from the disk, in the ranges a video asks for, sandboxed so nothing in it runs on this origin
+async fn raw_file(State(app): State<Arc<AppState>>, UrlPath(id): UrlPath<String>, Query(q): Query<HashMap<String, String>>, req: Request) -> AppResult<Response> {
     let rel = q.get("path").cloned().unwrap_or_default();
     let path = with_notebook(&app, &id, move |nb| nb.path_of(&rel)).await?;
-    let bytes = tokio::fs::read(&path).await.map_err(|e| ApiError(StatusCode::NOT_FOUND, e.to_string()))?;
-    let mime = mime_guess::from_path(&path).first_or_octet_stream();
-    Ok((
-        [
-            (header::CONTENT_TYPE, mime.essence_str().to_string()),
-            (header::CACHE_CONTROL, "no-store".to_string()),
-            (header::X_CONTENT_TYPE_OPTIONS, "nosniff".to_string()),
-            (header::CONTENT_SECURITY_POLICY, "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'".to_string()),
-        ],
-        bytes,
-    )
-        .into_response())
+    serve_file(&path, req).await
+}
+
+async fn serve_file(path: &Path, req: Request) -> AppResult<Response> {
+    use tower::ServiceExt;
+    let mut response = tower_http::services::ServeFile::new(path)
+        .oneshot(req)
+        .await
+        .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .map(Body::new);
+    let headers = response.headers_mut();
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"));
+    Ok(response)
+}
+
+/// a picture the web view can't show (HEIC, TIFF...) as a JPEG, made by a program of the system (image_converters);
+/// kept in the temporary folder for as long as the file doesn't change
+async fn converted_image(State(app): State<Arc<AppState>>, UrlPath(id): UrlPath<String>, Query(q): Query<HashMap<String, String>>, req: Request) -> AppResult<Response> {
+    let rel = q.get("path").cloned().unwrap_or_default();
+    let source = with_notebook(&app, &id, move |nb| nb.path_of(&rel)).await?;
+    let converted = blocking(move || convert_image(&source)).await?.map_err(|e| ApiError(StatusCode::NOT_IMPLEMENTED, e))?;
+    serve_file(&converted, req).await
+}
+
+/// the programs that turn a picture into a JPEG, the first one there is does it: {in} and {out} are the files.
+/// WRITEJS_IMAGE_CONVERTER comes first (tests, or a program of one's own)
+fn image_converters() -> Vec<Vec<String>> {
+    let mut converters: Vec<Vec<String>> = vec![];
+    if let Ok(own) = std::env::var("WRITEJS_IMAGE_CONVERTER") {
+        converters.push(own.split_whitespace().map(str::to_string).collect());
+    }
+    let builtin: &[&str] = &[
+        #[cfg(target_os = "macos")]
+        "sips -s format jpeg {in} --out {out}",
+        "heif-convert -q 90 {in} {out}",
+        "magick {in} {out}",
+        #[cfg(not(windows))]
+        "convert {in} {out}",
+        "ffmpeg -y -loglevel error -i {in} {out}",
+    ];
+    converters.extend(builtin.iter().map(|c| c.split(' ').map(str::to_string).collect()));
+    converters
+}
+
+fn convert_image(source: &Path) -> Result<PathBuf, String> {
+    let meta = std::fs::metadata(source).map_err(|e| e.to_string())?;
+    let key = format!("{}|{:?}|{}", source.display(), meta.modified().ok(), meta.len());
+    let dir = std::env::temp_dir().join("writejs-previews");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let target = dir.join(format!("{:x}.jpg", Md5::digest(key.as_bytes())));
+    if target.is_file() {
+        return Ok(target);
+    }
+    let partial = target.with_extension("part.jpg");
+    for converter in image_converters() {
+        let args: Vec<std::ffi::OsString> = converter[1..]
+            .iter()
+            .map(|a| match a.as_str() {
+                "{in}" => source.as_os_str().to_owned(),
+                "{out}" => partial.as_os_str().to_owned(),
+                _ => a.into(),
+            })
+            .collect();
+        let done = std::process::Command::new(&converter[0])
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+        if done && partial.is_file() {
+            std::fs::rename(&partial, &target).map_err(|e| e.to_string())?;
+            return Ok(target);
+        }
+    }
+    let _ = std::fs::remove_file(&partial);
+    Err("No program to convert it is installed (on Linux: libheif's heif-convert or ImageMagick)".into())
 }
 
 async fn reveal_notebook(State(app): State<Arc<AppState>>, UrlPath(id): UrlPath<String>) -> AppResult<Json<Value>> {

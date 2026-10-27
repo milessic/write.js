@@ -9,6 +9,7 @@ import struct
 import zlib
 import socket
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -31,8 +32,8 @@ def png(width=4, height=3):
 		+ chunk(b"IDAT", zlib.compress(row * height)) + chunk(b"IEND", b"")
 
 
-def pdf(pages=2):
-	# the smallest PDF with pages of text
+def pdf(pages=2, padding=0):
+	# the smallest PDF with pages of text; padding makes it bigger (a comment at its start)
 	objects = ["<< /Type /Catalog /Pages 2 0 R >>",
 		f"<< /Type /Pages /Kids [{' '.join(f'{3 + i * 2} 0 R' for i in range(pages))}] /Count {pages} >>"]
 	for i in range(pages):
@@ -40,7 +41,7 @@ def pdf(pages=2):
 		objects.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {4 + i * 2} 0 R /Resources << /Font << /F1 {3 + pages * 2} 0 R >> >> >>")
 		objects.append(f"<< /Length {len(text)} >>\nstream\n{text}\nendstream")
 	objects.append("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
-	out, offsets = "%PDF-1.4\n", []
+	out, offsets = "%PDF-1.4\n" + ("%" + "x" * padding + "\n" if padding else ""), []
 	for n, obj in enumerate(objects, 1):
 		offsets.append(len(out))
 		out += f"{n} 0 obj\n{obj}\nendobj\n"
@@ -74,6 +75,8 @@ def folders(tmp_path_factory):
 	(notes / "Media").mkdir()
 	(notes / "Media/clip.mp4").write_bytes(b"\x00\x00\x00\x18ftyp")
 	(base / "saved").mkdir()
+	# the system's picture converter, for the HEIC preview: a picture whatever it gets
+	(base / "convert.py").write_text(f"import sys\nopen(sys.argv[2], 'wb').write({png()!r})\n")
 	return base
 
 
@@ -94,6 +97,7 @@ def desktop(server, folders):
 		"WRITEJS_PICK_FOLDER": str(folders / "notes"),
 		"WRITEJS_SAVE_DIR": str(folders / "saved"),
 		"WRITEJS_OPEN_LOG": str(folders / "opened.log"),
+		"WRITEJS_IMAGE_CONVERTER": f"{sys.executable} {folders / 'convert.py'} {{in}} {{out}}",
 		"XDG_DATA_HOME": str(folders / "data"),
 	}
 	process = subprocess.Popen([SERVER_BIN], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -302,6 +306,52 @@ def test_pictures_and_pdfs_can_open_as_tabs(app):
 	assert app.evaluate("tabs.filter(t => t.file).length") == 0
 	assert app.evaluate("getActiveTab().name") == "Plan"
 	app.evaluate("notebookStorage.setItem('__fileTabs__', '0')")
+
+
+def test_big_files_have_no_size_limit(app, folders):
+	notes = folders / "notes"
+	log = "".join(f"line {i:06d} of a long server log\n" for i in range(150_000)) # 4.6 MB
+	(notes / "server.log").write_text(log)
+	(notes / "big.pdf").write_bytes(pdf(padding=9 * 1024 * 1024))
+	app.wait_for_function("getDocumentNamesFromLocalStorage().includes('server.log')", timeout=5000)
+	# read when it is opened, not with the notebook
+	assert app.evaluate("localNotebookStorage.documents.get('server.log').content") is None
+	app.evaluate("openDocumentInTab('server.log')")
+	assert app.evaluate("editorObject.children.length") == 150_000
+	app.evaluate("""() => {
+		editorObject.append(Object.assign(document.createElement("div"), { textContent: "the end" }));
+		editorObject.dispatchEvent(new Event("input", { bubbles: true }));
+		saveDocumentToLocalStorage();
+	}""")
+	wait_until(lambda: (notes / "server.log").read_text().endswith("server log\nthe end\n"), timeout=15)
+	assert (notes / "server.log").stat().st_size > 4_000_000
+	# a 9 MB PDF has its preview
+	app.click('#file-tree-list .tree-file[data-path="big.pdf"]')
+	app.wait_for_function("document.querySelectorAll('.preview-modal canvas.pdf-page').length === 2", timeout=15000)
+	app.evaluate("closeAllModals()")
+
+
+def test_heic_pictures_are_converted(app, folders):
+	(folders / "notes/IMG_0001.heic").write_bytes(b"\x00\x00\x00\x18ftypheic, not for a browser")
+	app.wait_for_selector('#file-tree-list .tree-file[data-path="IMG_0001.heic"]')
+	app.click('#file-tree-list .tree-file[data-path="IMG_0001.heic"]')
+	# the web view can't show it: the system's program converts it (WRITEJS_IMAGE_CONVERTER)
+	app.wait_for_function("document.querySelector('.preview-modal .file-preview img')?.naturalWidth === 4")
+	assert "/files/image?" in app.get_attribute(".preview-modal .file-preview img", "src")
+	app.evaluate("closeAllModals()")
+
+
+def test_movies_play_in_a_preview(app, folders):
+	(folders / "notes/trip.mov").write_bytes(bytes(10 * 1024 * 1024))
+	app.wait_for_selector('#file-tree-list .tree-file[data-path="trip.mov"]')
+	assert app.get_attribute('#file-tree-list .tree-file[data-path="trip.mov"] .file-icon', "data-kind") == "video"
+	app.click('#file-tree-list .tree-file[data-path="trip.mov"]')
+	app.wait_for_selector(".preview-modal .file-preview[data-kind=video]")
+	app.evaluate("closeAllModals()")
+	# a video reads its file in ranges, streamed from the disk
+	status, length, size = app.evaluate("""fetch(rawFileUrl('trip.mov'), { headers: { Range: 'bytes=100-199' } })
+		.then(async r => [r.status, (await r.arrayBuffer()).byteLength, r.headers.get('content-range')])""")
+	assert (status, length, size) == (206, 100, "bytes 100-199/10485760")
 
 
 def test_a_folder_goes_with_its_other_files(app, folders):
