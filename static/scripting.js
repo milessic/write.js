@@ -492,11 +492,11 @@ async function openScriptHelp(){
 		if ( !response.ok ) { throw new Error(`${response.status} ${response.statusText}`) }
 		const docs = scriptApiDocs(await response.text());
 		list.classList.remove("muted");
-		list.replaceChildren(...docs.map(({ name, params, doc }) => {
+		list.replaceChildren(...docs.map(({ name, params, doc, async }) => {
 			const item = document.createElement("section");
 			item.className = "script-help-function";
 			const signature = document.createElement("code");
-			signature.textContent = `${name}(${params})`;
+			signature.textContent = `${async ? "async " : ""}${name}(${params})`;
 			const text = document.createElement("p");
 			text.textContent = doc;
 			item.append(signature, text);
@@ -564,11 +564,11 @@ function placeBesideWizard(help){
 }
 
 function scriptApiDocs(source){
-	// [{name, params, doc}] of every function with a /** comment right above it
+	// [{name, params, doc, async}] of every function with a /** comment right above it
 	const docs = [];
-	for ( const match of source.matchAll(/\/\*\*([\s\S]*?)\*\/\s*function\s+([\w$]+)\s*\(([^)]*)\)/g) ) {
+	for ( const match of source.matchAll(/\/\*\*([\s\S]*?)\*\/\s*(async\s+)?function\s+([\w$]+)\s*\(([^)]*)\)/g) ) {
 		const doc = match[1].split("\n").map((line) => line.replace(/^\s*\*\s?/, "").trim()).filter(Boolean).join(" ");
-		docs.push({ name: match[2], params: match[3].replace(/\s+/g, " ").trim(), doc });
+		docs.push({ name: match[3], params: match[4].replace(/\s+/g, " ").trim(), doc, async: Boolean(match[2]) });
 	}
 	return docs;
 }

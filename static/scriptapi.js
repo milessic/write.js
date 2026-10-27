@@ -108,6 +108,35 @@ function scriptApi(editor){
 	};
 
 	/**
+	 * Lists the checkboxes of the document as a tree, in the order they are in it.
+	 * checked: false (default) lists the unchecked ones, true the checked ones, null all of them.
+	 * Returns [{name: "the item's own text", level: 0 for an item of a list that isn't nested, 1 for one nested in an
+	 * item, ..., checked: true or false, children: [the checkboxes listed nested in it, the same], element: the item}, ...];
+	 * a listed checkbox under one that isn't listed is in the children of the closest listed one above it, or at the top.
+	 * An item can be given to checkCheckbox / uncheckCheckbox.
+	 */
+	function getAllCheckboxes(checked=false){
+		if ( checked !== null && typeof checked !== "boolean" ) { throw new TypeError(`getAllCheckboxes: checked has to be true, false or null, not ${typeof checked}`) }
+		const listed = new Map(); // item -> its entry
+		const top = [];
+		for ( const li of editor.querySelectorAll("li") ) {
+			if ( !isTaskItem(li) || (checked !== null && isChecked(li) !== checked) ) { continue } // checklist.js
+			let level = 0;
+			let parent = null;
+			for ( let item = parentItem(li); item; item = parentItem(item) ) {
+				level++;
+				parent ??= listed.get(item);
+			}
+			const own = li.cloneNode(true);
+			own.querySelectorAll("ul, ol").forEach((list) => list.remove());
+			const entry = { name: own.textContent.trim(), level, checked: isChecked(li), children: [], element: li };
+			listed.set(li, entry);
+			(parent ? parent.children : top).push(entry);
+		}
+		return top;
+	}
+
+	/**
 	 * The document's title, its name (as in the name field, also before it is saved).
 	 */
 	function getDocTitle(){
@@ -183,7 +212,26 @@ function scriptApi(editor){
 		return scriptSecret(name, defaultValue); // secrets.js
 	}
 
-	return { locateHeading, locateById, getListElements, checkCheckbox, uncheckCheckbox, getDocTitle, setDocTitle, getRandomFromArray, createNotification, duplicateDocument, secret };
+	/**
+	 * Sends a GET request (await it: const res = await get(url)). url: an http(s) address; headers: an object
+	 * {"Name": "value"}. The other server has to allow requests from this app (CORS), or it throws.
+	 * Returns {status: 200, msg: the response's body, an object or array for JSON, else its text}.
+	 */
+	async function get(url, headers={}){
+		return httpRequest("GET", url, undefined, headers, "get");
+	}
+
+	/**
+	 * Sends a POST request (await it: const res = await post(url, {a: 1})). payload: an object, sent as JSON
+	 * (Content-Type: application/json unless headers have one), or a string, sent as it is; headers: an object
+	 * {"Name": "value"}. The other server has to allow requests from this app (CORS), or it throws.
+	 * Returns {status: 201, msg: the response's body, an object or array for JSON, else its text}.
+	 */
+	async function post(url, payload={}, headers={}){
+		return httpRequest("POST", url, payload, headers, "post");
+	}
+
+	return { locateHeading, locateById, getListElements, checkCheckbox, uncheckCheckbox, getDocTitle, setDocTitle, getRandomFromArray, createNotification, duplicateDocument, secret, getAllCheckboxes, get, post };
 }
 
 // the notebook's documents
@@ -221,4 +269,47 @@ function queryDocument(query, caller){
 	}
 	if ( names.length !== 1 ) { throw new Error(names.length ? `${caller}: ${names.length} documents${where} match, give an index` : `${caller}: no document${where}`) }
 	return names[0];
+}
+
+// get() and post()
+async function httpRequest(method, url, payload, headers, caller){
+	let address;
+	try {
+		address = new URL(url);
+	} catch ( err ) {
+		throw new TypeError(`${caller}: "${url}" is not an address`);
+	}
+	if ( !["http:", "https:"].includes(address.protocol) ) { throw new TypeError(`${caller}: the address has to be http:// or https://, not ${address.protocol}`) }
+	if ( headers === null || typeof headers !== "object" || Array.isArray(headers) ) { throw new TypeError(`${caller}: headers have to be an object {"Name": "value"}`) }
+	const requestHeaders = new Headers();
+	for ( const [name, value] of Object.entries(headers) ) {
+		try {
+			requestHeaders.set(name, String(value));
+		} catch ( err ) {
+			throw new TypeError(`${caller}: the header "${name}" can't be sent`);
+		}
+	}
+	const options = { method, headers: requestHeaders, credentials: "omit" }; // the app's own cookies stay out
+	if ( payload !== undefined && payload !== null ) {
+		if ( typeof payload === "string" ) {
+			options.body = payload;
+		} else if ( typeof payload === "object" ) {
+			options.body = JSON.stringify(payload);
+			if ( !requestHeaders.has("Content-Type") ) { requestHeaders.set("Content-Type", "application/json") }
+		} else {
+			throw new TypeError(`${caller}: the payload has to be an object or a string, not ${typeof payload}`);
+		}
+	}
+	let response;
+	try {
+		response = await fetch(address, options);
+	} catch ( err ) {
+		throw new Error(`${caller}: could not reach ${address.origin} (offline, or it doesn't allow requests from this app - CORS)`);
+	}
+	const text = await response.text();
+	let msg = text;
+	if ( text && /\bjson\b/i.test(response.headers.get("Content-Type") || "") ) {
+		try { msg = JSON.parse(text) } catch ( err ) { /* not JSON after all: its text */ }
+	}
+	return { status: response.status, msg };
 }

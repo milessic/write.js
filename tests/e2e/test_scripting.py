@@ -197,7 +197,7 @@ def test_help_lists_the_functions_of_the_api_file(app):
 	app.click(".script-wizard .script-help-btn")
 	app.wait_for_selector(".script-help-modal .script-help-function")
 	names = app.locator(".script-help-modal .script-help-function code").all_inner_texts()
-	assert names == ["locateHeading(selector, level=null)", "locateById(id)", "getListElements(list=null, textOnly=true)", "checkCheckbox(target)", "uncheckCheckbox(target)", "getDocTitle()", "setDocTitle(title)", "getRandomFromArray(array)", "createNotification(text, type=\"info\", timeout=notificationTimeout, timestamp=false)", "duplicateDocument(documentQuery)", "secret(name, defaultValue=null)"]
+	assert names == ["locateHeading(selector, level=null)", "locateById(id)", "getListElements(list=null, textOnly=true)", "checkCheckbox(target)", "uncheckCheckbox(target)", "getAllCheckboxes(checked=false)", "getDocTitle()", "setDocTitle(title)", "getRandomFromArray(array)", "createNotification(text, type=\"info\", timeout=notificationTimeout, timestamp=false)", "duplicateDocument(documentQuery)", "secret(name, defaultValue=null)", "async get(url, headers={})", "async post(url, payload={}, headers={})"]
 	assert "localStorage" in app.locator(".script-help-modal").inner_text()
 	# closing the help leaves the wizard open
 	app.click(".script-help-modal .section-head .small-btn")
@@ -581,3 +581,44 @@ def test_script_secrets_kept_in_this_browser(app):
 	app.locator(".script-secret[data-name=API_KEY] .script-secret-delete").click()
 	app.wait_for_selector(".script-secrets-list li.muted")
 	assert app.evaluate("JSON.parse(localStorage.getItem('__scriptSecrets__'))") == {}
+
+
+def test_get_all_checkboxes(app):
+	app.evaluate("""() => { document.querySelector('#editor').innerHTML = '<ul><li data-checked="false">a<ul><li data-checked="true">a1<ul><li data-checked="false">a1x</li></ul></li><li data-checked="false">a2</li><li>bullet</li></ul></li><li data-checked="true">b</li></ul><div>intro</div>' }""")
+	toggle_scripts(app)
+	add_script(app, "Boxes", "return 1")
+	tree = lambda checked: json.loads(run_script(app, f"return getAllCheckboxes({checked}).map(function strip(c) {{ return [c.name, c.level, c.checked, c.children.map(strip)] }})"))
+	# unchecked by default: a1x is under a1, which is checked, so it is listed under a
+	assert tree("") == [["a", 0, False, [["a1x", 2, False, []], ["a2", 1, False, []]]]]
+	assert tree("true") == [["a1", 1, True, []], ["b", 0, True, []]]
+	assert tree("null") == [["a", 0, False, [["a1", 1, True, [["a1x", 2, False, []]]], ["a2", 1, False, []]]], ["b", 0, True, []]]
+	# an item works with checkCheckbox
+	assert run_script(app, "return checkCheckbox(getAllCheckboxes()[0].children[1])") == "1"
+	assert "getAllCheckboxes: checked has to be" in run_script(app, "return getAllCheckboxes('yes')")
+
+
+def test_get_and_post(app):
+	requests = []
+	def handle(route):
+		request = route.request
+		cors = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "*"}
+		if request.method == "OPTIONS":
+			return route.fulfill(status=204, headers=cors)
+		requests.append({"method": request.method, "url": request.url, "headers": request.headers, "body": request.post_data})
+		if request.url.endswith("/text"):
+			route.fulfill(status=404, body="not here", headers=cors)
+		else:
+			route.fulfill(status=201 if request.method == "POST" else 200, json={"ok": True}, headers=cors)
+	app.route("https://api.example.test/**", handle)
+	toggle_scripts(app)
+	add_script(app, "Http", "return 1")
+	assert json.loads(run_script(app, "return await get('https://api.example.test/items', {'X-Token': secret('T', 'abc')})")) == {"status": 200, "msg": {"ok": True}}
+	assert requests[-1]["method"] == "GET" and requests[-1]["headers"]["x-token"] == "abc"
+	assert json.loads(run_script(app, "return await get('https://api.example.test/text')")) == {"status": 404, "msg": "not here"}
+	assert json.loads(run_script(app, "return await post('https://api.example.test/items', {name: 'x'}, {'X-Token': 't'})")) == {"status": 201, "msg": {"ok": True}}
+	assert requests[-1]["method"] == "POST" and json.loads(requests[-1]["body"]) == {"name": "x"}
+	assert requests[-1]["headers"]["content-type"] == "application/json"
+	run_script(app, "return await post('https://api.example.test/items', 'raw', {'Content-Type': 'text/plain'})")
+	assert requests[-1]["body"] == "raw" and requests[-1]["headers"]["content-type"] == "text/plain"
+	assert "get: the address has to be http:// or https://" in run_script(app, "return await get('ftp://x')")
+	assert "post: headers have to be an object" in run_script(app, "return await post('https://api.example.test/items', {}, 'h')")

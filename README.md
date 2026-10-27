@@ -81,9 +81,11 @@ The backend is [FastAPI](https://fastapi.tiangolo.com/) with authorization and l
 - scripts can't use `localStorage` / `sessionStorage`; this is a guard, not a sandbox
 - scripts are left out of exports
 - notebook level functions work on the whole notebook, e.g. `duplicateDocument({directory: "Daily", index: -1})` duplicates the last document (by name) of the folder `Daily`
-- `secret("NAME", defaultValue=null)` reads a script secret (Settings > **Script secrets**), throws when there is none and no default; a secret is local (this browser only) or synced (logged in: kept with the account, `/api/secrets`, on every device); a local secret can be made synced but not back, its value can be changed and it can be deleted
   - `directory`: a folder's path (`Work/Daily`, a folder's path is its id) or name, `""` for documents outside of folders, `null` for all
   - `doc`: a document's name or id, `index`: `0, 1, 2, ...` or `-1` (last), `-2` (second last), ...; fails when nothing or several documents match
+- `secret("NAME", defaultValue=null)` reads a script secret (Settings > **Script secrets**), throws when there is none and no default; a secret is local (this browser only) or synced (logged in: kept with the account, `/api/secrets`, on every device); a local secret can be made synced but not back, its value can be changed and it can be deleted
+- `await get(url, headers={})` and `await post(url, payload={}, headers={})` send HTTP requests and return `{status, msg}`, `msg` being the response's body (parsed for JSON, else text); a `post` object payload is sent as JSON; the other server has to allow CORS
+- `getAllCheckboxes(checked=false)` lists the unchecked checkboxes (`true` the checked ones, `null` all) as a tree, `[{name, level, checked, children, element}]`, `level` 0 for items of lists that aren't nested
 - `createNotification(text, type, timeout, timestamp=false)`: with `timestamp` the heading gets the time, `HH:MM:SS dd-mm-YYYY`
 
 ## Notebook Cron
