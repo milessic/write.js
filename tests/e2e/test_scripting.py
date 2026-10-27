@@ -197,7 +197,7 @@ def test_help_lists_the_functions_of_the_api_file(app):
 	app.click(".script-wizard .script-help-btn")
 	app.wait_for_selector(".script-help-modal .script-help-function")
 	names = app.locator(".script-help-modal .script-help-function code").all_inner_texts()
-	assert names == ["locateHeading(selector, level=null)", "locateById(id)", "getListElements(list=null, textOnly=true)", "checkCheckbox(target)", "uncheckCheckbox(target)", "getDocTitle()", "setDocTitle(title)", "getRandomFromArray(array)", "createNotification(text, type=\"info\", timeout=notificationTimeout, timestamp=false)", "duplicateDocument(documentQuery)"]
+	assert names == ["locateHeading(selector, level=null)", "locateById(id)", "getListElements(list=null, textOnly=true)", "checkCheckbox(target)", "uncheckCheckbox(target)", "getDocTitle()", "setDocTitle(title)", "getRandomFromArray(array)", "createNotification(text, type=\"info\", timeout=notificationTimeout, timestamp=false)", "duplicateDocument(documentQuery)", "secret(name, defaultValue=null)"]
 	assert "localStorage" in app.locator(".script-help-modal").inner_text()
 	# closing the help leaves the wizard open
 	app.click(".script-help-modal .section-head .small-btn")
@@ -532,3 +532,52 @@ def test_check_and_uncheck_checkboxes(app):
 	# undone like the scripts' other changes
 	app.keyboard.press("Control+z")
 	assert checked() == ["true", "true"]
+
+
+def run_script(page, code):
+	# what the code returns, run by a script button of the document
+	page.evaluate("document.querySelectorAll('.notification-container').forEach((n) => n.remove())")
+	page.evaluate("(code) => { const b = document.querySelector('#editor .script-activator'); b.dataset.script = code; b.click() }", code)
+	page.wait_for_selector(f"{NOTES} .script-notification-head")
+	return page.locator(f"{NOTES} .script-notification-result").inner_text() if page.locator(f"{NOTES} .script-notification-result").count() else notes(page)
+
+
+def test_script_secrets_kept_in_this_browser(app):
+	toggle_scripts(app)
+	add_script(app, "Secret", "return 1")
+	# the modal, from Settings
+	app.evaluate("createSettingsModal()")
+	app.click("#script-secrets-btn")
+	modal = app.locator(".script-secrets-modal")
+	# logged out, a secret can only be local
+	assert modal.locator(".script-secret-new-synced").is_disabled()
+	modal.locator(".script-secret-new-name").fill("bad-name")
+	modal.locator(".script-secret-add button[type=submit]").click()
+	assert "A name has letters, digits and _" in modal.locator(".script-secrets-problem").inner_text()
+	modal.locator(".script-secret-new-name").fill("API_KEY")
+	modal.locator(".script-secret-new-value").fill("s3cret")
+	modal.locator(".script-secret-add button[type=submit]").click()
+	row = modal.locator(".script-secret[data-name=API_KEY]")
+	assert row.locator(".script-secret-value").get_attribute("type") == "password"
+	assert app.evaluate("JSON.parse(localStorage.getItem('__scriptSecrets__'))") == {"API_KEY": {"value": "s3cret", "synced": False}}
+	# the same name again is refused
+	modal.locator(".script-secret-new-name").fill("API_KEY")
+	modal.locator(".script-secret-add button[type=submit]").click()
+	assert 'There is a secret "API_KEY" already' in modal.locator(".script-secrets-problem").inner_text()
+	# its value is changed in the list
+	row.locator(".script-secret-value").fill("changed")
+	row.locator(".script-secret-save").click()
+	assert app.evaluate("JSON.parse(localStorage.getItem('__scriptSecrets__')).API_KEY.value") == "changed"
+	app.evaluate("closeAllModals()")
+	# never in a backup or the notebook's settings
+	assert "__scriptSecrets__" not in app.evaluate("JSON.stringify(getAllLocalStorageItems())")
+	assert run_script(app, "return secret('API_KEY')") == "changed"
+	assert run_script(app, "return secret('MISSING', 'fallback')") == "fallback"
+	assert 'secret: no secret "MISSING"' in run_script(app, "return secret('MISSING')")
+	# deleted
+	app.evaluate("createSettingsModal()")
+	app.click("#script-secrets-btn")
+	app.once("dialog", lambda d: d.accept())
+	app.locator(".script-secret[data-name=API_KEY] .script-secret-delete").click()
+	app.wait_for_selector(".script-secrets-list li.muted")
+	assert app.evaluate("JSON.parse(localStorage.getItem('__scriptSecrets__'))") == {}

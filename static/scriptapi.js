@@ -175,7 +175,15 @@ function scriptApi(editor){
 		return copy;
 	}
 
-	return { locateHeading, locateById, getListElements, checkCheckbox, uncheckCheckbox, getDocTitle, setDocTitle, getRandomFromArray, createNotification, duplicateDocument };
+	/**
+	 * The value of a script secret of the account (Settings > Script secrets), a string. name: the secret's name.
+	 * defaultValue: what is returned when there is no such secret; null (default) throws instead.
+	 */
+	function secret(name, defaultValue=null){
+		return scriptSecret(name, defaultValue); // secrets.js
+	}
+
+	return { locateHeading, locateById, getListElements, checkCheckbox, uncheckCheckbox, getDocTitle, setDocTitle, getRandomFromArray, createNotification, duplicateDocument, secret };
 }
 
 // the notebook's documents

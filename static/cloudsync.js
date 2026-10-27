@@ -30,10 +30,15 @@ class CloudHttpError extends Error {
 }
 
 // requests
-async function cloudRequest(path, options={}, retried=false){
+function cloudRequest(path, options={}){
+	return apiRequest(`/api/notebooks${path}`, options);
+}
+
+async function apiRequest(url, options={}, retried=false){
+	// a request to the Write.js server as the logged in user: JSON in and out, throws CloudHttpError when it isn't ok
 	if ( tokenRefresh ) { await tokenRefresh.catch(() => {}) }
 	const refreshes = tokenRefreshes;
-	const resp = await fetch(`/api/notebooks${path}`, {
+	const resp = await fetch(url, {
 		credentials: "include",
 		...options,
 		headers: options.body ? {"Content-Type": "application/json"} : undefined,
@@ -42,7 +47,7 @@ async function cloudRequest(path, options={}, retried=false){
 	if ( resp.status === 401 && !retried && ( tokenRefresh || tokenRefreshes !== refreshes ) ) {
 		// sent with the access token a refresh (script3.js) just replaced: again with the new one
 		await tokenRefresh?.catch(() => {});
-		return cloudRequest(path, options, true);
+		return apiRequest(url, options, true);
 	}
 	if ( resp.status === 401 ) {
 		// an expired session: handleSessionExpired (script2.js) lets the user keep the documents
@@ -173,6 +178,7 @@ async function runCloudSync({ manual=false, onStart=false }={}){
 		writeCloudState(state);
 
 		afterCloudPull();
+		syncScriptSecrets(); // secrets.js: the account's synced secrets, apart from the notebook
 		if ( onStart ) { loadLastOpenedDocument() }
 		if ( !failed ) { localStorage.removeItem(syncPendingKey) }
 		if ( welcome ) { createNewNotebookModal() }

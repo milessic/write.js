@@ -304,6 +304,24 @@ class DbClient:
         self._execute(docs.notebook_cron_log["insert"], notebook_id, cron_id, at, int(ok), message, executor_name)
         self._execute(docs.notebook_cron_log["trim"], notebook_id, notebook_id, keep)
 
+    # SCRIPT SECRETS - user_script_secrets
+    def list_script_secrets(self, user_id: int) -> list[dict]:
+        rows = self._execute(docs.user_script_secrets["list"], user_id)
+        return [{"name": r[0], "value": r[1], "updated_at": r[2]} for r in (rows[0] if rows else [])]
+
+    def count_script_secrets(self, user_id: int) -> int:
+        return int(self._execute(docs.user_script_secrets["count"], user_id)[0][0][0])
+
+    def script_secret_exists(self, user_id: int, name: str) -> bool:
+        return bool(len(self._execute(docs.user_script_secrets["exists"], user_id, name)))
+
+    def save_script_secret(self, user_id: int, name: str, value: str) -> None:
+        r"creates or updates a secret"
+        self._execute(docs.user_script_secrets["upsert"], user_id, name, value)
+
+    def delete_script_secret(self, user_id: int, name: str) -> bool:
+        return bool(len(self._execute(docs.user_script_secrets["delete"], user_id, name)))
+
     # THESE ARE TEMPORARY THINGS!!!!!!!
     # START
     def create_notebook(self, user_id, notebook):
@@ -332,5 +350,6 @@ class DbClient:
         self._execute(docs.notebook_crons["delete_for_user"], user_id)
         self._execute(docs.notebook_cron_log["delete_for_user"], user_id)
         self._execute(docs.notebooks["delete_for_user"], user_id)
+        self._execute(docs.user_script_secrets["delete_for_user"], user_id)
 
     # END

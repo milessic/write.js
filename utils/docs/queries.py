@@ -329,3 +329,31 @@ notebook_cron_log = {
         (SELECT notebook_id FROM user_notebooks WHERE user_id = ?)"""
     },
 }
+
+# SCRIPT SECRETS (static/secrets.js)
+# The account's secrets that scripts read with secret() (scriptapi.js), only the ones flagged "synced": the others stay in
+# the browser they were added in. One row per secret, its name is unique for the user.
+create_table_user_script_secrets = {
+    "sqlite3": """
+    CREATE TABLE IF NOT EXISTS user_script_secrets (
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, name),
+        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+    );
+    """
+}
+
+user_script_secrets = {
+    "list": {"sqlite3": "SELECT name, value, updated_at FROM user_script_secrets WHERE user_id = ? ORDER BY name"},
+    "count": {"sqlite3": "SELECT COUNT(*) FROM user_script_secrets WHERE user_id = ?"},
+    "exists": {"sqlite3": "SELECT 1 FROM user_script_secrets WHERE user_id = ? AND name = ?"},
+    "upsert": {
+        "sqlite3": """INSERT INTO user_script_secrets (user_id, name, value) VALUES (?, ?, ?)
+        ON CONFLICT (user_id, name) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP"""
+    },
+    "delete": {"sqlite3": "DELETE FROM user_script_secrets WHERE user_id = ? AND name = ? RETURNING name"},
+    "delete_for_user": {"sqlite3": "DELETE FROM user_script_secrets WHERE user_id = ?"},
+}

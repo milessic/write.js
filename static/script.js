@@ -445,6 +445,10 @@ function createSettingsModal(){
 	<h3>Notebook cron</h3>
 	<div class="stack">
 		${cronSettingsHtml()}
+	</div>
+	<h3>Script secrets</h3>
+	<div class="stack">
+		${scriptSecretsSettingsHtml()}
 	</div>` + autoDetectSettingsHtml());
 	modal.classList.add("settings-modal");
 	initSettingsSearch(modal);
@@ -460,6 +464,7 @@ function createSettingsModal(){
 	initTableSettings();
 	initAutoDetectSettings();
 	initCronSettings();
+	initScriptSecretsSettings(); // secrets.js
 	document.querySelectorAll('input[name="setting-focus-mode"]').forEach((input) => input.addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
 		localStorage.setItem(focusModeKey, e.target.value);
@@ -1402,7 +1407,7 @@ function simulateEnter() {
 function isDeviceOnlyKey(key){
 	// state of this device that never goes to the cloud or a notebook backup
 	// (the workspace.js keys are looked up on call, that file loads after this one)
-	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viEscButtonKey, openedTabsKey, openedEditorsKey, tocSplitKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey, tocFoldsKey, cronExecutorKey, cronLastTickKey, cronLocalKey].includes(key);
+	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viEscButtonKey, openedTabsKey, openedEditorsKey, tocSplitKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey, tocFoldsKey, cronExecutorKey, cronLastTickKey, cronLocalKey, scriptSecretsKey].includes(key);
 }
 
 function getAllLocalStorageItems() {

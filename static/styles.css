@@ -2424,3 +2424,20 @@ body.focus-mode .floating-headings-inner {
 .floating-heading:hover {
 	color: var(--accent);
 }
+
+
+/* Script secrets (secrets.js) */
+.script-secrets-modal { width: min(760px, calc(100vw - 32px)); }
+.script-secrets-list { margin: 0; padding: 0; list-style: none; display: grid; gap: .35rem; }
+.script-secret { display: grid; grid-template-columns: minmax(6rem, 12rem) minmax(0, 1fr) auto auto auto auto; align-items: center; gap: .4rem; }
+.script-secret-name { overflow-wrap: anywhere; }
+.script-secret-value, .script-secret-fields input { width: 100%; min-width: 0; font-family: "Cousine", ui-monospace, monospace; }
+.script-secret .check { display: inline-flex; align-items: center; gap: .3rem; }
+.script-secret-fields { display: grid; grid-template-columns: minmax(6rem, 12rem) minmax(0, 1fr); gap: .4rem; }
+.script-secrets-problem { color: var(--danger, #c62828); }
+.script-secrets-problem[hidden] { display: none; }
+@media (max-width: 640px) {
+	.script-secret { grid-template-columns: 1fr auto; padding: .4rem 0; border-top: 1px solid var(--line); }
+	.script-secret-name { grid-column: 1 / -1; }
+	.script-secret-fields { grid-template-columns: 1fr; }
+}

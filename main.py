@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from routers import auth, web, temp_notebooks, notebooks
+from routers import auth, web, temp_notebooks, notebooks, secrets
 from utils.controller import controller as c
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -48,3 +48,4 @@ app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 # the notebook as a single blob, kept for devices that move their notebook to the documents below
 app.include_router(temp_notebooks.router, prefix="/api/notebooks", tags=["Notebooks"])
 app.include_router(notebooks.router, prefix="/api/notebooks", tags=["Notebooks"])
+app.include_router(secrets.router, prefix="/api/secrets", tags=["Script secrets"])
