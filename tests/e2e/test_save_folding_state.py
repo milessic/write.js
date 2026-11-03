@@ -107,7 +107,38 @@ def test_document_folds_not_saved_when_off(app):
 
 
 def test_document_folds_saved_by_default(app):
+	# folding isn't an edit: a saved document stays saved, the folds are stored with it right away
 	app.evaluate("toggleHeadingFold(document.querySelector('#editor > h2'))")
+	assert not app.evaluate("getActiveTab().dirty")
+	assert "dirty" not in app.locator("#tabs .tab.active").get_attribute("class")
+	assert 'data-collapsed="true"' in app.evaluate("localStorage.getItem('__doc__notes')")
+	app.evaluate("toggleHeadingFold(document.querySelector('#editor > h2'))")
+	assert 'data-collapsed="true"' not in app.evaluate("localStorage.getItem('__doc__notes')")
+
+
+def test_document_folds_of_an_unsaved_document_go_with_its_save(app):
+	app.click("#editor")
+	app.keyboard.press("Control+End")
+	app.keyboard.type(" more")
+	assert app.evaluate("getActiveTab().dirty")
+	app.evaluate("toggleHeadingFold(document.querySelector('#editor > h2'))")
+	# the edit isn't stored by the fold
+	assert "more" not in app.evaluate("localStorage.getItem('__doc__notes')")
 	assert app.evaluate("getActiveTab().dirty")
 	app.click("#save-btn")
-	assert 'data-collapsed="true"' in app.evaluate("localStorage.getItem('__doc__notes')")
+	stored = app.evaluate("localStorage.getItem('__doc__notes')")
+	assert "more" in stored and 'data-collapsed="true"' in stored
+
+
+def test_checking_a_checkbox_marks_the_document_unsaved(app):
+	# unlike folding, a checkbox's state is an edit (checklist.js)
+	app.evaluate("""() => {
+		document.getElementById("editor").insertAdjacentHTML("beforeend", '<ul><li data-checked="false">task</li></ul>');
+		markActiveTabSaved();
+		renderTabs();
+	}""")
+	assert not app.evaluate("getActiveTab().dirty")
+	box = app.locator("#editor li").first.bounding_box()
+	app.mouse.click(box["x"] - 12, box["y"] + 8)
+	assert app.evaluate("document.querySelector('#editor li').dataset.checked") == "true"
+	assert "dirty" in app.locator("#tabs .tab.active").get_attribute("class")

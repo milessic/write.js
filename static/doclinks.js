@@ -103,7 +103,11 @@ function documentHtmlToStore(tab=getActiveTab(), name=getDocumentName(), html=ge
 		id = tab.docId || documentIdOf(tab.savedName || name);
 	}
 	id ||= newDocumentId();
-	if ( tab ) { tab.docId = id }
+	if ( tab ) {
+		tab.docId = id;
+		tab.meta ??= {};
+		stampAuthorship(tab.meta); // workspace.js
+	}
 	if ( !documentFoldsSaved() ) { html = withoutFolds(html) } // folding.js
 	return withDocumentId(html, id, tab?.meta ?? (documentExists(name) ? splitDocumentId(localStorage.getItem(docPrefix + name)).meta : {}));
 }

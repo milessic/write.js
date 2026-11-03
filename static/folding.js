@@ -45,10 +45,10 @@ function documentFoldsSaved(){
 }
 
 function foldsChanged(editor){
-	// the folds are part of the document when they are saved with it: it changed like after an edit (unsaved tab, autosave)
+	// the folds are part of the document when they are saved with it, but folding isn't an edit: a saved document gets
+	// them stored right away and stays saved, one with unsaved edits gets them with its next save (storeFolds, workspace.js)
 	if ( !documentFoldsSaved() ) { return }
-	editor.dispatchEvent(new Event("input", { bubbles: true }));
-	if ( editor.id === "editor" ) { performAutoSave() }
+	if ( typeof storeFolds === "function" ) { storeFolds(editor) }
 }
 
 function withoutFolds(html){

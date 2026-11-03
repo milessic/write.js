@@ -26,12 +26,39 @@ body.app {
 body.app > .topbar {
 	flex: none;
 }
-/* the workspace holds the formatting toolbar above the editors; each editor scrolls on its own */
+/* its open menus (the hamburger menu, the document search tray) go over the side panels and their resizers, which are
+   stacked as high as the top bar, so they don't take the pointer through the menu; under the modals' backdrop */
+body.app > .topbar:has(.menu-opened) {
+	z-index: 15;
+}
+/* the workspace holds the formatting toolbar and the search above the editors; each editor scrolls on its own.
+   body[data-toolbar-side] docks the toolbar below the editors, or beside them as a column (workspace.js) */
 .workspace {
 	flex: 1;
 	min-height: 0;
-	display: flex;
-	flex-direction: column;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-rows: auto auto minmax(0, 1fr);
+}
+.workspace > .format-bar { grid-row: 1; grid-column: 1; }
+.workspace > .find-bar { grid-row: 2; grid-column: 1; }
+.workspace > .editor-grid { grid-row: 3; grid-column: 1; min-height: 0; }
+[data-toolbar-side="bottom"] .workspace { grid-template-rows: auto minmax(0, 1fr) auto; }
+[data-toolbar-side="bottom"] .workspace > .format-bar { grid-row: 3; }
+[data-toolbar-side="bottom"] .workspace > .find-bar { grid-row: 1; }
+[data-toolbar-side="bottom"] .workspace > .editor-grid { grid-row: 2; }
+@media (min-width: 1000px) {
+	[data-toolbar-side="left"] .workspace,
+	[data-toolbar-side="right"] .workspace {
+		grid-template-columns: auto minmax(0, 1fr);
+		grid-template-rows: auto minmax(0, 1fr);
+	}
+	[data-toolbar-side="right"] .workspace { grid-template-columns: minmax(0, 1fr) auto; }
+	:is([data-toolbar-side="left"], [data-toolbar-side="right"]) .workspace > .format-bar { grid-row: 1 / -1; }
+	:is([data-toolbar-side="left"], [data-toolbar-side="right"]) .workspace > .find-bar { grid-row: 1; }
+	:is([data-toolbar-side="left"], [data-toolbar-side="right"]) .workspace > .editor-grid { grid-row: 2; }
+	[data-toolbar-side="left"] .workspace > :is(.find-bar, .editor-grid) { grid-column: 2; }
+	[data-toolbar-side="right"] .workspace > .format-bar { grid-column: 2; }
 }
 
 /* below the top bar: the documents tree beside, above or below the editor area (opened tabs + workspace).
@@ -417,6 +444,11 @@ body.app > .topbar {
 }
 #file-tree-search {
 	width: 100%;
+	/* a narrow panel cuts the placeholder short with an ellipsis: "Filter docume…" */
+	text-overflow: ellipsis;
+}
+#file-tree-search::placeholder {
+	text-overflow: ellipsis;
 }
 .tree,
 .tree ul {
@@ -962,6 +994,64 @@ body.app > .topbar {
 	.file-tree-resizer {
 		display: none;
 	}
+	/* the contents splitting the documents' place (toc.js): the drawer is their box, one under the other */
+	.toc-split .side-dock,
+	:is([data-tree-side="top"], [data-tree-side="bottom"]).toc-split .side-dock {
+		display: none;
+		position: fixed;
+		top: 0;
+		bottom: 0;
+		left: 0;
+		z-index: 30;
+		flex-direction: column;
+		width: min(20rem, 85vw);
+		height: auto;
+		background: var(--surface);
+		border: 0;
+		border-right: 1px solid var(--line);
+		box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
+	}
+	[data-tree-side="right"].toc-split .side-dock {
+		left: auto;
+		right: 0;
+		border-right: 0;
+		border-left: 1px solid var(--line);
+	}
+	.toc-split.tree-drawer-open .side-dock {
+		display: flex;
+	}
+	.toc-split .side-dock > .file-tree,
+	.tree-hidden.toc-split .side-dock > .file-tree {
+		display: flex;
+		position: static;
+		width: auto;
+		box-shadow: none;
+		z-index: auto;
+	}
+	:is([data-tree-side="top"], [data-tree-side="bottom"]).toc-split:not(.tree-hidden) .side-dock > .toc-panel {
+		border-left: 0;
+		border-top: 1px solid var(--line);
+	}
+	:is([data-tree-side="top"], [data-tree-side="bottom"]).toc-split:not(.tree-hidden) .split-resizer {
+		width: auto;
+		height: 16px;
+		margin: -8px 0;
+		cursor: row-resize;
+	}
+	.toc-split:not(.tree-hidden) .split-resizer {
+		height: 16px;
+		margin: -8px 0;
+	}
+	.tree-pinned.tree-drawer-open.toc-split .side-dock {
+		position: relative;
+		top: auto;
+		bottom: auto;
+		left: auto;
+		right: auto;
+		z-index: auto;
+		width: min(var(--tree-width-mobile, 15rem), 85vw);
+		box-shadow: none;
+	}
 	/* pinned (the user's choice): the tree sits beside the editor like on a desktop, stays open
 	   and is resized by its inner edge, made wider for fingers */
 	.tree-pinned.tree-drawer-open .file-tree {
@@ -1115,6 +1205,65 @@ body.app > .topbar {
 [data-editors="1"] .format-bar .toolbar-bar {
 	max-width: 960px;
 	margin: 0 auto;
+}
+/* the grip the toolbar is dragged by to another side (workspace.js) */
+.toolbar-grip {
+	flex: none;
+	align-self: stretch;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0 .2rem;
+	color: var(--muted);
+	cursor: grab;
+	user-select: none;
+}
+@media (hover: none) {
+	/* touch screens can't drag it: its right-click menu (a long press) moves it */
+	.toolbar-grip { display: none; }
+}
+[data-toolbar-side="bottom"] .format-bar {
+	padding: .25rem 16px .5rem;
+}
+[data-toolbar-side="bottom"] .block-select-menu {
+	top: auto;
+	bottom: calc(100% + .3rem);
+}
+/* beside the editors: a column of tools, the dropdowns open towards the editors */
+@media (min-width: 1000px) {
+	:is([data-toolbar-side="left"], [data-toolbar-side="right"]) .format-bar {
+		padding: .75rem .4rem;
+	}
+	:is([data-toolbar-side="left"], [data-toolbar-side="right"]) .format-bar .toolbar-bar {
+		flex-direction: column;
+		align-items: stretch;
+		max-width: none;
+		margin: 0;
+		max-height: 100%;
+	}
+	:is([data-toolbar-side="left"], [data-toolbar-side="right"]) .toolbar-sep {
+		width: auto;
+		height: 1px;
+		margin: .2rem .1rem;
+	}
+	:is([data-toolbar-side="left"], [data-toolbar-side="right"]) .toolbar-grip {
+		padding: .1rem 0;
+	}
+	:is([data-toolbar-side="left"], [data-toolbar-side="right"]) .toolbar-bar > .block-select:not(.mobile-btn),
+	:is([data-toolbar-side="left"], [data-toolbar-side="right"]) .toolbar-bar > .block-select > .block-select-btn {
+		display: flex;
+		width: 100%;
+	}
+	[data-toolbar-side="left"] .block-select-menu {
+		top: 0;
+		left: calc(100% + .3rem);
+	}
+	[data-toolbar-side="right"] .block-select-menu,
+	[data-toolbar-side="right"] #tb-more-select .block-select-menu {
+		top: 0;
+		left: auto;
+		right: calc(100% + .3rem);
+	}
 }
 /* text style dropdown (Text / H1-H4); .menu is styled by the theme */
 .block-select {
@@ -1619,6 +1768,50 @@ body.show-line-numbers .line-numbers {
 	top: 6rem;
 	transform: translateX(-50%);
 	width: min(320px, calc(100vw - 32px));
+}
+.open-links-setting {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: .2rem 1rem;
+}
+
+/* the document's metadata (workspace.js): compact like Insert Link */
+.metadata-widget {
+	top: 6rem;
+	transform: translateX(-50%);
+	width: min(320px, calc(100vw - 32px));
+}
+.metadata-widget[open] {
+	display: flex;
+	flex-direction: column;
+	gap: .5rem;
+}
+.metadata-widget label:not(.check) {
+	display: grid;
+	gap: .15rem;
+}
+.metadata-head {
+	display: flex;
+	align-items: center;
+	gap: .5rem;
+}
+.metadata-name {
+	flex: 1;
+	min-width: 0;
+	font-weight: 700;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.metadata-flags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: .2rem 1rem;
+}
+.metadata-id {
+	margin: 0;
+	overflow-wrap: anywhere;
 }
 
 /* sync conflicts: the two versions side by side, stacked on phones */
@@ -2440,4 +2633,24 @@ body.focus-mode .floating-headings-inner {
 	.script-secret { grid-template-columns: 1fr auto; padding: .4rem 0; border-top: 1px solid var(--line); }
 	.script-secret-name { grid-column: 1 / -1; }
 	.script-secret-fields { grid-template-columns: 1fr; }
+}
+
+/* Settings > Vi mode > Command history: a small number field after its label */
+.vi-history-setting {
+	display: flex;
+	align-items: center;
+	gap: .5rem;
+}
+.vi-history-setting input {
+	width: 6em;
+}
+
+/* a folder hidden in search (workspace.js): its name in italics */
+.search-hidden-folder .tree-label {
+	font-style: italic;
+}
+
+/* the Script wizard of a tab that isn't shown (scripting.js): back where it was with its tab */
+.modal-container.script-window-away {
+	display: none !important;
 }

@@ -563,17 +563,15 @@ function handleTableRowMove(e){
 	if ( editor.id === "editor" ) { performAutoSave() }
 }
 
-let tablePointerType = "mouse"; // of the last press in the editors: a touch's long press brings the context menu too
 
 function handleTableContextMenu(e){
 	if ( e.shiftKey ) { return } // the browser's own menu
 	const cell = e.target.closest?.(tableCellSelector);
 	if ( !cell?.closest(".editor")?.isContentEditable ) { return }
-	// a long press on a touch screen selecting text: the system's menu for it (copy, paste...), the table's one is in
-	// the toolbar's "Table"
+	// text selected in the cell (a right click, a long press on a touch screen): the system's menu for it (copy,
+	// paste, spell check...), the table's one is in the toolbar's "Table"
 	const selection = window.getSelection();
-	const touch = (e.pointerType || tablePointerType) === "touch";
-	if ( touch && !selection.isCollapsed && cell.contains(selection.anchorNode) && cell.contains(selection.focusNode) ) { return }
+	if ( !selection.isCollapsed && cell.contains(selection.anchorNode) && cell.contains(selection.focusNode) && selection.toString().trim() ) { return }
 	openContextMenu(e, tableMenuItems(cell));
 }
 
@@ -752,7 +750,6 @@ document.getElementById("editor-grid").addEventListener("input", scheduleTableSe
 // capture: before the Tab of the lines (script.js)
 document.getElementById("editor-grid").addEventListener("keydown", handleTableTab, true);
 document.getElementById("editor-grid").addEventListener("contextmenu", handleTableContextMenu);
-document.getElementById("editor-grid").addEventListener("pointerdown", (e) => { tablePointerType = e.pointerType }, true);
 document.getElementById("editor-grid").addEventListener("keydown", handleTableArrow);
 // capture: before the caret moves with the arrow
 document.getElementById("editor-grid").addEventListener("keydown", handleTableRowMove, true);

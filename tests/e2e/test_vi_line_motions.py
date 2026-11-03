@@ -160,3 +160,27 @@ def test_i_and_a_use_the_lines_of_the_text_without_wrap_navigation(no_wrap):
 	assert no_wrap.lines[0] == LONG + "X"
 	no_wrap.load([LONG, "next"]).keys("g", "j", "I").type("X").keys("Escape")
 	assert no_wrap.lines[0] == "X" + LONG
+
+
+def test_any_heading_forward(vi):
+	vi.load(html=HEADINGS).keys("]", "]", "m")
+	assert caret(vi) == ["A1", 0]
+	vi.keys("]", "]", "m")
+	assert caret(vi) == ["A2", 0]
+	vi.keys("]", "]", "m")
+	assert caret(vi) == ["B", 0]
+
+
+def test_any_heading_backward(vi):
+	vi.load(html=HEADINGS, at=(7, 2)).keys("[", "[", "m")
+	assert caret(vi) == ["B", 0]
+	vi.keys("[", "[", "m")
+	assert caret(vi) == ["A2", 0]
+	vi.keys("2", "[", "[", "m")
+	assert caret(vi) == ["A", 0]
+
+
+def test_any_heading_with_an_operator(vi):
+	# d]]m deletes up to the next heading, whatever its level
+	vi.load(html=HEADINGS, at=(1, 0)).keys("d", "]", "]", "m")
+	assert vi.lines[:3] == ["A", "A1", "a1 text"]

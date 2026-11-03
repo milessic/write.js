@@ -2,7 +2,7 @@
  * Scripting: a document with "scripts" in its metadata (doclinks.js) gets a "Script" button in the toolbar. It opens the
  * Script wizard, which adds a script's button to the text at the caret: its display name, border and JavaScript code.
  * A click on the button runs the code and shows a notification of how it went; its right click opens the wizard again.
- * The document's menus enable or disable its scripts (off until enabled): disabled, there is no "Script" button and the
+ * The document's metadata widget (its menus, workspace.js) enables or disables its scripts (off until enabled): disabled, there is no "Script" button and the
  * document's script buttons don't run.
  *
  * A script button is <span class="script-activator" contenteditable="false" data-script="{code}"
@@ -10,7 +10,9 @@
  * it out (withoutScripts).
  * The code runs as the body of an async function (await works), in strict mode, with:
  * - scope: the script's own variables (scriptScopes[document id]), emptied when it ends,
- * - editor: the document's element, and the functions of scriptapi.js, which only look inside it.
+ * - editor: the document's element, and the functions of scriptapi.js, which only look inside it,
+ * - document: the document's own (scriptDocument): its queries (querySelector, getElementById...) only find what is in
+ *   it, its body is the editor; window, globalThis and self have that document too, the rest of the page isn't there.
  * What it returns is shown in its notification, as text (scriptResultText).
  * What a script changes in the document isn't on the browser's undo stack (it can't be put there as it is):
  * Ctrl/Cmd+Z and vi's u undo it while the document is as the script left it, Ctrl/Cmd+Shift+Z, Ctrl+Y and vi's Ctrl+R
@@ -20,8 +22,8 @@
  * The wizard and its help are windows: no backdrop, moved by their title bar, resized by their corner, so the code
  * can be written with the help beside it.
  * The code is checked when it is added and before each run (checkScriptCode): it can't use localStorage or
- * sessionStorage, nor the ways around that check. It is a guard against scripts changing the app's storage, not a
- * sandbox: the code runs in the page like the app does.
+ * sessionStorage, nor the ways around that check. It is a guard against scripts changing the app's storage and the page
+ * around their document, not a sandbox: the code runs in the page like the app does.
  *
  * Element ids: a right click on a line's "+" (add comment, comments.js) assigns an id to the line, or to its list, kept
  * in its data-element-id so it never clashes with the app's own ids. An id is unique in its document.
@@ -47,9 +49,12 @@ const scriptForbidden = [
 	{ pattern: /\beval\b|\bFunction\b|\bconstructor\b|\bimport\s*\(|\bReflect\b|getOwnPropertyDescriptor/, reason: "code can't be made from text" },
 	{ pattern: /\b(window|globalThis|self|top|parent|frames|opener)\s*(\?\.)?\s*\[|\bdefaultView\b/, reason: "the page's globals can't be looked up by name" },
 	{ pattern: /\\u|\\x/, reason: "\\u and \\x escapes can't be used" },
+	{ pattern: /\bownerDocument\b|\bgetRootNode\b/, reason: "the page around the document can't be reached" },
 ];
 // names a script sees as undefined
 const scriptShadowed = ["localStorage", "sessionStorage", "scriptScopes"];
+// names a script sees as its document's (scriptGlobals): document, and the page's globals with that document
+const scriptGlobalNames = ["document", "window", "globalThis", "self", "top", "parent", "frames"];
 const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
 const scriptScopes = {}; // {document id: scope}: the variables of the document's running script
 // editor -> {undo: [change], redo: [change]}, a change {before, after, beforeKey, afterKey, activator}: the documents
@@ -71,6 +76,11 @@ document.getElementById("editor-grid").addEventListener("input", (e) => {
 	if ( editor ) { normalizeElementIds(editor) }
 });
 document.getElementById("editor-grid").addEventListener("keydown", handleScriptUndoKeys, true);
+// the links of a script's notification (formatScriptText): a document's opens it, one to nowhere does nothing
+document.getElementById("notifications-container").addEventListener("click", (e) => {
+	if ( e.target.closest?.("a.script-link-missing") ) { e.preventDefault(); return }
+	handleDocumentLinkClick(e); // doclinks.js
+});
 document.getElementById("editor-grid").addEventListener("beforeinput", (e) => {
 	// Edit > Undo / Redo of the browser's menu
 	const editor = e.target.closest?.(".editor");
@@ -85,23 +95,43 @@ function scriptsEnabled(editor){
 	return Boolean(pane && tabDocumentMeta(tabById(pane.tabId)).scripts);
 }
 
-function scriptsMenuItem(enabled, changeEach){
-	// enables or disables the documents' scripts
-	const change = (root, meta) => {
-		if ( Boolean(meta.scripts) === !enabled ) { return 0 }
-		enabled ? delete meta.scripts : meta.scripts = true;
-		return 1;
-	};
-	return { label: enabled ? "Disable scripts" : "Enable scripts", action: () => { changeEach(change); renderPanes() } };
-}
-
 function renderScripting(){
 	// the editors' script buttons look disabled in a document without scripts, the "Script" tool shows for one with them
 	for ( const pane of panes ) { pane.editor.classList.toggle("scripts-enabled", scriptsEnabled(pane.editor)) }
 	const shown = scriptsEnabled(editorObject);
 	document.querySelectorAll(".script-tool").forEach((el) => { el.hidden = !shown });
+	syncScriptWizard();
 }
 
+function syncScriptWizard(){
+	// the wizard shows while its tab is shown in an editor, hidden where it was while not; its tab closed, it goes
+	const wizard = document.querySelector(".script-wizard[data-tab-id]");
+	if ( !wizard ) { return }
+	const tab = tabById(Number(wizard.dataset.tabId));
+	if ( !tab ) { wizard.remove(); return }
+	const away = !paneOfTab(tab);
+	if ( away && wizard.contains(document.activeElement) ) { document.activeElement.blur() }
+	wizard.classList.toggle("script-window-away", away);
+}
+
+
+// a script button stays in a line of text: the lines with one can't be made headings (formatBlockWithHeadingBreaks, script.js)
+function selectionHasScriptActivators(editor){
+	const selection = window.getSelection();
+	if ( !selection.rangeCount ) { return false }
+	const range = selection.getRangeAt(0);
+	if ( !editor.contains(range.commonAncestorContainer) ) { return false }
+	// the editor's lines (its children, or the items of its lists) the selection is in
+	const lineOf = (node) => {
+		let el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+		const li = el?.closest("li");
+		if ( li && editor.contains(li) ) { return li }
+		while ( el && el.parentElement !== editor ) { el = el.parentElement }
+		return el;
+	};
+	const lines = [...editor.querySelectorAll(".script-activator")].map(lineOf);
+	return lines.some((line) => line && (range.intersectsNode(line) || line.contains(range.startContainer)));
+}
 
 // the code
 function checkScriptCode(code){
@@ -123,15 +153,41 @@ function checkScriptCode(code){
 }
 
 function compileScript(code){
-	return new AsyncFunction("scope", "editor", ...scriptApiNames, ...scriptShadowed, `"use strict";\n${code}`);
+	return new AsyncFunction("scope", "editor", ...scriptApiNames, ...scriptGlobalNames, ...scriptShadowed, `"use strict";\n${code}`);
 }
 
-function scriptNotification(text, type="info", timeout=notificationTimeout, result=null, timestamp=false){
-	// headed "Script execution" (and the time it was shown, with timestamp), the text (and what the script returned) as plain text
+function scriptNotification(text, type="info", timeout=notificationTimeout, result=null, timestamp=false, formatted=false){
+	// headed "Script execution" (and the time it was shown, with timestamp), the text (and what the script returned) as
+	// plain text; formatted: the text of a script's createNotification, with its bit of formatting (formatScriptText)
 	type = ["info", "warning", "warn", "error"].includes(type) ? type : "info";
 	const returned = result === null ? "" : `<div class="script-notification-result">${escapeHtmlText(result)}</div>`;
 	const time = timestamp ? ` <span class="script-notification-time">${formatTimestamp(new Date())}</span>` : "";
-	return createNotification(`<div class="script-notification-head">Script execution${time}</div><div>${escapeHtmlText(text)}</div>${returned}`, type, timeout, true);
+	const body = formatted ? formatScriptText(text) : escapeHtmlText(text);
+	return createNotification(`<div class="script-notification-head">Script execution${time}</div><div>${body}</div>${returned}`, type, timeout, true);
+}
+
+function formatScriptText(text){
+	// a line break is a new line, **text** bold, *text* italic, [text](link) a link: a url (http, https, mailto) as it is,
+	// anything else is a document's id, a link to it when there is one, else a link to nowhere
+	const links = [];
+	let html = escapeHtmlText(text).replace(/\[([^\]\n]+)\]\(([^()\s]+)\)/g, (match, label, target) => {
+		links.push({ label, target });
+		return `\u0000${links.length - 1}\u0000`;
+	});
+	const inline = (part) => part
+		.replace(/\*\*(?=\S)([^\n]*?\S)\*\*/g, "<strong>$1</strong>")
+		.replace(/\*(?=[^\s*])([^*\n]*?[^\s*])\*|\*([^\s*])\*/g, (match, longer, one) => `<em>${longer ?? one}</em>`);
+	html = inline(html).replace(/\u0000(\d+)\u0000/g, (match, i) => {
+		const { label, target } = links[Number(i)];
+		const raw = unescapeHtmlAttribute(target);
+		if ( /^(https?:\/\/[^\s]+|mailto:[^\s]+)$/i.test(raw) ) {
+			return `<a href="${target}" target="_blank" rel="noopener noreferrer">${inline(label)}</a>`;
+		}
+		const name = documentNameById(raw); // doclinks.js
+		if ( name !== null ) { return `<a href="?${docLinkParam}=${target}" data-doc-id="${target}" title="${escapeHtmlText(name)}">${inline(label)}</a>` }
+		return `<a href="" class="script-link-missing" title="No document with this id">${inline(label)}</a>`;
+	});
+	return html.replace(/\r?\n/g, "<br>");
 }
 
 function formatTimestamp(date, seconds=true){
@@ -172,12 +228,59 @@ async function executeScript(editor, code){
 	const scope = scriptScopes[key] = {};
 	const api = scriptApi(editor);
 	try {
-		return { ok: true, result: scriptResultText(await compileScript(code)(scope, editor, ...scriptApiNames.map((n) => api[n]))) };
+		return { ok: true, result: scriptResultText(await compileScript(code)(scope, editor, ...scriptApiNames.map((n) => api[n]), ...scriptGlobals(editor))) };
 	} catch ( err ) {
 		return { ok: false, result: null, error: err };
 	} finally {
 		delete scriptScopes[key];
 	}
+}
+
+function scriptDocument(editor){
+	// document as a script sees it: only its own document. What finds elements looks inside the editor, what makes them
+	// works as in the page, the rest of the page's document isn't there (undefined)
+	const escape = (value) => CSS.escape(String(value));
+	return Object.freeze({
+		querySelector: (selector) => editor.querySelector(selector),
+		querySelectorAll: (selector) => editor.querySelectorAll(selector),
+		// an element's id, or the id assigned for scripts (data-element-id)
+		getElementById: (id) => editor.querySelector(`[id="${escape(id)}"], [${elementIdAttribute}="${escape(id)}"]`),
+		getElementsByClassName: (names) => editor.getElementsByClassName(names),
+		getElementsByTagName: (name) => editor.getElementsByTagName(name),
+		getElementsByName: (name) => editor.querySelectorAll(`[name="${escape(name)}"]`),
+		get body(){ return editor },
+		get documentElement(){ return editor },
+		get activeElement(){ return editor.contains(document.activeElement) ? document.activeElement : null },
+		createElement: (...args) => document.createElement(...args),
+		createElementNS: (...args) => document.createElementNS(...args),
+		createTextNode: (text) => document.createTextNode(text),
+		createComment: (text) => document.createComment(text),
+		createDocumentFragment: () => document.createDocumentFragment(),
+		createRange: () => document.createRange(),
+		createTreeWalker: (root, ...args) => {
+			if ( !(root instanceof Node) || !editor.contains(root) ) { throw new Error("createTreeWalker: the root has to be in the document") }
+			return document.createTreeWalker(root, ...args);
+		},
+		getSelection: () => window.getSelection(),
+		execCommand: (...args) => document.execCommand(...args),
+	});
+}
+
+function scriptGlobals(editor){
+	// the values of scriptGlobalNames: the script's document, and window (globalThis, self...) with it instead of the page's
+	const doc = scriptDocument(editor);
+	const win = new Proxy(window, {
+		get(target, prop){
+			if ( prop === "document" ) { return doc }
+			if ( scriptGlobalNames.includes(prop) ) { return win }
+			if ( scriptShadowed.includes(prop) ) { return undefined }
+			const value = Reflect.get(target, prop);
+			// the page's functions (setTimeout, fetch...) need the window as this; constructors are left as they are
+			return typeof value === "function" && typeof prop === "string" && /^[a-z]/.test(prop) ? value.bind(target) : value;
+		},
+		set(target, prop, value){ return Reflect.set(target, prop, value) },
+	});
+	return scriptGlobalNames.map((name) => name === "document" ? doc : win);
 }
 
 function afterScriptRun(editor, before, beforeKey, activatorIndex){
@@ -195,7 +298,7 @@ async function runScript(activator){
 	const editor = activator.closest(".editor");
 	const name = activator.textContent.trim() || "Script";
 	if ( !scriptsEnabled(editor) ) {
-		scriptNotification(`Scripts are disabled in this document, '${name}' did not run. Enable them from the document's menu`, "warning");
+		scriptNotification(`Scripts are disabled in this document, '${name}' did not run. Enable them in Document metadata (the document's menu)`, "warning");
 		return false;
 	}
 	const code = activator.dataset.script || "";
@@ -361,7 +464,7 @@ function openScriptWizard(activator=null, at=null){
 	// at: where a new button goes (vi's :script), else the caret's place in the editor
 	const editor = activator?.closest(".editor") || editorObject;
 	if ( !scriptsEnabled(editor) ) {
-		scriptNotification("Scripts are disabled in this document. Enable them from the document's menu", "warning");
+		scriptNotification("Scripts are disabled in this document. Enable them in Document metadata (the document's menu)", "warning");
 		return;
 	}
 	const range = activator ? null : at || (lastEditorRange && editor.contains(lastEditorRange.commonAncestorContainer) ? lastEditorRange.cloneRange() : null);
@@ -378,6 +481,12 @@ function openScriptWizard(activator=null, at=null){
 		</div>`);
 	const modal = [...document.querySelectorAll(".modal-container")].at(-1);
 	modal.classList.add("script-wizard");
+	// it belongs to its document's tab: hidden while another tab is shown in its place, back where it was with the tab
+	// (syncScriptWizard); the editor shows other content meanwhile, so what it adds to is found again on save
+	const tabId = paneOfEditor(editor)?.tabId ?? null;
+	if ( tabId !== null ) { modal.dataset.tabId = tabId }
+	const activatorIndex = activator ? [...editor.querySelectorAll(".script-activator")].indexOf(activator) : -1;
+	const rangePath = range && editor.contains(range.startContainer) ? { node: range.startContainer, path: nodePath(editor, range.startContainer), offset: range.startOffset } : null;
 	// a window, not a modal: the help and the document stay usable beside it
 	deleteOverlay();
 	setupScriptWindow(modal);
@@ -402,16 +511,38 @@ function openScriptWizard(activator=null, at=null){
 		if ( !label ) { showProblem("The display name is empty"); name.focus(); return false }
 		const problem = checkScriptCode(text);
 		if ( problem ) { showProblem(problem); code.focus(); return false }
-		if ( activator && !activator.isConnected ) { showProblem("The script's button is no longer in the document"); return false }
-		if ( activator ) {
-			fillScriptActivator(activator, label, border.value, text);
+		const target = wizardTarget();
+		if ( !target ) { showProblem("The script's document is no longer opened"); return false }
+		const { editor: into, activator: button, range: at } = target;
+		if ( activator && !button?.isConnected ) { showProblem("The script's button is no longer in the document"); return false }
+		if ( button ) {
+			fillScriptActivator(button, label, border.value, text);
 		} else {
-			insertScriptActivator(editor, range, fillScriptActivator(document.createElement("span"), label, border.value, text));
+			insertScriptActivator(into, at, fillScriptActivator(document.createElement("span"), label, border.value, text));
 		}
 		closeAllModals();
-		editor.dispatchEvent(new Event("input", { bubbles: true }));
-		if ( editor.id === "editor" ) { performAutoSave() }
+		into.dispatchEvent(new Event("input", { bubbles: true }));
+		if ( into.id === "editor" ) { performAutoSave() }
 		return true;
+	};
+	const wizardTarget = () => {
+		// {editor, activator, range} in the editor showing the wizard's tab now; as they were when nothing moved
+		const pane = tabId === null ? paneOfEditor(editor) : paneOfTab(tabById(tabId));
+		if ( !pane ) { return null }
+		const into = pane.editor;
+		// (a range whose node went with the editor's content moves to the editor itself: its node tells)
+		if ( into === editor && (!activator || activator.isConnected) && (!rangePath || into.contains(rangePath.node)) ) {
+			return { editor: into, activator, range };
+		}
+		const button = activatorIndex === -1 ? null : into.querySelectorAll(".script-activator")[activatorIndex] || null;
+		let at = null;
+		const node = rangePath && nodeAtPath(into, rangePath.path);
+		if ( node ) {
+			at = document.createRange();
+			at.setStart(node, Math.min(rangePath.offset, node.nodeType === Node.TEXT_NODE ? node.length : node.childNodes.length));
+			at.collapse(true);
+		}
+		return { editor: into, activator: button, range: at };
 	};
 	// vi in the code (vi.js): :w adds or saves the script, :q closes the wizard, :wq both
 	code.addEventListener("vi-command", (e) => {
@@ -475,6 +606,9 @@ async function openScriptHelp(){
 			<ul class="script-help-notes">
 				<li><code>scope</code>: the script's own variables, e.g. <code>scope.count = 1</code>, emptied when it ends.</li>
 				<li><code>editor</code>: the document's element.</li>
+				<li><code>document</code>: only this document: <code>querySelector</code>, <code>querySelectorAll</code>,
+					<code>getElementById</code> (also the ids assigned with the line's +) and the like look inside it, <code>document.body</code> is
+					<code>editor</code>; the rest of Write.JS isn't reachable from it (nor from <code>window.document</code>).</li>
 				<li><code>return</code> a value to show it in the notification, as text: a string as it is, anything else as JSON.</li>
 				<li>Not allowed: ${scriptForbidden.map((f) => escapeHtmlText(f.reason)).join("; ")}.</li>
 			</ul>

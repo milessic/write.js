@@ -569,8 +569,9 @@ CONTEXT_MENU = """([text, pointerType, select]) => {
 }"""
 
 
-@pytest.mark.parametrize("pointer, select, ours", [("touch", True, False), ("touch", False, True), ("mouse", True, True)])
-def test_long_press_on_selected_text_keeps_the_systems_menu(vi_insert, pointer, select, ours):
+@pytest.mark.parametrize("pointer, select, ours", [("touch", True, False), ("touch", False, True), ("mouse", True, False), ("mouse", False, True)])
+def test_selected_text_keeps_the_systems_menu(vi_insert, pointer, select, ours):
+	# a right click or a long press on text selected in a cell: the system's menu (copy, paste...), else the table's
 	load(vi_insert, TABLE)
 	assert vi_insert.evaluate(CONTEXT_MENU, ["x", pointer, select]) is ours
 	vi_insert.keyboard.press("Escape")

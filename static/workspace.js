@@ -1,12 +1,14 @@
 /*
  * Workspace: the documents tree (file explorer), the opened documents (tabs) and the editors.
- * The tree (left, right, top or bottom) and the tabs bar (top or bottom) can be docked by drag-and-drop or from their right-click menu;
+ * The tree (left, right, top or bottom), the tabs bar (top or bottom) and the formatting toolbar (top, bottom, left or right
+ * of the editors) can be docked by drag-and-drop or from their right-click menu;
  * the layout, the opened tabs and the split editors are user preferences kept in localStorage.
  * Folders are listed on top of the tree and can hold sub-folders, up to maxFolderDepth levels;
  * a folder is known by its path, e.g. "work/projects". A document is in at most one folder.
  * The folders, which document is in which and the folders' colors are kept under foldersKey and go
  * to the cloud with the notebook. A folder's color tints it, its sub-folders without a color of their own
- * and the tabs of the documents in them.
+ * and the tabs of the documents in them. A folder hidden in search (its menu) keeps its documents and those of its
+ * sub-folders out of the document search tray and vi's :e.
  * Documents in the tree can be selected with Ctrl/Cmd+click (one more) and Shift+click (a range);
  * opening, deleting, moving and dragging then act on all the selected documents.
  *
@@ -22,7 +24,9 @@
  * click on it, on a tab or on an editor's head opens the document's menu (documentMenuItems): search in it, insert into it,
  * copy and export it.
  *
- * A document whose metadata (doclinks.js) has showTitle shows its name as a title above its text, line 0: not part of
+ * A document's metadata (doclinks.js) is edited in a compact widget from its menus (openMetadataWidget): showTitle, scripts,
+ * its owner and its authors (a logged in user saving a document becomes its owner when it has none, and one of its authors).
+ * A document whose metadata has showTitle shows its name as a title above its text, line 0: not part of
  * the text (not in the table of contents, the exports or the word count), editing it renames the document like the
  * name field does, and the other way around. A document's menus show or hide it.
  */
@@ -80,9 +84,9 @@ const folderTints = {
 let treePinned = localStorage.getItem(treePinnedKey) === "true";
 // treeSide "left" / "right" / "top" / "bottom";
 // the table of contents (toc.js): tocSide "left" / "right" / "top" / "bottom" on its own or "tree" as a tab next to the documents,
-// treeTab is the tab the tree shows then
+// treeTab is the tab the tree shows then; toolbarSide "top" / "bottom" / "left" / "right" of the editors
 const layout = Object.assign(
-	{ treeSide: "left", tabsSide: "top", treeHidden: false, collapsedFolders: [], tocSide: "right", tocHidden: true, treeTab: "documents" },
+	{ treeSide: "left", tabsSide: "top", treeHidden: false, collapsedFolders: [], tocSide: "right", tocHidden: true, treeTab: "documents", toolbarSide: "top" },
 	readJsonSetting(layoutKey)
 );
 // {id, name, html, dirty}; html is only kept while a tab that isn't shown has unsaved changes
@@ -193,9 +197,12 @@ setupLongPressMenus(fileTreeList);
 setupTreeResizing();
 setupDocumentDropping();
 setupDocking("tab-grip", "tabs");
+setupDocking("toolbar-grip", "toolbar");
+document.getElementById("sub-bar").addEventListener("contextmenu", (e) => openContextMenu(e, toolbarPanelMenuItems()));
 setupNameTooltip();
 setupDocSearch();
 setupLongPressMenus(tabsContainer);
+setupLongPressMenus(document.getElementById("side-tabs")); // the contents' tab: splitting the documents' place on phones
 documentNameObject.addEventListener("contextmenu", (e) => openContextMenu(e, documentMenuItems(getActiveTab())));
 
 // on press, in the capture phase: a right-click (its native menu), a drag or a button that stops its click close it too
@@ -253,6 +260,8 @@ function applyLayout(){
 	document.body.dataset.treeSide = layout.treeSide;
 	document.getElementById("file-tree-resizer").setAttribute("aria-orientation", dockedInRows(layout.treeSide) ? "horizontal" : "vertical");
 	document.body.dataset.tabsSide = layout.tabsSide;
+	document.body.dataset.toolbarSide = layout.toolbarSide;
+	document.getElementById("sub-bar")?.querySelector(".toolbar-bar")?.setAttribute("aria-orientation", dockedInRows(layout.toolbarSide) ? "horizontal" : "vertical");
 	document.body.classList.toggle("tree-hidden", layout.treeHidden);
 	if ( typeof applyTocLayout === "function" ) { applyTocLayout() } // toc.js loads after this file
 	requestAnimationFrame(() => window.WriteVi?.relayout());
@@ -359,6 +368,11 @@ function toggleTreePinned(){
 function setTreeSide(side){
 	layout.treeSide = side;
 	layout.treeHidden = false;
+	saveLayout();
+}
+
+function setToolbarSide(side){
+	layout.toolbarSide = side;
 	saveLayout();
 }
 
@@ -470,9 +484,11 @@ function refreshFileTree(force=false){
 	if ( docSearchTray.classList.contains("menu-opened") ) { renderDocSearch() }
 }
 
-function renderDocumentTree(list, names, filter){
-	// the documents in their folders, or the ones matching the filter; the tree and the search tray (docSearch below)
+function renderDocumentTree(list, names, filter, search=false){
+	// the documents in their folders, or the ones matching the filter; the tree and the search tray (docSearch below),
+	// which leaves out the folders hidden in search
 	list.replaceChildren();
+	if ( search && names ) { names = names.filter(name => !isHiddenInSearch(name)) }
 	if ( names === null ) {
 		list.append(treeMessage("Agree to storing data to save documents."));
 	} else if ( filter ) {
@@ -482,7 +498,7 @@ function renderDocumentTree(list, names, filter){
 	} else if ( !names.length && !readFolders().folders.length ) {
 		list.append(treeMessage("You don't have any saved documents yet. Just create one :)"));
 	} else {
-		renderFolders(list, names);
+		renderFolders(list, names, search);
 	}
 }
 
@@ -497,9 +513,10 @@ function treeMatchItem(name){
 	return li;
 }
 
-function renderFolders(list, names){
+function renderFolders(list, names, search=false){
 	// folders first, then the documents that aren't in a folder
 	const store = readFolders();
+	if ( search ) { store.folders = store.folders.filter(f => !folderHiddenInSearch(f, store)) }
 	const byFolder = new Map(store.folders.map(f => [f, []]));
 	const loose = [];
 	for ( const name of names ) {
@@ -526,7 +543,8 @@ function treeFolderItem(folder, folders, byFolder, depth){
 	// only a folder with a color of its own is tinted, sub-folders without one inherit it
 	if ( folderColorValue(readFolders().colors[folder]) ) { applyFolderTint(li, folder) }
 	const row = treeRow("tree-folder", folderLabel(folder), depth);
-	row.title = `${displayFolder(folder)} (${names.length} document${names.length === 1 ? "" : "s"})`;
+	row.title = `${displayFolder(folder)} (${names.length} document${names.length === 1 ? "" : "s"})` + (folderHiddenInSearch(folder) ? ", hidden in search" : "");
+	if ( readFolders().searchHidden[folder] ) { row.classList.add("search-hidden-folder") }
 	row.draggable = true;
 	row.addEventListener("dragstart", (e) => {
 		e.stopPropagation();
@@ -545,6 +563,7 @@ function treeFolderItem(folder, folders, byFolder, depth){
 		{ label: "New sub-folder", action: () => createFolder(folder), disabled: folderDepth(folder) >= maxFolderDepth },
 		{ label: "Rename folder", action: () => renameFolder(folder) },
 		{ swatches: folderColorSwatches(folder) },
+		searchHiddenMenuItem(folder),
 		{ label: "Move to top level", action: () => moveFolder(folder, ""), disabled: !parentFolder(folder) },
 		{ label: "Delete folder", danger: true, action: () => deleteFolder(folder) },
 		null,
@@ -599,8 +618,8 @@ function treeDocumentItem(name, label, depth){
 			...(names.length > 1 ? [{ label: "Clear selection", action: clearDocumentSelection }] : []),
 			null,
 			...checklistFoldMenuItems((change) => names.reduce((n, doc) => n + changeDocument(doc, change), 0)),
-			titleMenuItem(storedDocumentMeta(names[0]).showTitle, (change) => names.forEach(doc => changeDocument(doc, change))),
-			scriptsMenuItem(storedDocumentMeta(names[0]).scripts, (change) => names.forEach(doc => changeDocument(doc, change))), // scripting.js
+			metadataMenuItem(names.length > 1 ? `${names.length} documents` : name, names.map(storedDocumentMeta),
+				(change) => names.forEach(doc => changeDocument(doc, change)), names.length > 1 ? null : documentIdOf(name)),
 			null,
 			...moveToFolderMenuItems(names),
 			null,
@@ -854,7 +873,7 @@ function closeDocSearch(){
 
 function renderDocSearch(){
 	const names = validateUserConsent(false) ? getDocumentNamesFromLocalStorage().sort((a, b) => a.localeCompare(b)) : null;
-	renderDocumentTree(docSearchList, names, docSearchInput.value.trim().toLowerCase());
+	renderDocumentTree(docSearchList, names, docSearchInput.value.trim().toLowerCase(), true);
 }
 
 
@@ -1027,6 +1046,19 @@ function moveTab(id, beforeId){
 	i === -1 ? tabs.push(tab) : tabs.splice(i, 0, tab);
 	renderTabs();
 	saveOpenedTabs();
+}
+
+function storeFolds(editor){
+	// the folds of a saved document go into its stored copy, which differs from the editor only by them (foldsChanged)
+	const pane = paneOfEditor(editor);
+	const tab = pane && tabById(pane.tabId);
+	if ( !tab || tab.dirty || !tab.savedName || tabLabelName(tab) !== tab.savedName || !documentExists(tab.savedName) || !validateUserConsent(false) ) { return }
+	try {
+		localStorage.setItem(docPrefix + tab.savedName, documentHtmlToStore(tab, tab.savedName, editor.innerHTML));
+	} catch ( err ) {
+		return;
+	}
+	if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the change goes to the cloud (cloudsync.js)
 }
 
 function markActiveTabSaved(){
@@ -1223,14 +1255,108 @@ function tabDocumentMeta(tab){
 	return storedDocumentMeta(tab.savedName);
 }
 
-function titleMenuItem(shown, changeEach){
-	// shows or hides the documents' title
-	const change = (root, meta) => {
-		if ( Boolean(meta.showTitle) === !shown ) { return 0 }
-		shown ? delete meta.showTitle : meta.showTitle = true;
-		return 1;
+// the document's metadata widget: its title, scripts, owner and authors, for one document or several (the tree's selection)
+function metadataMenuItem(label, metas, changeEach, id=null, disabled=false){
+	return { label: "Document metadata", action: () => openMetadataWidget(label, metas, changeEach, id), disabled };
+}
+
+function metadataAuthors(meta){
+	return Array.isArray(meta.authors) ? meta.authors.filter(a => typeof a === "string" && a) : [];
+}
+
+function openMetadataWidget(label, metas, changeEach, id=null){
+	// compact, like Insert Link: a checkbox or a field with values that differ between the documents is left as it is
+	// unless it is changed
+	closeMetadataWidget();
+	const same = (values) => values.every(v => v === values[0]);
+	const flags = (key) => metas.map(m => Boolean(m[key]));
+	const texts = { owner: metas.map(m => typeof m.owner === "string" ? m.owner : ""), authors: metas.map(m => metadataAuthors(m).join(", ")) };
+	const widget = document.createElement("dialog");
+	widget.className = "modal-container metadata-widget";
+	widget.setAttribute("aria-label", "Document metadata");
+	widget.innerHTML = `
+		<div class="metadata-head"><span class="metadata-name"></span><button class="small-btn metadata-close" aria-label="Close" title="Close (Esc)">✕</button></div>
+		<div class="metadata-flags">
+			<label class="check"><input type="checkbox" data-meta="showTitle">Show title</label>
+			<label class="check"><input type="checkbox" data-meta="scripts">Scripts</label>
+		</div>
+		<label>Owner<input type="text" data-meta="owner" autocomplete="off" spellcheck="false"></label>
+		<label>Authors<input type="text" data-meta="authors" autocomplete="off" spellcheck="false" placeholder="Comma separated"></label>
+		<p class="muted small metadata-id" hidden>ID <code></code></p>
+		<div class="row">
+			<button class="btn primary metadata-save">Save</button>
+			<button class="btn metadata-cancel">Cancel</button>
+		</div>`;
+	widget.querySelector(".metadata-name").textContent = label || untitledTabLabel;
+	widget.querySelector(".metadata-name").title = label || untitledTabLabel;
+	for ( const key of ["showTitle", "scripts"] ) {
+		const box = widget.querySelector(`[data-meta="${key}"]`);
+		box.checked = flags(key)[0];
+		box.indeterminate = !same(flags(key));
+	}
+	for ( const key of ["owner", "authors"] ) {
+		const field = widget.querySelector(`[data-meta="${key}"]`);
+		if ( same(texts[key]) ) { field.value = texts[key][0] } else { field.placeholder = "Several values" }
+	}
+	if ( id ) {
+		widget.querySelector(".metadata-id").hidden = false;
+		widget.querySelector(".metadata-id code").textContent = id;
+	}
+	const touched = new Set();
+	widget.addEventListener("input", (e) => { if ( e.target.dataset.meta ) { touched.add(e.target.dataset.meta) } });
+	widget.addEventListener("change", (e) => { if ( e.target.dataset.meta ) { touched.add(e.target.dataset.meta) } });
+	const save = () => {
+		const values = {};
+		for ( const key of touched ) {
+			const input = widget.querySelector(`[data-meta="${key}"]`);
+			values[key] = input.type === "checkbox" ? input.checked : input.value;
+		}
+		closeMetadataWidget();
+		if ( !Object.keys(values).length ) { return }
+		changeEach((root, meta) => applyMetadata(meta, values));
+		renderPanes();
 	};
-	return { label: shown ? "Hide title" : "Show title", action: () => { changeEach(change); renderPanes() } };
+	widget.querySelector(".metadata-save").addEventListener("click", save);
+	widget.querySelector(".metadata-cancel").addEventListener("click", closeMetadataWidget);
+	widget.querySelector(".metadata-close").addEventListener("click", closeMetadataWidget);
+	widget.addEventListener("keydown", (e) => {
+		if ( e.key === "Enter" && e.target.matches("input") ) { e.preventDefault(); save() }
+	});
+	document.body.append(widget);
+	widget.show();
+	widget.querySelector(`[data-meta="owner"]`).focus();
+	return widget;
+}
+
+function applyMetadata(meta, values){
+	// values: {showTitle, scripts: boolean, owner: text, authors: comma separated text}; returns how many changed
+	const before = JSON.stringify(meta);
+	for ( const key of ["showTitle", "scripts"] ) {
+		if ( !(key in values) ) { continue }
+		values[key] ? meta[key] = true : delete meta[key];
+	}
+	if ( "owner" in values ) {
+		const owner = values.owner.trim();
+		owner ? meta.owner = owner : delete meta.owner;
+	}
+	if ( "authors" in values ) {
+		const authors = [...new Set(values.authors.split(",").map(a => a.trim()).filter(Boolean))];
+		authors.length ? meta.authors = authors : delete meta.authors;
+	}
+	return JSON.stringify(meta) === before ? 0 : 1;
+}
+
+function stampAuthorship(meta){
+	// a logged in user saving a document: its owner when it has none, one of its authors (doclinks.js)
+	const user = document.body.dataset.user;
+	if ( !user || !meta ) { return }
+	if ( !meta.owner ) { meta.owner = user }
+	const authors = metadataAuthors(meta);
+	if ( !authors.includes(user) ) { meta.authors = [...authors, user] }
+}
+
+function closeMetadataWidget(){
+	document.querySelectorAll(".metadata-widget").forEach(el => el.remove());
 }
 
 // the title (line 0)
@@ -1378,8 +1504,7 @@ function renderTabs(){
 			...documentMenuItems(tab),
 			null,
 			...checklistFoldMenuItems((change) => changeTabDocument(tab, change)),
-			titleMenuItem(tabDocumentMeta(tab).showTitle, (change) => changeTabDocument(tab, change)),
-			scriptsMenuItem(tabDocumentMeta(tab).scripts, (change) => changeTabDocument(tab, change)), // scripting.js
+			metadataMenuItem(tabLabelName(tab), [tabDocumentMeta(tab)], (change) => changeTabDocument(tab, change), tab.docId),
 			null,
 			...tabsPanelMenuItems(),
 		]));
@@ -1461,8 +1586,8 @@ function setupPane(el){
 		...documentMenuItems(tabById(pane.tabId)),
 		null,
 		...checklistFoldMenuItems((change) => tabById(pane.tabId) ? changeTabDocument(tabById(pane.tabId), change) : 0),
-		titleMenuItem(tabDocumentMeta(tabById(pane.tabId)).showTitle, (change) => tabById(pane.tabId) && changeTabDocument(tabById(pane.tabId), change)),
-		scriptsMenuItem(tabDocumentMeta(tabById(pane.tabId)).scripts, (change) => tabById(pane.tabId) && changeTabDocument(tabById(pane.tabId), change)), // scripting.js
+		metadataMenuItem(tabLabelName(tabById(pane.tabId) || {}), [tabDocumentMeta(tabById(pane.tabId))],
+			(change) => tabById(pane.tabId) && changeTabDocument(tabById(pane.tabId), change), tabById(pane.tabId)?.docId, !tabById(pane.tabId)),
 	]));
 	// drag an editor by its header onto another editor to swap their places
 	const head = el.querySelector(".pane-head");
@@ -1778,12 +1903,13 @@ document.addEventListener("scroll", (e) => { if ( e.target.classList?.contains("
 
 // folders
 function readFolders(){
-	// {folders: [name], documents: {documentName: folderName}, colors: {folderName: colorKey}}
+	// {folders: [name], documents: {documentName: folderName}, colors: {folderName: colorKey}, searchHidden: {folderName: true}}
 	const store = readJsonSetting(foldersKey);
 	return {
 		folders: Array.isArray(store.folders) ? normalizeFolders(store.folders.filter(f => typeof f === "string")) : [],
 		documents: store.documents && typeof store.documents === "object" ? store.documents : {},
 		colors: store.colors && typeof store.colors === "object" ? store.colors : {},
+		searchHidden: store.searchHidden && typeof store.searchHidden === "object" ? store.searchHidden : {},
 	};
 }
 
@@ -1926,6 +2052,7 @@ function relocateFolder(folder, path){
 	store.folders = store.folders.map(moved);
 	for ( const [doc, f] of Object.entries(store.documents) ) { store.documents[doc] = moved(f) }
 	store.colors = Object.fromEntries(Object.entries(store.colors).map(([f, c]) => [moved(f), c]));
+	store.searchHidden = Object.fromEntries(Object.entries(store.searchHidden).map(([f, h]) => [moved(f), h]));
 	tabs.forEach(t => t.folder = moved(t.folder || ""));
 	layout.collapsedFolders = layout.collapsedFolders.map(moved);
 	expandFolder(parentFolder(path));
@@ -1958,6 +2085,9 @@ function deleteFolder(folder){
 	}
 	for ( const f of Object.keys(store.colors) ) {
 		if ( isInFolder(f, folder) ) { delete store.colors[f] }
+	}
+	for ( const f of Object.keys(store.searchHidden) ) {
+		if ( isInFolder(f, folder) ) { delete store.searchHidden[f] }
 	}
 	tabs.filter(t => isInFolder(t.folder || "", folder)).forEach(t => t.folder = "");
 	layout.collapsedFolders = layout.collapsedFolders.filter(f => !isInFolder(f, folder));
@@ -2056,6 +2186,35 @@ function folderColorSwatches(folder){
 	].map(c => ({ ...c, selected: c.key === current, action: () => setFolderColor(folder, c.key) }));
 }
 
+function folderHiddenInSearch(folder, store=readFolders()){
+	// hidden itself or inside a hidden folder
+	return Boolean(folder) && [folder, ...folderAncestors(folder)].some(f => store.searchHidden[f]);
+}
+
+function isHiddenInSearch(name){
+	// a document of a folder hidden in search (the search tray, vi's :e)
+	return folderHiddenInSearch(folderOfDocument(name));
+}
+
+function setFolderHiddenInSearch(folder, hidden){
+	if ( !validateUserConsent() ) { return }
+	const store = readFolders();
+	if ( hidden ) {
+		store.searchHidden[folder] = true;
+	} else {
+		delete store.searchHidden[folder];
+	}
+	writeFolders(store);
+	syncFolders();
+}
+
+function searchHiddenMenuItem(folder){
+	const store = readFolders();
+	if ( store.searchHidden[folder] ) { return { label: "Show in Search", action: () => setFolderHiddenInSearch(folder, false) } }
+	if ( folderHiddenInSearch(folder, store) ) { return { label: "Hidden in Search (by its folder)", disabled: true, action: () => {} } }
+	return { label: "Hide in Search", action: () => setFolderHiddenInSearch(folder, true) };
+}
+
 function deleteDocuments(names){
 	// several documents at once, after one confirmation
 	if ( !validateUserConsent() || !names.length ) { return }
@@ -2093,6 +2252,7 @@ function mergeFolders(json){
 	store.folders = normalizeFolders([...store.folders, ...folders]);
 	Object.assign(store.documents, incoming.documents && typeof incoming.documents === "object" ? incoming.documents : {});
 	Object.assign(store.colors, incoming.colors && typeof incoming.colors === "object" ? incoming.colors : {});
+	Object.assign(store.searchHidden, incoming.searchHidden && typeof incoming.searchHidden === "object" ? incoming.searchHidden : {});
 	localStorage.setItem(foldersKey, JSON.stringify(store));
 	renderTabs();
 }
@@ -2131,6 +2291,11 @@ function treePanelMenuItems(){
 		{ label: "Move documents to the bottom", action: () => setTreeSide("bottom"), disabled: layout.treeSide === "bottom" },
 		{ label: "Hide documents", action: hideFileTree },
 	];
+}
+
+function toolbarPanelMenuItems(){
+	return ["top", "bottom", "left", "right"].map(side => (
+		{ label: `Move toolbar to the ${side}`, action: () => setToolbarSide(side), disabled: layout.toolbarSide === side }));
 }
 
 function tabsPanelMenuItems(){
@@ -2218,7 +2383,7 @@ function setupLongPressMenus(container){
 	container.addEventListener("touchstart", (e) => {
 		cancel();
 		press = null;
-		const row = e.target.closest?.(".tree-row, .tab");
+		const row = e.target.closest?.(".tree-row, .tab, .side-tab");
 		if ( !row || e.touches.length !== 1 ) { return }
 		const { clientX: x, clientY: y } = e.touches[0];
 		press = { x, y, row, fired: false, draggable: row.draggable };
@@ -2297,7 +2462,17 @@ function dockTargetAt(x, y){
 	const panel = dockDrag.panel;
 	const outer = panel === "tree" || panel === "group";
 	const area = (outer ? document.getElementById("app-body") : document.querySelector(".editor-area")).getBoundingClientRect();
-	const name = { tree: "documents", group: "documents and contents", toc: "contents", tabs: "opened documents" }[panel];
+	const name = { tree: "documents", group: "documents and contents", toc: "contents", tabs: "opened documents", toolbar: "toolbar" }[panel];
+	if ( panel === "toolbar" ) {
+		// the nearest edge of the editors, the area cut along its diagonals
+		const box = document.getElementById("workspace").getBoundingClientRect();
+		const distances = { top: (y - box.top) / box.height, bottom: (box.bottom - y) / box.height, left: (x - box.left) / box.width, right: (box.right - x) / box.width };
+		const side = Object.keys(distances).reduce((a, b) => distances[b] < distances[a] ? b : a);
+		const size = 48;
+		const rect = dockedInRows(side) ? { left: box.left, width: box.width, height: size, top: side === "top" ? box.top : box.bottom - size }
+			: { top: box.top, height: box.height, width: size, left: side === "left" ? box.left : box.right - size };
+		return { side, rect, label: `Dock ${name} ${dockedInRows(side) ? `at the ${side}` : side}` };
+	}
 	if ( panel === "tabs" ) {
 		const side = y < area.top + area.height / 2 ? "top" : "bottom";
 		const height = Math.min(area.height / 3, 48);
@@ -2382,6 +2557,8 @@ function dockPanel(panel, side){
 		setTreeSide(side);
 	} else if ( panel === "toc" ) {
 		setTocSide(side); // toc.js
+	} else if ( panel === "toolbar" ) {
+		setToolbarSide(side);
 	} else {
 		setTabsSide(side);
 	}

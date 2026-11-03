@@ -12,6 +12,7 @@ The backend is [FastAPI](https://fastapi.tiangolo.com/) with authorization and l
 ## Workspace
 - **File Explorer**: a tree of documents and folders (sub-folders nest up to a set depth). It can be docked left, right, top or bottom by drag-and-drop or from its right-click menu, and resized
 - folders can get a **color**, which also tints their sub-folders and the tabs of their documents
+- a folder can be **hidden in search** (its menu): its documents and those of its sub-folders don't show in the document search tray and vi's `:e`
 - several documents can be selected with Ctrl/Cmd+click and Shift+click, then opened, moved, dragged or deleted together
 - **Duplicate** a document (tree or tab menu) as `name (copy)`, unsaved edits included
 - double click a document to **reveal it in the tree**
@@ -21,10 +22,12 @@ The backend is [FastAPI](https://fastapi.tiangolo.com/) with authorization and l
 - **Open in New Window**: a document in a browser tab of its own (always in focus mode, with its own table of contents, search and export menu)
 - **Focus mode**: only the text and the word count, for the focused document or for every opened tab
 - **Document title**: a document can show its name as a title above the text (line 0); editing it renames the document
+- **Document metadata** (a document's menu): a compact widget for its title and scripts switches, its **Owner** and **Authors**, and its id; several documents selected in the tree are changed together. A logged in user saving a document becomes its owner when it has none, and one of its authors
 - layout, opened tabs and split editors are kept as preferences
 
 ## Editor
-- formatting toolbar: text, Heading 1-4, horizontal rule, inline code, code block, table, link, soft return, tab
+- formatting toolbar: text, Heading 1-4, horizontal rule, inline code, code block, table, link, soft return, tab; docked above, below, left or right of the editors by dragging its grip, or from its right-click menu
+- **Open hyperlinks** (Settings > Editor): *In Write.JS* (default) leaves links as they are; *In system browser* makes `https://` links of the installed app (Add to Dock, Install) open in the main browser
 - **Auto detect** (Settings > Auto detect): Markdown typed into the editor turns into formatting
   - line start: `* ` bullets, `1. ` numbers, `- [ ]` / `- [x]` checklist items, `---` rule, `#`-`####` headings
   - inline: `**bold**`, `*italic*` / `_italic_`, `__underline__`, `` `code` ``
@@ -78,7 +81,8 @@ The backend is [FastAPI](https://fastapi.tiangolo.com/) with authorization and l
 - the code gets `scope` (its own variables), `editor` (the document's element) and helper functions from `static/scriptapi.js`; the wizard's help lists them
 - a right click on a line's `+` gives it an element id for scripts to use
 - script changes can be undone/redone (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y, vi `u` / `Ctrl+r`)
-- scripts can't use `localStorage` / `sessionStorage`; this is a guard, not a sandbox
+- scripts can't use `localStorage` / `sessionStorage`, nor reach the page around their document; this is a guard, not a sandbox
+- the Script wizard belongs to its document's tab: hidden while another tab is shown, back where it was with its tab
 - scripts are left out of exports
 - notebook level functions work on the whole notebook, e.g. `duplicateDocument({directory: "Daily", index: -1})` duplicates the last document (by name) of the folder `Daily`
   - `directory`: a folder's path (`Work/Daily`, a folder's path is its id) or name, `""` for documents outside of folders, `null` for all
@@ -86,7 +90,8 @@ The backend is [FastAPI](https://fastapi.tiangolo.com/) with authorization and l
 - `secret("NAME", defaultValue=null)` reads a script secret (Settings > **Script secrets**), throws when there is none and no default; a secret is local (this browser only) or synced (logged in: kept with the account, `/api/secrets`, on every device); a local secret can be made synced but not back, its value can be changed and it can be deleted
 - `await get(url, headers={})` and `await post(url, payload={}, headers={})` send HTTP requests and return `{status, msg}`, `msg` being the response's body (parsed for JSON, else text); a `post` object payload is sent as JSON; the other server has to allow CORS
 - `getAllCheckboxes(checked=false)` lists the unchecked checkboxes (`true` the checked ones, `null` all) as a tree, `[{name, level, checked, children, element}]`, `level` 0 for items of lists that aren't nested
-- `createNotification(text, type, timeout, timestamp=false)`: with `timestamp` the heading gets the time, `HH:MM:SS dd-mm-YYYY`
+- `createNotification(text, type, timeout, timestamp=false)`: with `timestamp` the heading gets the time, `HH:MM:SS dd-mm-YYYY`; the text can have new lines (`\n`), `**bold**`, `*italic*` and `[text](link)` links, a link being a url or a document's id
+- a script's `document` (and `window.document`) is its own document: `querySelector`, `getElementById` and the like only find what is in it, the rest of the app isn't reachable from it
 
 ## Notebook Cron
 - turned on in Settings > Notebook cron; off, nothing is fetched or run, and the jobs stay as they are
@@ -100,7 +105,9 @@ The backend is [FastAPI](https://fastapi.tiangolo.com/) with authorization and l
 ## Vi mode
 Settings > Vi mode turns on vi keybindings modeled on Neovim / VSCodeVim:
 - NORMAL, INSERT, VISUAL, V-LINE and REPLACE modes, with the mode shown top right
-- motions (`h j k l w b e 0 ^ $ gg G { } % f t ; ,` ...), `]m` / `[m` to jump between headings, counts, operators (`d c y > <`), `.` repeat, `/` `?` `n` `N` `*` `#` search
+- motions (`h j k l w b e 0 ^ $ gg G { } % f t ; ,` ...), `]m` / `[m` to jump between headings of the same level, `]]m` / `[[m` through every heading, counts, operators (`d c y > <`), `dc` deletes a list item with its nested items, `.` repeat, `/` `?` `n` `N` `*` `#` search
+- scrolled with the wheel or the scrollbar, the cursor stays in sight; `G` / `gg` scroll to the very end / start
+- command line history: Up / Down go through the previous commands and searches (the ones starting with what is typed), Settings > Vi mode > Command history keeps 0-9999 of them
 - word-wrap navigation (j/k follow wrapped lines), can be turned off
 - panels: `Ctrl+w` to move between split editors and the tree, `gt` / `gT` for tabs
 - ex commands: `:w`, `:wa`, `:q`, `:qa`, `:wq`, `:e`, `:sp` / `:vs`, `:tree`, `:toc`, `:table`, `:script`, `:focus`, `:lines`, `:noh`, `:help`, `:{range}d` / `:{range}y`, `:12` to go to a line; commands are completed after one character
@@ -113,7 +120,7 @@ Settings > Vi mode turns on vi keybindings modeled on Neovim / VSCodeVim:
 - export / import the whole notebook to a file (pako-compressed)
 
 ## Mobile
-- the tree and the Table of Contents are a drawer, which can be pinned and resized
+- the tree and the Table of Contents are a drawer, which can be pinned and resized; the contents can split the drawer with the documents (the contents tab's menu or Settings)
 - tap and hold for context menus, touch friendly checklists
 
 ## Offline and storage

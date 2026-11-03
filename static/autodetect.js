@@ -177,7 +177,9 @@ function autoDetectBlock(editor, node, before){
 			document.execCommand("insertHTML", false, "<hr><div><br></div>");
 			moveRulesOutOfLines(editor); // script.js
 		};
-	} else if ( /^#{1,4} $/.test(before) && !inList && autoDetectRuleOn("heading") ) {
+	} else if ( /^#{1,4} $/.test(before) && !inList && autoDetectRuleOn("heading")
+		&& !(typeof selectionHasScriptActivators === "function" && selectionHasScriptActivators(editor)) ) {
+		// a line with a script's button stays text (scripting.js)
 		action = () => formatBlockWithHeadingBreaks(`h${before.length - 1}`);
 	}
 	if ( !action ) { return false }

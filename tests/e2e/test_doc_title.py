@@ -45,8 +45,13 @@ def stored_meta(page, name):
 
 
 def show_title(page, label="Show title"):
+	# the checkbox of the document's metadata widget, from its tab's menu (label: what it does)
 	page.locator("#tabs .tab.active").click(button="right")
-	page.locator("#context-menu button", has_text=label).click()
+	page.locator("#context-menu button", has_text="Document metadata").click()
+	box = page.locator('.metadata-widget [data-meta="showTitle"]')
+	assert box.is_checked() == label.startswith(("Hide", "Disable"))
+	box.click()
+	page.click(".metadata-widget .metadata-save")
 
 
 def test_hidden_until_shown_from_the_menu(app):

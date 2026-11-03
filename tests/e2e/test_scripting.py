@@ -43,8 +43,13 @@ def stored_meta(page, name="plan"):
 
 
 def toggle_scripts(page, label="Enable scripts"):
+	# the checkbox of the document's metadata widget, from its tab's menu (label: what it does)
 	page.locator("#tabs .tab.active").click(button="right")
-	page.locator("#context-menu button", has_text=label).click()
+	page.locator("#context-menu button", has_text="Document metadata").click()
+	box = page.locator('.metadata-widget [data-meta="scripts"]')
+	assert box.is_checked() == label.startswith(("Hide", "Disable"))
+	box.click()
+	page.click(".metadata-widget .metadata-save")
 
 
 def add_script(page, name, code, border="dashed", after="intro"):

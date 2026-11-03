@@ -4,7 +4,7 @@
  * It is a tab next to the documents in the tree (layout.tocSide "tree"), a panel of its own left, right, above or below
  * the editors ("left" / "right" / "top" / "bottom"), or splits the documents' place with them ("split": under them, or
  * beside them docked above or below; the edge between them is dragged to share the place), moved by dragging its tab or head onto a dock zone, or from its right-click menu. On phones and tablets
- * it is always a tab of the documents drawer. Menu > Table Of Contents and vi's :TableOfContents open it; the panel's x or, as a tab, the tree's
+ * it is a tab of the documents drawer, unless it splits their place: then the drawer holds both, one under the other. Menu > Table Of Contents and vi's :TableOfContents open it; the panel's x or, as a tab, the tree's
  * little menu (☰, which then also has the tree's buttons) closes it;
  * it is remembered open or closed and where with the layout (workspace.js, this device only).
  * Settings > Table of contents picks the heading levels listed (tocHeadingsKey, script.js), they go with the notebook;
@@ -64,8 +64,9 @@ function tocShown(){
 }
 
 function tocInTree(){
-	// a tab next to the documents: chosen, or on phones and tablets, where the panels are drawers
-	return !layout.tocHidden && (layout.tocSide === "tree" || narrowScreen.matches);
+	// a tab next to the documents: chosen, or on phones and tablets, where the panels are drawers (but for the split, the
+	// user's choice: the drawer has both then)
+	return !layout.tocHidden && (layout.tocSide === "tree" || (narrowScreen.matches && layout.tocSide !== "split"));
 }
 
 function tocShownInTree(){
@@ -77,7 +78,7 @@ function applyTocLayout(){
 	const showingToc = tocInTree() && layout.treeTab === "toc";
 	body.dataset.tocSide = layout.tocSide;
 	document.getElementById("toc-resizer").setAttribute("aria-orientation", dockedInRows(layout.tocSide) ? "horizontal" : "vertical");
-	document.getElementById("split-resizer").setAttribute("aria-orientation", dockedInRows(layout.treeSide) ? "vertical" : "horizontal");
+	document.getElementById("split-resizer").setAttribute("aria-orientation", dockedInRows(layout.treeSide) && !narrowScreen.matches ? "vertical" : "horizontal");
 	body.dataset.treeTab = showingToc ? "toc" : "documents";
 	body.classList.toggle("toc-in-tree", tocInTree());
 	body.classList.toggle("toc-separate", !layout.tocHidden && !tocInTree());
@@ -98,6 +99,9 @@ function openTableOfContents(focus=false){
 	if ( tocInTree() ) {
 		layout.treeTab = "toc";
 		if ( narrowScreen.matches ) { document.body.classList.add("tree-drawer-open") } else { layout.treeHidden = false }
+	} else if ( narrowScreen.matches && layout.tocSide === "split" ) {
+		// in the drawer, under the documents
+		document.body.classList.add("tree-drawer-open");
 	}
 	saveLayout();
 	renderToc();
@@ -121,10 +125,12 @@ function setTocSide(side){
 	if ( side === "tree" ) {
 		layout.treeTab = "toc";
 		layout.treeHidden = false;
-	} else if ( !narrowScreen.matches ) {
+	} else if ( !narrowScreen.matches || side === "split" ) {
 		layout.treeTab = "documents";
 	}
 	saveLayout();
+	// on phones the drawer shows them split
+	if ( side === "split" && narrowScreen.matches ) { document.body.classList.add("tree-drawer-open") }
 }
 
 function showTreeTab(tab){
@@ -487,8 +493,9 @@ function setupSplitResizing(){
 		if ( e.button !== 0 ) { return }
 		e.preventDefault();
 		resizer.setPointerCapture(e.pointerId);
-		// the documents above the contents, or beside them when the place is above or below the editors
-		const rows = !dockedInRows(layout.treeSide);
+		// the documents above the contents, or beside them when the place is above or below the editors (on phones the
+		// drawer has them one under the other wherever it is docked)
+		const rows = !dockedInRows(layout.treeSide) || narrowScreen.matches;
 		document.body.classList.add("tree-resizing");
 		document.body.classList.toggle("resizing-rows", rows);
 		const move = (ev) => {
@@ -527,7 +534,7 @@ function tocSettingsHtml(){
 		<label class="check"><input type="radio" name="setting-toc-side" value="tree"${layout.tocSide === "tree" ? " checked" : ""}>A tab next to the documents</label>
 		<label class="check"><input type="radio" name="setting-toc-side" value="split"${layout.tocSide === "split" ? " checked" : ""}>Splitting the documents' place</label>
 		<label class="check"><input type="radio" name="setting-toc-side" value="panel"${!["tree", "split"].includes(layout.tocSide) ? " checked" : ""}>A panel of its own</label>
-		<p class="muted small">Drag its tab or its title onto a side to move it, or right-click it. On phones it is a tab next to the documents.</p>`;
+		<p class="muted small">Drag its tab or its title onto a side to move it, or right-click it. On phones it is a tab next to the documents, unless it splits their place.</p>`;
 }
 
 function initTocSettings(){

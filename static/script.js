@@ -24,6 +24,10 @@ const tocHeadingsKey = "__tocHeadings__"; // the heading levels listed in the ta
 const tableCopyKey = "__tableCopy__"; // "html" when a copied table's text is its HTML, else Markdown (Settings, tables.js), goes with the notebook
 const viWrapNavigationKey = "__viWrapNavigation__"; // "0" when vi's j / k move by the lines of the text like Vim, not by the wrapped lines (Settings), goes with the notebook
 const viAltEscKey = "__viAltEsc__"; // the keys that also work as Esc in vi, e.g. ["j", "k"] or ["<C-Space>"] (Settings), goes with the notebook
+const viHistoryLimitKey = "__viHistoryLimit__"; // how many commands and searches vi's command line remembers, 0-9999 (Settings), goes with the notebook
+const viHistoryKey = "__viHistory__"; // {":": [command], "/": [search]}, oldest first: vi's command line history, this device only
+const viHistoryLimitDefault = 100;
+const openLinksKey = "__openLinks__"; // "browser" when https:// links of the installed app (Add to Dock, Install) open in the system's browser, else as links always did (Settings), goes with the notebook
 const viEscButtonKey = "__viEscButton__"; // "1" shows the vi Esc button on touch screens, this device only
 const viScriptUrl = document.currentScript?.dataset.viSrc || "static/vi.js"; // content-versioned by the server, see utils/static_files.py
 const docWindowParam = "window";
@@ -283,6 +287,11 @@ function formatBlockWithHeadingBreaks(tag){
 	const editor = document.getElementById("editor");
 	// checklist items are only ever Text (checklist.js)
 	if ( tag !== "div" && selectionHasTaskItems(editor) ) { return }
+	// so is a line with a script's button (scripting.js)
+	if ( tag !== "div" && typeof selectionHasScriptActivators === "function" && selectionHasScriptActivators(editor) ) {
+		createNotification("A line with a script's button stays text, it can't be a heading", "warning", notificationTimeout);
+		return
+	}
 	const breaks = headingsInSelection(editor).map(h => h.nextElementSibling).filter(isHeadingBreak);
 	document.execCommand("formatBlock", false, tag);
 	moveHeadingsOutOfLines(editor);
@@ -398,6 +407,11 @@ function createSettingsModal(){
 		<label class="check"><input id="setting-formatting-bar" type="checkbox"${formattingBarEnabled() ? " checked" : ""}>Formatting toolbar</label>
 		<p class="muted small">The bar with text styles, lists and the like above the editors; turned off, the keyboard shortcuts still format.</p>
 		${lineNumbersSettingsHtml()}
+		<div class="open-links-setting">Open hyperlinks:
+			<label class="check"><input type="radio" name="setting-open-links" value="app"${openLinksInApp() ? " checked" : ""}>In Write.JS</label>
+			<label class="check"><input type="radio" name="setting-open-links" value="browser"${openLinksInApp() ? "" : " checked"}>In system browser</label>
+		</div>
+		<p class="muted small">Only <code>https://</code> links, and only when Write.JS runs as an installed app (Safari's <em>Add to Dock</em>, Chrome's or Edge's <em>Install</em>): in system browser they open in a tab of your main browser instead of a window of the app. In a browser tab links work the same either way.</p>
 	</div>
 	<h3>Table of contents</h3>
 	<div class="stack">
@@ -413,6 +427,8 @@ function createSettingsModal(){
 			<button type="button" class="btn small" id="setting-vi-alt-esc-clear"${viModeEnabled() && viAltEscKeys().length ? "" : " hidden"}>Clear</button>
 			<button type="button" class="btn small" id="setting-vi-alt-esc-cancel" hidden>Cancel</button></div>
 		<p class="muted small">Click <em>Set</em>, press the keys, then <em>Save</em>: one key (like <kbd>Ctrl+Space</kbd>) or keys typed one after another (like <kbd>j</kbd><kbd>k</kbd>, within a second). <kbd>Backspace</kbd> takes back the last key.</p>
+		<label class="vi-history-setting">Command history <input id="setting-vi-history" type="number" min="0" max="9999" step="1" value="${viHistoryLimit()}"${viModeEnabled() ? "" : " disabled"}></label>
+		<p class="muted small">How many <kbd>:</kbd> commands and <kbd>/</kbd> searches are remembered; <kbd>↑</kbd> / <kbd>↓</kbd> in the command line go through them (the ones starting with what is typed). 0 keeps none.</p>
 		<label class="check"><input id="setting-vi-esc" type="checkbox"${localStorage.getItem(viEscButtonKey) === "1" ? " checked" : ""}${viModeEnabled() ? "" : " disabled"}>Show Esc on mobiles <span class="muted small">(this device only)</span></label>
 		<p class="muted small">Starts in NORMAL mode: <kbd>i</kbd> to type, <kbd>Esc</kbd> to go back, <kbd>v</kbd> / <kbd>V</kbd> to select, <kbd>:w</kbd> saves, <kbd>:q</kbd> closes the tab, <kbd>:help</kbd> lists all the commands. The mode is shown in the top right corner.</p>
 	</div>
@@ -465,6 +481,11 @@ function createSettingsModal(){
 	initAutoDetectSettings();
 	initCronSettings();
 	initScriptSecretsSettings(); // secrets.js
+	document.querySelectorAll('input[name="setting-open-links"]').forEach((input) => input.addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = false; return }
+		localStorage.setItem(openLinksKey, e.target.value);
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	}));
 	document.querySelectorAll('input[name="setting-focus-mode"]').forEach((input) => input.addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
 		localStorage.setItem(focusModeKey, e.target.value);
@@ -501,6 +522,7 @@ function createSettingsModal(){
 		document.getElementById("setting-vi-esc").disabled = !e.target.checked;
 		document.getElementById("setting-vi-wrap").disabled = !e.target.checked;
 		document.getElementById("setting-vi-alt-esc-set").disabled = !e.target.checked;
+		document.getElementById("setting-vi-history").disabled = !e.target.checked;
 		applyViMode();
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
@@ -510,6 +532,15 @@ function createSettingsModal(){
 		window.WriteVi?.setEscButton(e.target.checked);
 	});
 	initViAltEscSettings();
+	document.getElementById("setting-vi-history").addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.value = viHistoryLimit(); return }
+		const limit = Math.round(Number(e.target.value));
+		if ( e.target.value === "" || !Number.isFinite(limit) ) { e.target.value = viHistoryLimit(); return }
+		e.target.value = Math.min(9999, Math.max(0, limit));
+		localStorage.setItem(viHistoryLimitKey, e.target.value);
+		window.WriteVi?.trimHistory();
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
+	});
 	document.getElementById("setting-vi-wrap").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
 		localStorage.setItem(viWrapNavigationKey, e.target.checked ? "1" : "0");
@@ -652,6 +683,11 @@ function viAltEscLabel(keys){
 			mods.replace("C-", "Ctrl+").replace("A-", "Alt+").replace("M-", "Meta+").replace("S-", "Shift+"));
 		return `<kbd>${escapeHtmlText(text)}</kbd>`;
 	}).join("");
+}
+
+function viHistoryLimit(){
+	const limit = parseInt(localStorage.getItem(viHistoryLimitKey));
+	return Number.isFinite(limit) ? Math.min(9999, Math.max(0, limit)) : viHistoryLimitDefault;
 }
 
 function viWrapNavigationEnabled(){
@@ -988,7 +1024,8 @@ function closeAllModals(...excludeTitles){
 
 function openPopups(){
 	// modals, the hamburger menu, the toolbar dropdowns and the context menu (workspace.js) that are open
-	return [...document.querySelectorAll(".modal-container, .menu.menu-opened, .block-select-menu.menu-opened")];
+	// (not the Script wizard of a tab that isn't shown, scripting.js)
+	return [...document.querySelectorAll(".modal-container:not(.script-window-away), .menu.menu-opened, .block-select-menu.menu-opened")];
 }
 
 function closeAllPopups(){
@@ -1407,7 +1444,7 @@ function simulateEnter() {
 function isDeviceOnlyKey(key){
 	// state of this device that never goes to the cloud or a notebook backup
 	// (the workspace.js keys are looked up on call, that file loads after this one)
-	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viEscButtonKey, openedTabsKey, openedEditorsKey, tocSplitKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey, tocFoldsKey, cronExecutorKey, cronLastTickKey, cronLocalKey, scriptSecretsKey].includes(key);
+	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viEscButtonKey, viHistoryKey, openedTabsKey, openedEditorsKey, tocSplitKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey, tocFoldsKey, cronExecutorKey, cronLastTickKey, cronLocalKey, scriptSecretsKey].includes(key);
 }
 
 function getAllLocalStorageItems() {
@@ -1839,6 +1876,35 @@ function handlePasteLinkOnSelection(e){
 	document.execCommand('createlink', false, url);
 	const anchor = selection.anchorNode?.parentElement?.closest("a");
 	if ( anchor ) { anchor.setAttribute("target", "about:blank") }
+}
+
+// https:// links of the documents and of the notifications: in the installed app, opened in the system's browser (Settings)
+document.addEventListener("click", handleHyperlinkClick);
+
+function openLinksInApp(){
+	// on until "In system browser" is picked: links work as they always did
+	return localStorage.getItem(openLinksKey) !== "browser";
+}
+
+function runsAsInstalledApp(){
+	// a window of its own: Safari's Add to Dock / Add to Home Screen, an installed Chrome or Edge app
+	return ["standalone", "minimal-ui", "window-controls-overlay", "fullscreen"].some((mode) => window.matchMedia(`(display-mode: ${mode})`).matches)
+		|| navigator.standalone === true;
+}
+
+function handleHyperlinkClick(e){
+	// a plain click; Ctrl/Cmd, Shift and the middle button are left to the browser
+	if ( openLinksInApp() || !runsAsInstalledApp() ) { return }
+	const link = e.target.closest?.("a[href]");
+	if ( !link || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey ) { return }
+	// a link that is edited as text (pasted over a selection) only takes the caret, as it did before
+	if ( !link.closest(".editor, #notifications-container, .compare-view") || link.isContentEditable ) { return }
+	const href = link.getAttribute("href");
+	if ( !/^https:\/\//i.test(href) ) { return }
+	e.preventDefault();
+	// a new top-level browsing context, not tied to the app (noopener): the installed app hands it to the main browser
+	// (Safari's web apps to the default browser, Chrome and Edge to a tab of their browser window)
+	window.open(href, "_blank", "noopener,noreferrer");
 }
 
 function closeInsertLinkModal(){

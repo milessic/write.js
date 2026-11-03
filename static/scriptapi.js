@@ -179,12 +179,14 @@ function scriptApi(editor){
 	}
 
 	/**
-	 * Shows a notification headed "Script execution". text is shown as plain text.
+	 * Shows a notification headed "Script execution". text is shown as text with a bit of formatting: a line break
+	 * ("\n") starts a new line, **text** is bold, *text* italic, [text](link) a link: to a url (https://..., http://...,
+	 * mailto:...), else to the document of that id (Get Document Id in its menu); no such document, the link goes nowhere.
 	 * type: "info" (default), "warning" or "error". timeout: milliseconds until it closes, 0 keeps it open.
 	 * timestamp: true adds the time it is shown to the heading, "HH:MM:SS dd-mm-YYYY" (e.g. for a cron job's script).
 	 */
 	function createNotification(text, type="info", timeout=notificationTimeout, timestamp=false){
-		return scriptNotification(String(text), type, timeout, null, Boolean(timestamp));
+		return scriptNotification(String(text), type, timeout, null, Boolean(timestamp), true);
 	}
 
 	/**

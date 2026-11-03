@@ -88,6 +88,10 @@ window.WriteVi = {
 		document.addEventListener("focusin", onFocusIn);
 		document.addEventListener("focusout", onFocusOut);
 		document.addEventListener("scroll", renderCursor, true);
+		document.addEventListener("scroll", onScroll, true);
+		document.addEventListener("wheel", onUserScroll, {capture: true, passive: true});
+		document.addEventListener("touchmove", onUserScroll, {capture: true, passive: true});
+		document.addEventListener("pointerdown", onScrollbarPress, true);
 		document.addEventListener("input", renderSearch, true);
 		window.addEventListener("resize", onResize);
 		// the editors change size without the window: a side panel opened, closed or resized
@@ -109,6 +113,10 @@ window.WriteVi = {
 		document.removeEventListener("focusin", onFocusIn);
 		document.removeEventListener("focusout", onFocusOut);
 		document.removeEventListener("scroll", renderCursor, true);
+		document.removeEventListener("scroll", onScroll, true);
+		document.removeEventListener("wheel", onUserScroll, {capture: true, passive: true});
+		document.removeEventListener("touchmove", onUserScroll, {capture: true, passive: true});
+		document.removeEventListener("pointerdown", onScrollbarPress, true);
 		document.removeEventListener("input", renderSearch, true);
 		window.removeEventListener("resize", onResize);
 		layoutObserver.disconnect();
@@ -137,6 +145,10 @@ window.WriteVi = {
 		setMode("vline");
 		renderVisual(editor);
 		return true;
+	},
+	trimHistory(){
+		// the limit changed (Settings)
+		saveHistory(loadHistory());
 	},
 	get mode(){ return mode },
 };
@@ -1145,6 +1157,15 @@ function runOperator(editor, model, i, op, count1, r, keysAfterCount, wholeLine=
 	if ( key === "g" && op.startsWith("g") ) {
 		key = "g" + r.next();
 	}
+	if ( op === "d" && key === "c" ) {
+		// dc: the list item of the cursor's line with its nested items (bulleted, numbered, checklists)
+		const range = listItemLines(model, i);
+		if ( !range ) { showMessage("dc deletes a list item with its nested items: the cursor isn't on one"); return }
+		yank(text.slice(range[0], range[1]), true, model, range[0]);
+		deleteListItem(editor, model, range);
+		changed();
+		return {change: true, count: count1, keys: keysAfterCount()};
+	}
 	if ( key === op || key === op.slice(-1) || (op.startsWith("g") && key === op) ) {
 		// dd, cc, yy, >>, <<, g~~, guu, gUU: count lines from here
 		from = lineStart(text, i);
@@ -1195,6 +1216,40 @@ function runOperator(editor, model, i, op, count1, r, keysAfterCount, wholeLine=
 	applyOperator(editor, model, op, from, to, linewise, i);
 	const change = op !== "y";
 	return change ? {change: true, count: count1, keys: keysAfterCount()} : undefined;
+}
+
+function listItemLines(model, i){
+	// [from, to] of the lines of the item on the line of i and of its nested items, null when the line isn't an item
+	const text = model.text;
+	const start = lineStart(text, i);
+	const first = model.segments.find(s => s.start >= start && s.start <= lineEnd(text, i));
+	const li = first && elementOf(first.node)?.closest("li");
+	if ( !li || !model.editor.contains(li) ) { return null }
+	const unit = [li, ...nestedListsOf(li)];
+	const last = model.segments.findLast(s => unit.some(el => el.contains(s.node)));
+	return [start, lineEnd(text, Math.max(start, last?.start ?? start))];
+}
+
+function deleteListItem(editor, model, [from, to]){
+	// the item and the lists nested under it go as elements, so the items around them keep their nesting: the browser's
+	// delete would merge what is left. Out of its undo stack, so on the one of the scripts' changes, undone by u (scripting.js)
+	const li = elementOf(model.segments.find(s => s.start >= from).node).closest("li");
+	const unit = listItemUnit(li);
+	// all of its list: the list goes too
+	while ( isListElement(unit[0].parentElement) && unit[0].parentElement !== editor
+		&& !unit[0].previousElementSibling && !unit.at(-1).nextElementSibling ) {
+		unit.splice(0, unit.length, unit[0].parentElement);
+	}
+	const before = editor.innerHTML;
+	const beforeKey = typeof scriptHistoryKey === "function" ? scriptHistoryKey(editor) : before;
+	unit.forEach(el => el.remove());
+	if ( !editor.firstChild ) { editor.append(Object.assign(document.createElement("div"), {innerHTML: "<br>"})) }
+	const after = textModel(editor);
+	setCaret(after, firstNonBlank(after.text, lineStart(after.text, Math.min(from, after.text.length))));
+	if ( typeof rememberScriptChange === "function" ) {
+		rememberScriptChange(editor, {before, beforeKey, after: editor.innerHTML, afterKey: scriptHistoryKey(editor), activator: -1});
+	}
+	editor.dispatchEvent(new Event("input", {bubbles: true}));
 }
 
 function applyOperator(editor, model, op, from, to, linewise, cursor){
@@ -1760,7 +1815,12 @@ function parseMotion(key, r){
 		return {key, char};
 	}
 	case "g": return parseMotion("g" + r.next(), r);
-	case "]": case "[": return r.next() === "m" ? {key: key + "m"} : null;
+	case "]": case "[": {
+		// ]m [m by the level of the section, ]]m [[m through every heading
+		const second = r.next();
+		if ( second === "m" ) { return {key: key + "m"} }
+		return second === key && r.next() === "m" ? {key: key + key + "m"} : null;
+	}
 	default: return null;
 	}
 }
@@ -1879,6 +1939,9 @@ function moveCaret(editor, model, i, motion, count){
 	if ( target === null ) { return }
 	setCaret(model, target.index);
 	scrollCaret(editor);
+	// G and gg show the end / start of the document, not only the cursor's line
+	const scroller = !count && (motion.key === "G" || motion.key === "gg") && editor.closest(".pane-scroll");
+	if ( scroller ) { scroller.scrollTop = motion.key === "G" ? scroller.scrollHeight : 0 }
 }
 
 function evalMotion(editor, model, i, motion, count, forOperator){
@@ -1952,6 +2015,10 @@ function evalMotion(editor, model, i, motion, count, forOperator){
 		const target = headingMotion(model, i, key === "]m", n);
 		return target === null ? null : {index: target};
 	}
+	case "]]m": case "[[m": {
+		const target = anyHeadingMotion(model, i, key === "]]m", n);
+		return target === null ? null : {index: target};
+	}
 	case "%": {
 		const match = matchBracket(text, i);
 		return match === null ? null : {index: match, inclusive: true};
@@ -2013,6 +2080,18 @@ function headingMotion(model, i, forward, count){
 		} else {
 			target = headings.findLast(h => h.index < j && h.level <= level);
 		}
+		if ( !target ) { break }
+		j = target.index;
+	}
+	return j === i ? null : j;
+}
+
+function anyHeadingMotion(model, i, forward, count){
+	// ]]m / [[m: the next / previous heading, whatever its level
+	const headings = headingsOf(model);
+	let j = i;
+	for ( let n = 0; n < count; n++ ) {
+		const target = forward ? headings.find(h => h.index > j) : headings.findLast(h => h.index < j);
 		if ( !target ) { break }
 		j = target.index;
 	}
@@ -2463,7 +2542,7 @@ function runVisual(editor, keys){
 // command line ( : / ? )
 function openCommandLine(editor, kind, value="", visual=null){
 	const model = textModel(editor);
-	commandLine = {editor, kind, index: mode === "visual" || mode === "vline" ? Math.min(visualAnchor, visualHead) : caretIndex(model) ?? 0, previousMode: mode, visual};
+	commandLine = {editor, kind, index: mode === "visual" || mode === "vline" ? Math.min(visualAnchor, visualHead) : caretIndex(model) ?? 0, previousMode: mode, visual, history: null};
 	setMode("command");
 	ui.indicator.querySelector(".vi-mode-prefix").textContent = kind;
 	const input = ui.indicator.querySelector("input");
@@ -2495,6 +2574,13 @@ function onCommandLineKeydown(e){
 		return
 	}
 	// Tab would move the focus out and close the command line, Ctrl+N / Ctrl+P open a window / print
+	// Up / Down go through the history (the entries starting with what was typed), the listed commands once one is picked
+	if ( (e.key === "ArrowUp" || e.key === "ArrowDown") && !e.ctrlKey && !e.altKey && !e.metaKey && !(completions?.selected >= 0) ) {
+		if ( browseHistory(input, e.key === "ArrowUp" ? -1 : 1) ) {
+			e.preventDefault();
+			return
+		}
+	}
 	const next = (e.ctrlKey && e.key === "n") || (completions && e.key === "ArrowDown") || (e.key === "Tab" && !e.shiftKey);
 	const previous = (e.ctrlKey && e.key === "p") || (completions && e.key === "ArrowUp") || (e.key === "Tab" && e.shiftKey);
 	if ( next || previous ) {
@@ -2507,6 +2593,7 @@ function onCommandLineKeydown(e){
 	const {editor, kind, visual} = commandLine;
 	const value = input.value;
 	closeCommandLine(true);
+	remember(kind, value);
 	if ( kind === ":" ) {
 		runExCommand(editor, value, visual);
 	} else if ( value ) {
@@ -2519,6 +2606,59 @@ function onCommandLineKeydown(e){
 		searchMove(editor, model, caretIndex(model) ?? 0, lastSearch.pattern, lastSearch.backward, 1);
 	}
 	render();
+}
+
+// history: the commands and searches run from the command line, oldest first, Settings limits how many (script.js)
+function historyLimit(){
+	return typeof viHistoryLimit === "function" ? viHistoryLimit() : 100;
+}
+
+function loadHistory(){
+	try {
+		const history = JSON.parse(localStorage.getItem(viHistoryKey));
+		if ( history && typeof history === "object" ) { return {":": Array.isArray(history[":"]) ? history[":"] : [], "/": Array.isArray(history["/"]) ? history["/"] : []} }
+	} catch {}
+	return {":": [], "/": []};
+}
+
+function saveHistory(history){
+	if ( typeof validateUserConsent === "function" && !validateUserConsent(false) ) { return }
+	const limit = historyLimit();
+	for ( const kind of [":", "/"] ) { history[kind] = limit ? history[kind].slice(-limit) : [] }
+	if ( !history[":"].length && !history["/"].length ) { localStorage.removeItem(viHistoryKey); return }
+	localStorage.setItem(viHistoryKey, JSON.stringify(history));
+}
+
+function remember(kind, value){
+	// / and ? share one history, like in Vim; the same entry again moves to the end
+	if ( !value.trim() ) { return }
+	const history = loadHistory();
+	const list = history[kind === ":" ? ":" : "/"].filter(entry => entry !== value);
+	list.push(value);
+	history[kind === ":" ? ":" : "/"] = list;
+	saveHistory(history);
+}
+
+function browseHistory(input, step){
+	// false when there is nothing (more) to go to: the key does what it would do without the history
+	const list = loadHistory()[commandLine.kind === ":" ? ":" : "/"];
+	commandLine.history ??= {prefix: input.value, index: list.length};
+	const {prefix} = commandLine.history;
+	let index = commandLine.history.index;
+	do { index += step } while ( index >= 0 && index < list.length && !list[index].startsWith(prefix) );
+	if ( index < 0 ) { return list.length > 0 && commandLine.history.index < list.length }
+	if ( index >= list.length ) {
+		if ( commandLine.history.index >= list.length ) { return false }
+		// past the newest one: back to what was typed
+		commandLine.history.index = list.length;
+		input.value = prefix;
+	} else {
+		commandLine.history.index = index;
+		input.value = list[index];
+	}
+	hideCompletions();
+	input.setSelectionRange(input.value.length, input.value.length);
+	return true;
 }
 
 // completion: after the first character of a command its matching commands, after the first character of an :e name
@@ -2548,12 +2688,16 @@ const exCommands = [
 ];
 
 function updateCompletions(){
+	// typing starts a new history search from what is typed
+	if ( commandLine ) { commandLine.history = null }
 	const value = commandLine?.kind === ":" ? ui.indicator.querySelector("input").value : "";
 	const open = value.match(/^\s*(e|edit|tabe|tabedit|tabnew)\s+(.*\S)\s*$/);
 	const name = value.match(/^\s*([A-Za-z]+)$/);
 	if ( open ) {
 		const query = open[2].toLowerCase();
-		const names = (getDocumentNamesFromLocalStorage() || []).filter(name => name.toLowerCase().includes(query));
+		// without the documents of folders hidden in search (workspace.js)
+		const hidden = typeof isHiddenInSearch === "function" ? isHiddenInSearch : () => false;
+		const names = (getDocumentNamesFromLocalStorage() || []).filter(name => name.toLowerCase().includes(query) && !hidden(name));
 		const starts = (name) => name.toLowerCase().startsWith(query);
 		names.sort((a, b) => starts(b) - starts(a) || a.localeCompare(b));
 		const items = names.map(name => ({value: `${open[1]} ${name}`, label: name, at: name.toLowerCase().indexOf(query), length: query.length}));
@@ -2639,6 +2783,7 @@ function onCompletionClick(e){
 	}
 	const {editor, visual} = commandLine;
 	closeCommandLine(true);
+	remember(":", value);
 	runExCommand(editor, value, visual);
 	render();
 }
@@ -3169,6 +3314,77 @@ function onTreeKeydown(e){
 
 
 // scrolling
+let scrollFollowFrame = 0;
+let userScrollAt = -Infinity;           // the last wheel turn or finger move: the scrolls after it are the user's
+let scrollbarPressed = false;           // a scrollbar is held
+
+function onUserScroll(){
+	userScrollAt = performance.now();
+}
+
+function onScrollbarPress(e){
+	// a press on the scroller itself, not on what is in it: its scrollbar
+	if ( !e.target.classList?.contains("pane-scroll") ) { return }
+	scrollbarPressed = true;
+	document.addEventListener("pointerup", () => { scrollbarPressed = false }, {once: true, capture: true});
+}
+
+function onScroll(e){
+	// like Vim: scrolled out of sight by the user (the wheel, a finger, the scrollbar), the cursor goes to the top / bottom
+	// line in sight; the app's own scrolls (to a heading, a match) leave it
+	if ( mode !== "normal" || pending.length || scrollFollowFrame ) { return }
+	if ( !scrollbarPressed && performance.now() - userScrollAt > 600 ) { return }
+	const editor = focusedEditor();
+	const scroller = editor?.closest(".pane-scroll");
+	if ( !scroller || e.target !== scroller ) { return }
+	scrollFollowFrame = requestAnimationFrame(() => {
+		scrollFollowFrame = 0;
+		if ( mode === "normal" && focusedEditor() === editor ) { keepCaretInSight(editor, scroller) }
+	});
+}
+
+function keepCaretInSight(editor, scroller){
+	const model = textModel(editor);
+	const index = caretIndex(model);
+	if ( index === null ) { return }
+	const rect = characterRect(model, index);
+	const box = scroller.getBoundingClientRect();
+	// the floating headings cover the top (floatingheadings.js)
+	const top = box.top + (parseFloat(getComputedStyle(scroller).scrollPaddingTop) || 0);
+	if ( !rect || (rect.bottom > top && rect.top < box.bottom) ) { return }
+	const above = rect.bottom <= top;
+	const lineHeight = lineHeightOf(editor);
+	const style = getComputedStyle(editor);
+	const editorBox = editor.getBoundingClientRect();
+	const x = editorBox.left + (parseFloat(style.paddingLeft) || 0) + 1;
+	// from the edge inwards, a line at a time, to the first point on the text
+	for ( let n = 0; n < 20; n++ ) {
+		const y = above ? top + lineHeight * (n + .5) : box.bottom - lineHeight * (n + .5);
+		if ( y < top || y > box.bottom ) { break }
+		const point = pointAt(x, y);
+		if ( !point || !editor.contains(point.node) ) { continue }
+		const target = indexAt(model, point.node, point.offset);
+		if ( target === null || target === undefined ) { continue }
+		const targetRect = characterRect(model, target);
+		// a line cut by the edge isn't in sight
+		if ( targetRect && (targetRect.top < top - 1 || targetRect.bottom > box.bottom + 1) ) { continue }
+		setCaret(model, target);
+		clampCaret(editor);
+		renderCursor();
+		return
+	}
+}
+
+function pointAt(x, y){
+	// {node, offset} of the text at a point of the window
+	if ( document.caretPositionFromPoint ) {
+		const position = document.caretPositionFromPoint(x, y);
+		return position ? {node: position.offsetNode, offset: position.offset} : null;
+	}
+	const range = document.caretRangeFromPoint?.(x, y);
+	return range ? {node: range.startContainer, offset: range.startOffset} : null;
+}
+
 function lineHeightOf(editor){
 	const style = getComputedStyle(editor);
 	return parseFloat(style.lineHeight) || (parseFloat(style.fontSize) || 16) * 1.4;
@@ -3231,6 +3447,7 @@ const helpSections = [
 		["gg G, 5G, :5", "first / last line, line 5"],
 		["{ }", "previous / next empty line"],
 		["]m [m", "next heading of the same level or higher, start of the section / previous heading"],
+		["]]m [[m", "next / previous heading of any level"],
 		["f F t T + char, ; ,", "to / before a character on the line, repeat, repeat backward"],
 		["%", "matching bracket"],
 		["Ctrl+d Ctrl+u, zz zt zb", "half a page down / up, scroll the cursor to the middle / top / bottom"],
@@ -3240,6 +3457,7 @@ const helpSections = [
 		["x X, s S", "delete a character after / before, change a character / the line"],
 		["r + char, ~", "replace a character, toggle its case"],
 		["dd cc yy >> <<", "delete, change, yank (copy), indent, outdent lines"],
+		["dc", "delete the list item with its nested items (bulleted, numbered, checklists)"],
 		["D C Y", "delete, change, yank to the line end"],
 		["p P", "paste after / before"],
 		["J gJ", "join with the next line, without the space"],
@@ -3297,6 +3515,7 @@ const helpSections = [
 		[":f :focus", "focus mode on / off: only the text; Esc Esc in NORMAL or the faint x leaves it"],
 		[":h :help", "this help"],
 		[":ab", "after the first letter the matching commands are listed: Ctrl+N / Ctrl+P, Tab or arrows pick one, a click runs it"],
+		["Up Down", "in the command line: the previous / next command or search that starts with what is typed (Settings: Command history)"],
 		["q, Esc", "close pop-ups (this help, Settings, menus); Esc in any mode"],
 	]],
 ];

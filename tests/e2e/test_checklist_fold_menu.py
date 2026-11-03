@@ -55,8 +55,9 @@ def tab_menu(page, label, name="tasks"):
 def test_tab_menu_folds_completed_and_unfolds_all(app):
 	tab_menu(app, "Fold all completed checkboxes")
 	assert collapsed_in_editor(app) == ["done", "done too"]
-	# the item without nested items has nothing to fold; the tab has unsaved changes now
-	assert app.evaluate("getActiveTab().dirty")
+	# the item without nested items has nothing to fold; folding isn't an edit: the tab stays saved, the folds are stored
+	assert not app.evaluate("getActiveTab().dirty")
+	assert collapsed_stored(app, "tasks") == ["done", "done too"]
 	tab_menu(app, "Unfold all checkboxes")
 	assert collapsed_in_editor(app) == []
 
