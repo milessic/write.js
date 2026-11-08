@@ -7,12 +7,13 @@ const autosaveKey = "__autosave__"; // "1" when documents are saved as they are 
 const spellcheckKey = "__spellcheck__"; // "0" when the browser's spell check is off in the editors (Settings), goes with the notebook
 const focusModeKey = "__focusMode__"; // "editors" when focus mode shows every opened tab, else only the focused document (Settings), goes with the notebook
 const formattingBarKey = "__formattingBar__"; // "0" when the formatting toolbar is hidden (Settings), goes with the notebook
-const headingBreaksKey = "__headingBreaks__"; // "1" when an <hr> is auto-inserted under each heading (Settings), goes with the notebook
+const headingBreaksKey = "__headingBreaks__"; // "0" disables automatic heading rules (Settings), goes with the notebook
+const headingBreakLevelsKey = "__headingBreakLevels__"; // comma-separated heading tags, H1 by default
 const syncPendingKey = "__syncPending__"; // set while there are changes that couldn't reach the cloud (offline)
 const syncBaseKey = "__syncBase__"; // {key: hash} of what the cloud held at the last sync of the notebook as a whole, before cloudsync.js
 const cloudSyncKey = "__cloudSync__"; // {notebookId, meta, docs: {id: {version, hash}}, lastSync}: what the cloud held at the last sync (cloudsync.js)
 const themeCookie = "theme";
-const viModeKey = "__viMode__"; // "1" when the vi keybindings are on (Settings), goes with the notebook
+const viModeKey = "__viMode__"; // "1" when the vi keybindings are on (Settings), this device only
 const autoDetectKey = "__autoDetect__"; // {enabled, rules} for markdown typed into formatting (Settings, autodetect.js), goes with the notebook
 const headingFoldingKey = "__headingFolding__"; // "0" when collapsing sections by their headings is off (Settings, folding.js), goes with the notebook
 const saveDocumentFoldsKey = "__saveDocumentFolds__"; // "0" when collapsed headings and list items aren't saved with the document (Settings, folding.js), goes with the notebook
@@ -267,7 +268,18 @@ function updateBlockSelect(){
 }
 
 function headingBreaksEnabled(){
-	return validateUserConsent(false) && localStorage.getItem(headingBreaksKey) === "1";
+	return !validateUserConsent(false) || localStorage.getItem(headingBreaksKey) !== "0";
+}
+
+function headingBreakLevels(){
+	const stored = validateUserConsent(false) ? localStorage.getItem(headingBreakLevelsKey) : null;
+	// Keep the previous all-headings behavior for notebooks that explicitly enabled it.
+	return (stored ?? (validateUserConsent(false) && localStorage.getItem(headingBreaksKey) === "1" ? "h1,h2,h3,h4" : "h1"))
+		.split(",").filter(tag => /^h[1-4]$/.test(tag));
+}
+
+function headingNeedsBreak(heading){
+	return headingBreaksEnabled() && headingBreakLevels().includes(heading.tagName.toLowerCase());
 }
 
 function isHeadingBreak(el){
@@ -296,11 +308,11 @@ function formatBlockWithHeadingBreaks(tag){
 	document.execCommand("formatBlock", false, tag);
 	moveHeadingsOutOfLines(editor);
 	for ( const hr of breaks ) {
-		if ( !hr.previousElementSibling?.matches("h1, h2, h3, h4") ) { hr.remove() }
+		if ( !hr.previousElementSibling?.matches("h1, h2, h3, h4") || !headingNeedsBreak(hr.previousElementSibling) ) { hr.remove() }
 	}
 	if ( tag === "div" || !headingBreaksEnabled() ) { return }
 	for ( const heading of headingsInSelection(editor) ) {
-		if ( heading.nextElementSibling?.tagName === "HR" ) { continue }
+		if ( !headingNeedsBreak(heading) || heading.nextElementSibling?.tagName === "HR" ) { continue }
 		const hr = document.createElement("hr");
 		hr.className = "heading-break";
 		heading.after(hr);
@@ -419,7 +431,7 @@ function createSettingsModal(){
 	</div>
 	<h3>Vi mode</h3>
 	<div class="stack">
-		<label class="check"><input id="setting-vi-mode" type="checkbox"${viModeEnabled() ? " checked" : ""}>Vi keybindings (like Neovim)</label>
+		<label class="check"><input id="setting-vi-mode" type="checkbox"${viModeEnabled() ? " checked" : ""}>Vi keybindings (like Neovim) <span class="muted small">(this device only)</span></label>
 		<label class="check"><input id="setting-vi-wrap" type="checkbox"${viWrapNavigationEnabled() ? " checked" : ""}${viModeEnabled() ? "" : " disabled"}>Word-wrap navigation</label>
 		<p class="muted small"><kbd>j</kbd> / <kbd>k</kbd> go through the wrapped lines; turned off, through the lines of the text, like Vim, and <kbd>gj</kbd> / <kbd>gk</kbd> through the wrapped ones.</p>
 		<div class="vi-alt-esc-setting">Alternate Esc: <span id="setting-vi-alt-esc-keys">${viAltEscLabel(viAltEscKeys())}</span>
@@ -443,6 +455,7 @@ function createSettingsModal(){
 	<div class="stack">
 		${floatingHeadingsSettingsHtml()}
 		<label class="check"><input id="setting-heading-breaks" type="checkbox"${headingBreaksEnabled() ? " checked" : ""}>Auto-insert break lines under headings</label>
+		${[1, 2, 3, 4].map(level => `<label class="check"><input id="setting-heading-break-h${level}" type="checkbox"${headingBreakLevels().includes(`h${level}`) ? " checked" : ""}>Heading ${level} break line</label>`).join("")}
 		${headingFoldingSettingsHtml()}
 	</div>
 	<h3>Lists</h3>
@@ -513,9 +526,18 @@ function createSettingsModal(){
 	});
 	document.getElementById("setting-heading-breaks").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
+		localStorage.setItem(headingBreakLevelsKey, headingBreakLevels().join(","));
 		localStorage.setItem(headingBreaksKey, e.target.checked ? "1" : "0");
 		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
+	for ( const level of [1, 2, 3, 4] ) {
+		document.getElementById(`setting-heading-break-h${level}`).addEventListener("change", (e) => {
+			if ( !validateUserConsent() ) { e.target.checked = !e.target.checked; return }
+			const levels = [1, 2, 3, 4].filter(n => document.getElementById(`setting-heading-break-h${n}`).checked).map(n => `h${n}`);
+			localStorage.setItem(headingBreakLevelsKey, levels.join(","));
+			if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() }
+		});
+	}
 	document.getElementById("setting-vi-mode").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
 		localStorage.setItem(viModeKey, e.target.checked ? "1" : "0");
@@ -524,7 +546,6 @@ function createSettingsModal(){
 		document.getElementById("setting-vi-alt-esc-set").disabled = !e.target.checked;
 		document.getElementById("setting-vi-history").disabled = !e.target.checked;
 		applyViMode();
-		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() } // the setting goes to the cloud with the notebook
 	});
 	document.getElementById("setting-vi-esc").addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
@@ -1146,7 +1167,7 @@ function sanitizeStyles(html){
 	}
 	if ( headingBreaksEnabled() ) {
 		for ( const heading of root.querySelectorAll("h1, h2, h3, h4") ) {
-			if ( heading.nextElementSibling?.tagName === "HR" ) { continue }
+			if ( !headingNeedsBreak(heading) || heading.nextElementSibling?.tagName === "HR" ) { continue }
 			const hr = document.createElement("hr");
 			hr.className = "heading-break";
 			heading.after(hr);
@@ -1447,7 +1468,7 @@ function simulateEnter() {
 function isDeviceOnlyKey(key){
 	// state of this device that never goes to the cloud or a notebook backup
 	// (the workspace.js keys are looked up on call, that file loads after this one)
-	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viEscButtonKey, viHistoryKey, openedTabsKey, openedEditorsKey, tocSplitKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey, tocFoldsKey, cronExecutorKey, cronLastTickKey, cronLocalKey, scriptSecretsKey].includes(key);
+	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viModeKey, viEscButtonKey, viHistoryKey, openedTabsKey, openedEditorsKey, tocSplitKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey, tocFoldsKey, cronExecutorKey, cronLastTickKey, cronLocalKey, scriptSecretsKey].includes(key);
 }
 
 function getAllLocalStorageItems() {

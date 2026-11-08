@@ -34,7 +34,7 @@ def html(page):
 def test_replacing_with_markdown(page):
 	page.evaluate("(md) => fillEditorWithHTML(markdownToHtml(md))", MD)
 	assert html(page) == (
-		'<h1>Title</h1>'
+		'<h1>Title</h1><hr class="heading-break">'
 		'<div>Some <b>bold</b> and <i>italic</i> with <code>code</code> and a <a href="http://x.y">link</a>.</div>'
 		'<div>second line</div><div><br></div><div>Another para</div>'
 		'<ul><li>a</li><ul><li>b</li></ul><li data-checked="true">done</li></ul>'
@@ -57,11 +57,11 @@ def append(page, setup, selector, md):
 
 def test_appending_on_an_empty_line(page):
 	assert append(page, "<h2>Head</h2><div><br></div><div>x</div>", "div", "# T\n\ntext") == \
-		"<h2>Head</h2><h1>T</h1><div>text</div><div>x</div>"
+		'<h2>Head</h2><h1>T</h1><hr class="heading-break"><div>text</div><div>x</div>'
 
 
 def test_appending_on_the_last_empty_line(page):
-	assert append(page, "<h2>Head</h2><div><br></div>", "div", "# T\n\ntext") == "<h2>Head</h2><h1>T</h1><div>text</div>"
+	assert append(page, "<h2>Head</h2><div><br></div>", "div", "# T\n\ntext") == '<h2>Head</h2><h1>T</h1><hr class="heading-break"><div>text</div>'
 
 
 def test_appending_into_a_line_has_no_style(page):

@@ -103,3 +103,28 @@ def test_a_logged_in_user_becomes_owner_and_author(app):
 	app.click("#save-btn")
 	assert stored_meta(app, "plan") == {"owner": "erin", "authors": ["dave"]}
 	app.evaluate("delete document.body.dataset.user")
+
+
+def test_tags_are_normalized_saved_and_searchable(app):
+	open_from_tab(app)
+	field(app, "tags").fill("private, home, dog, , dog")
+	app.click(f"{WIDGET} .metadata-save")
+	app.click("#save-btn")
+	assert stored_meta(app, "plan")["tags"] == "private,home,dog"
+	app.click("#doc-search-btn")
+	app.fill("#doc-search-input", "PRIVATE dog")
+	assert app.locator("#doc-search-list .tree-document").all_text_contents() == ["plan"]
+	app.keyboard.press("Escape")
+	open_from_tab(app)
+	assert field(app, "tags").input_value() == "private, home, dog"
+	field(app, "tags").fill("")
+	app.click(f"{WIDGET} .metadata-save")
+	app.click("#save-btn")
+	assert "tags" not in stored_meta(app, "plan")
+
+
+def test_size_includes_unsaved_utf8_content(app):
+	app.evaluate("focusedPane.editor.innerHTML = '<div>żółw 🐕</div>'")
+	expected = app.evaluate("new Blob([focusedPane.editor.innerHTML]).size")
+	open_from_tab(app)
+	assert app.locator(f"{WIDGET} .metadata-size").text_content() == f"Size: {expected} bytes (HTML, UTF-8)"

@@ -790,7 +790,16 @@ function positionAt(model, index){
 		found = segment;
 	}
 	if ( !found ) { return {node: model.editor, offset: 0} }
-	if ( found.kind === "text" ) { return {node: found.node, offset: Math.min(index - found.start, found.length)} }
+	if ( found.kind === "text" ) {
+		// Script buttons (and other noneditable inline elements) are indivisible: editing commands
+		// must run beside them, never in their label, where Enter can clone their attributes.
+		const atomic = found.node.parentElement.closest('[contenteditable="false"]');
+		if ( atomic && model.editor.contains(atomic) ) {
+			const after = index >= found.start + found.length;
+			return {node: atomic.parentNode, offset: [...atomic.parentNode.childNodes].indexOf(atomic) + (after ? 1 : 0)};
+		}
+		return {node: found.node, offset: Math.min(index - found.start, found.length)}
+	}
 	if ( found.kind === "br" || found.kind === "rule" ) {
 		const parent = found.node.parentNode;
 		// before the <br> is the end of its line, after it the start of the next one; the rule is between the two
@@ -1649,6 +1658,7 @@ function restoreLineFormats(editor, from, items){
 	// the pasted lines from the line at from on become the list items, headings, quotes they were yanked from
 	if ( !items ) { return }
 	const first = lineNumber(textModel(editor).text, from);
+	const restoredChecks = [];
 	items.forEach((item, n) => {
 		if ( item.block ) {
 			const model = textModel(editor);
@@ -1681,8 +1691,13 @@ function restoreLineFormats(editor, from, items){
 		}
 		if ( !li ) { return }
 		if ( item.checked === null ) { li.removeAttribute("data-checked") } else { li.dataset.checked = item.checked }
+		restoredChecks.push([li, item.checked]);
 	});
 	if ( typeof normalizeChecklists === "function" ) { normalizeChecklists(editor) } // checklist.js
+	// Building the pasted tree adds children in stages; keep the copied checkbox states once it is complete.
+	for ( const [li, checked] of restoredChecks ) {
+		if ( checked !== null ) { li.dataset.checked = checked }
+	}
 }
 
 function flashRange(model, from, to){
@@ -2709,10 +2724,13 @@ function updateCompletions(){
 		const query = open[2].toLowerCase();
 		// without the documents of folders hidden in search (workspace.js)
 		const hidden = typeof isHiddenInSearch === "function" ? isHiddenInSearch : () => false;
-		const names = (getDocumentNamesFromLocalStorage() || []).filter(name => name.toLowerCase().includes(query) && !hidden(name));
+		const names = (getDocumentNamesFromLocalStorage() || []).filter(name => (typeof documentMatchesSearch === "function" ? documentMatchesSearch(name, query) : name.toLowerCase().includes(query)) && !hidden(name));
 		const starts = (name) => name.toLowerCase().startsWith(query);
 		names.sort((a, b) => starts(b) - starts(a) || a.localeCompare(b));
-		const items = names.map(name => ({value: `${open[1]} ${name}`, label: name, at: name.toLowerCase().indexOf(query), length: query.length}));
+		const items = names.map(name => {
+			const at = name.toLowerCase().indexOf(query);
+			return {value: `${open[1]} ${name}`, label: name, at: Math.max(0, at), length: at < 0 ? 0 : query.length};
+		});
 		showCompletions(items, "No matching documents");
 	} else if ( name ) {
 		const query = name[1].toLowerCase();
@@ -3187,7 +3205,8 @@ function goToTab(step, absolute=false){
 	const editor = focusedPane?.editor;
 	if ( !editor ) { return }
 	if ( editor !== document.activeElement ) { enterEditor(editor) } else {
-		setCaret(textModel(editor), 0);
+		// switchToTab restores this tab's saved caret in the reused editor.
+		rememberSelection();
 		clampCaret(editor);
 		render();
 	}

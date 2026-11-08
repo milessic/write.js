@@ -19,6 +19,7 @@
  * runs again, and the executor is told once with a notification that opens the jobs.
  */
 const cronEnabledKey = "__cron__"; // "1" when Notebook cron is on (Settings), goes with the notebook
+const cronRegardlessConflictsKey = "__cronRegardlessConflicts__"; // opt in; goes with the notebook
 const cronExecutorKey = "__cronExecutor__"; // {id, name} of this browser as an executor, this device only
 const cronLastTickKey = "__cronLastTick__"; // when the scheduler last looked at the jobs, this device only
 const cronLocalKey = "__crons__"; // {crons, log} when not logged in, this device only
@@ -61,10 +62,17 @@ function cronEnabled(){
 
 function cronSettingsHtml(){
 	return `<label class="check"><input id="setting-cron" type="checkbox"${cronEnabled() ? " checked" : ""}>Notebook cron</label>
-	<p class="muted small">Runs the documents' scripts on a schedule, in the browser picked for each job (menu &gt; Notebook Cron). Turned off, the jobs are kept but nothing runs.</p>`;
+	<p class="muted small">Runs the documents' scripts on a schedule, in the browser picked for each job (menu &gt; Notebook Cron). Turned off, the jobs are kept but nothing runs.</p>
+	<label>Run cron regardless conflicts <select id="setting-cron-regardless-conflicts"><option value="1"${localStorage.getItem(cronRegardlessConflictsKey) === "1" ? " selected" : ""}>Yes</option><option value="0"${localStorage.getItem(cronRegardlessConflictsKey) !== "1" ? " selected" : ""}>No</option></select></label>
+	<p class="muted small">Syncs before running a script. No stops the job when sync conflicts need review.</p>`;
 }
 
 function initCronSettings(){
+	document.getElementById("setting-cron-regardless-conflicts")?.addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.value = "0"; return }
+		localStorage.setItem(cronRegardlessConflictsKey, e.target.value);
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() }
+	});
 	document.getElementById("setting-cron")?.addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
 		localStorage.setItem(cronEnabledKey, e.target.checked ? "1" : "0");
@@ -421,6 +429,13 @@ async function runCronJob(job, manual=false){
 
 async function executeCronJob(job){
 	// {ok, message}: the script runs in the document's editor when it is shown, else in one that isn't
+	if ( cronRemote() ) {
+		const sync = await syncCloud();
+		if ( !sync?.ok ) { return { ok: false, message: "could not sync the notebook before running" } }
+		if ( (sync.conflicts || document.querySelector(".sync-compare-modal")) && localStorage.getItem(cronRegardlessConflictsKey) !== "1" ) {
+			return { ok: false, message: "sync conflicts need review; resolve them before running again" };
+		}
+	}
 	const name = documentNameById(job.doc_id);
 	if ( !name ) { return { ok: false, message: "the document doesn't exist" } }
 	if ( !storedDocumentMeta(name).scripts ) { return { ok: false, message: `scripts are disabled in '${name}', enable them from the document's menu` } }

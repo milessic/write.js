@@ -202,7 +202,7 @@ def test_help_lists_the_functions_of_the_api_file(app):
 	app.click(".script-wizard .script-help-btn")
 	app.wait_for_selector(".script-help-modal .script-help-function")
 	names = app.locator(".script-help-modal .script-help-function code").all_inner_texts()
-	assert names == ["locateHeading(selector, level=null)", "locateById(id)", "getListElements(list=null, textOnly=true)", "checkCheckbox(target)", "uncheckCheckbox(target)", "getAllCheckboxes(checked=false)", "getDocTitle()", "setDocTitle(title)", "getRandomFromArray(array)", "createNotification(text, type=\"info\", timeout=notificationTimeout, timestamp=false)", "duplicateDocument(documentQuery)", "secret(name, defaultValue=null)", "async get(url, headers={})", "async post(url, payload={}, headers={})"]
+	assert names == ["locateHeading(selector, level=null)", "locateById(id)", "getListElements(list=null, textOnly=true)", "checkCheckbox(target)", "uncheckCheckbox(target)", "getAllCheckboxes(checked=false)", "getDocTitle()", "setDocTitle(title)", "getRandomFromArray(array)", "createNotification(text, type=\"info\", timeout=notificationTimeout, timestamp=false)", "setScriptExecutedNotification(enabled)", "duplicateDocument(documentQuery)", "secret(name, defaultValue=null)", "async get(url, headers={})", "async post(url, payload={}, headers={})"]
 	assert "localStorage" in app.locator(".script-help-modal").inner_text()
 	# closing the help leaves the wizard open
 	app.click(".script-help-modal .section-head .small-btn")

@@ -83,8 +83,10 @@ const folderTints = {
 
 let treePinned = localStorage.getItem(treePinnedKey) === "true";
 // treeSide "left" / "right" / "top" / "bottom";
+// tabsSide "top" / "bottom" of the editors, or "above-sidebar" across the app;
 // the table of contents (toc.js): tocSide "left" / "right" / "top" / "bottom" on its own or "tree" as a tab next to the documents,
-// treeTab is the tab the tree shows then; toolbarSide "top" / "bottom" / "left" / "right" of the editors
+// treeTab is the tab the tree shows then; toolbarSide "top" / "bottom" / "left" / "right" of the editors,
+// or "with-tabs" (stacked), "tabs-toolbar" / "toolbar-tabs" (side by side) to follow the opened documents.
 const layout = Object.assign(
 	{ treeSide: "left", tabsSide: "top", treeHidden: false, collapsedFolders: [], tocSide: "right", tocHidden: true, treeTab: "documents", toolbarSide: "top" },
 	readJsonSetting(layoutKey)
@@ -97,6 +99,7 @@ const editorGrid = document.getElementById("editor-grid");
 const paneTemplate = editorGrid.querySelector(".editor-pane").cloneNode(true);
 paneTemplate.querySelector(".editor").removeAttribute("id");
 let panes = [];
+let editorSplits = null;
 let focusedPane = null;
 let renderedTreeKey = null;
 let draggedTabId = null;
@@ -185,6 +188,14 @@ fileTreeSearch.addEventListener("keydown", (e) => {
 });
 document.getElementById("file-tree").addEventListener("contextmenu", (e) => openContextMenu(e, treePanelMenuItems()));
 document.getElementById("tab-bar").addEventListener("contextmenu", (e) => openContextMenu(e, tabsPanelMenuItems()));
+// The opened documents only scroll horizontally, so a regular wheel turn follows that axis too.
+tabsContainer.addEventListener("wheel", (e) => {
+	if ( e.ctrlKey || !e.deltaY || Math.abs(e.deltaX) >= Math.abs(e.deltaY) || tabsContainer.scrollWidth <= tabsContainer.clientWidth ) { return }
+	const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? tabsContainer.clientWidth : 1;
+	tabsContainer.scrollLeft += e.deltaY * unit;
+	e.preventDefault();
+}, { passive: false });
+
 // on the bar: the first click of a double click on another tab renders the tabs anew
 tabsContainer.addEventListener("dblclick", (e) => {
 	const el = e.target.closest(".tab");
@@ -260,8 +271,40 @@ function applyLayout(){
 	document.body.dataset.treeSide = layout.treeSide;
 	document.getElementById("file-tree-resizer").setAttribute("aria-orientation", dockedInRows(layout.treeSide) ? "horizontal" : "vertical");
 	document.body.dataset.tabsSide = layout.tabsSide;
-	document.body.dataset.toolbarSide = layout.toolbarSide;
-	document.getElementById("sub-bar")?.querySelector(".toolbar-bar")?.setAttribute("aria-orientation", dockedInRows(layout.toolbarSide) ? "horizontal" : "vertical");
+	// Above the sidebar, the strip (or shared bar) spans the whole app.
+	const tabBar = document.getElementById("tab-bar");
+	const appBody = document.getElementById("app-body");
+	const editorArea = document.querySelector(".editor-area");
+	const toolbar = document.getElementById("sub-bar");
+	const together = ["with-tabs", "tabs-toolbar", "toolbar-tabs"].includes(layout.toolbarSide);
+	let group = document.getElementById("document-toolbar-bar");
+	if ( !group ) {
+		group = document.createElement("div");
+		group.id = "document-toolbar-bar";
+		group.className = "document-toolbar-bar";
+		setupCombinedBarResizing(group);
+	}
+	const strip = together ? group : tabBar;
+	if ( layout.tabsSide === "above-sidebar" ) {
+		if ( strip.parentElement !== document.body ) { appBody.before(strip) }
+	} else if ( strip.parentElement !== editorArea ) {
+		editorArea.prepend(strip);
+	}
+	if ( together ) {
+		group.dataset.arrangement = layout.toolbarSide;
+		if ( tabBar.parentElement !== group ) { group.append(tabBar) }
+		if ( toolbar.parentElement !== group ) { group.append(toolbar) }
+		group.style.setProperty("--tabs-share", `${Math.max(15, Math.min(85, Number(layout.tabsShare) || 50))}%`);
+		group.querySelector(".document-toolbar-resizer").setAttribute("aria-valuenow", Math.round(Number(layout.tabsShare) || 50));
+	} else {
+		if ( toolbar.parentElement !== document.getElementById("workspace") ) {
+			document.getElementById("workspace").prepend(toolbar);
+		}
+		group.remove();
+	}
+	const toolbarSide = together ? "top" : layout.toolbarSide;
+	document.body.dataset.toolbarSide = toolbarSide;
+	toolbar.querySelector(".toolbar-bar")?.setAttribute("aria-orientation", dockedInRows(toolbarSide) ? "horizontal" : "vertical");
 	document.body.classList.toggle("tree-hidden", layout.treeHidden);
 	if ( typeof applyTocLayout === "function" ) { applyTocLayout() } // toc.js loads after this file
 	requestAnimationFrame(() => window.WriteVi?.relayout());
@@ -270,6 +313,49 @@ function applyLayout(){
 function dockedInRows(side){
 	// above or below the editors: the panel is resized by its height
 	return side === "top" || side === "bottom";
+}
+
+function setupCombinedBarResizing(group){
+	const divider = document.createElement("div");
+	divider.id = "document-toolbar-resizer";
+	divider.className = "document-toolbar-resizer";
+	divider.tabIndex = 0;
+	divider.setAttribute("role", "separator");
+	divider.setAttribute("aria-label", "Resize opened documents and toolbar");
+	divider.setAttribute("aria-orientation", "vertical");
+	divider.setAttribute("aria-valuemin", "15");
+	divider.setAttribute("aria-valuemax", "85");
+	divider.title = "Drag to resize, double-click to reset";
+	const resize = value => {
+		layout.tabsShare = Math.max(15, Math.min(85, value));
+		group.style.setProperty("--tabs-share", `${layout.tabsShare}%`);
+		divider.setAttribute("aria-valuenow", Math.round(layout.tabsShare));
+	};
+	let resizing = false;
+	divider.addEventListener("pointerdown", e => {
+		if ( e.button !== 0 ) { return }
+		e.preventDefault();
+		resizing = true;
+		divider.setPointerCapture(e.pointerId);
+	});
+	divider.addEventListener("pointermove", e => {
+		if ( !resizing ) { return }
+		const box = group.getBoundingClientRect();
+		const fraction = (e.clientX - box.left) / box.width;
+		resize(100 * (layout.toolbarSide === "toolbar-tabs" ? 1 - fraction : fraction));
+	});
+	const finish = () => { if ( resizing ) { resizing = false; saveLayout() } };
+	divider.addEventListener("pointerup", finish);
+	divider.addEventListener("lostpointercapture", finish);
+	divider.addEventListener("dblclick", () => { resize(50); saveLayout() });
+	divider.addEventListener("keydown", e => {
+		if ( !["ArrowLeft", "ArrowRight", "Home"].includes(e.key) ) { return }
+		e.preventDefault();
+		const direction = (e.key === "ArrowRight" ? 1 : -1) * (layout.toolbarSide === "toolbar-tabs" ? -1 : 1);
+		resize(e.key === "Home" ? 50 : (Number(layout.tabsShare) || 50) + direction * 5);
+		saveLayout();
+	});
+	group.append(divider);
 }
 
 function setupTreeResizing(){
@@ -395,7 +481,7 @@ function saveOpenedEditors(){
 	const shownTabIds = focusLayout ? focusLayout.tabIds : panes.map(p => p.tabId);
 	const names = shownTabIds.map(id => tabById(id)?.name || "");
 	const focused = focusLayout ? Math.max(0, focusLayout.tabIds.indexOf(focusLayout.focused)) : panes.indexOf(focusedPane);
-	localStorage.setItem(openedEditorsKey, JSON.stringify({ names, focused }));
+	localStorage.setItem(openedEditorsKey, JSON.stringify({ names, focused, splits: focusLayout ? focusLayout.splits : encodeEditorSplits(editorSplits) }));
 }
 
 function restoreEditors(){
@@ -410,8 +496,10 @@ function restoreEditors(){
 		const pane = i === 0 ? focusedPane : addPane(panes[panes.length - 1]);
 		setPaneTab(pane, tab);
 	});
+	if ( restored.length === names.length ) { editorSplits = decodeEditorSplits(saved.splits) || editorSplits }
 	const focused = panes.find(p => tabById(p.tabId)?.name === focusedName);
 	if ( focused ) { focusPane(focused) }
+	saveOpenedEditors();
 }
 
 function restoreOpenedTabs(){
@@ -492,7 +580,7 @@ function renderDocumentTree(list, names, filter, search=false){
 	if ( names === null ) {
 		list.append(treeMessage("Agree to storing data to save documents."));
 	} else if ( filter ) {
-		const matches = names.filter(name => name.toLowerCase().includes(filter));
+		const matches = names.filter(name => documentMatchesSearch(name, filter));
 		matches.forEach(name => list.append(treeMatchItem(name)));
 		if ( !matches.length ) { list.append(treeMessage("No matching documents.")) }
 	} else if ( !names.length && !readFolders().folders.length ) {
@@ -564,6 +652,7 @@ function treeFolderItem(folder, folders, byFolder, depth){
 		{ label: "Rename folder", action: () => renameFolder(folder) },
 		{ swatches: folderColorSwatches(folder) },
 		searchHiddenMenuItem(folder),
+		{ label: "Folder metadata", action: () => openFolderMetadataWidget(folder) },
 		{ label: "Move to top level", action: () => moveFolder(folder, ""), disabled: !parentFolder(folder) },
 		{ label: "Delete folder", danger: true, action: () => deleteFolder(folder) },
 		null,
@@ -619,7 +708,7 @@ function treeDocumentItem(name, label, depth){
 			null,
 			...checklistFoldMenuItems((change) => names.reduce((n, doc) => n + changeDocument(doc, change), 0)),
 			metadataMenuItem(names.length > 1 ? `${names.length} documents` : name, names.map(storedDocumentMeta),
-				(change) => names.forEach(doc => changeDocument(doc, change)), names.length > 1 ? null : documentIdOf(name)),
+				(change) => names.forEach(doc => changeDocument(doc, change)), names.length > 1 ? null : documentIdOf(name), false, names),
 			null,
 			...moveToFolderMenuItems(names),
 			null,
@@ -1255,22 +1344,65 @@ function tabDocumentMeta(tab){
 	return storedDocumentMeta(tab.savedName);
 }
 
-// the document's metadata widget: its title, scripts, owner and authors, for one document or several (the tree's selection)
-function metadataMenuItem(label, metas, changeEach, id=null, disabled=false){
-	return { label: "Document metadata", action: () => openMetadataWidget(label, metas, changeEach, id), disabled };
+// the document's metadata widget: its title, scripts, owner, authors, tags and size, for one document or several (the tree's selection)
+function metadataMenuItem(label, metas, changeEach, id=null, disabled=false, names=[label]){
+	return { label: "Document metadata", action: () => openMetadataWidget(label, metas, changeEach, id, names), disabled };
 }
 
 function metadataAuthors(meta){
 	return Array.isArray(meta.authors) ? meta.authors.filter(a => typeof a === "string" && a) : [];
 }
 
-function openMetadataWidget(label, metas, changeEach, id=null){
+function metadataTags(meta){
+	return typeof meta.tags === "string" ? meta.tags.split(",").map(tag => tag.trim()).filter(Boolean) : [];
+}
+
+function documentMatchesSearch(name, query){
+	const tokens = [name, ...metadataTags(storedDocumentMeta(name))].map(token => token.toLowerCase());
+	return query.toLowerCase().trim().split(/\s+/).every(part => tokens.some(token => token.includes(part)));
+}
+
+function documentContentSize(name, id=null){
+	const tab = tabs.find(t => id ? t.docId === id : t.name === name);
+	const pane = tab && paneOfTab(tab);
+	const html = pane ? pane.editor.innerHTML : tab?.html ?? splitDocumentId(localStorage.getItem(docPrefix + (tab?.savedName || name))).html;
+	return new Blob([html]).size;
+}
+
+function openFolderMetadataWidget(folder){
+	closeMetadataWidget();
+	const widget = document.createElement("dialog");
+	widget.className = "modal-container metadata-widget";
+	widget.setAttribute("aria-label", "Folder metadata");
+	widget.innerHTML = `
+		<div class="metadata-head"><span class="metadata-name"></span><button class="small-btn metadata-close" aria-label="Close" title="Close (Esc)">✕</button></div>
+		<label class="check"><input type="checkbox" data-meta="searchHidden">Hide in Search</label>
+		<p class="muted small metadata-hint"></p>
+		<div class="row"><button class="btn primary metadata-save">Save</button><button class="btn metadata-cancel">Cancel</button></div>`;
+	widget.querySelector(".metadata-name").textContent = displayFolder(folder);
+	const store = readFolders();
+	const box = widget.querySelector('[data-meta="searchHidden"]');
+	box.checked = Boolean(store.searchHidden[folder]);
+	const inherited = folderAncestors(folder).some(f => store.searchHidden[f]);
+	widget.querySelector(".metadata-hint").textContent = inherited ? "Hidden in Search by a parent folder. Applies to all sub-folders." : "Applies to documents in this folder and all sub-folders.";
+	const save = () => { setFolderHiddenInSearch(folder, box.checked); closeMetadataWidget() };
+	widget.querySelector(".metadata-save").addEventListener("click", save);
+	widget.querySelector(".metadata-cancel").addEventListener("click", closeMetadataWidget);
+	widget.querySelector(".metadata-close").addEventListener("click", closeMetadataWidget);
+	widget.addEventListener("keydown", e => { if ( e.key === "Enter" && e.target === box ) { e.preventDefault(); save() } });
+	document.body.append(widget);
+	widget.show();
+	box.focus();
+	return widget;
+}
+
+function openMetadataWidget(label, metas, changeEach, id=null, names=[label]){
 	// compact, like Insert Link: a checkbox or a field with values that differ between the documents is left as it is
 	// unless it is changed
 	closeMetadataWidget();
 	const same = (values) => values.every(v => v === values[0]);
 	const flags = (key) => metas.map(m => Boolean(m[key]));
-	const texts = { owner: metas.map(m => typeof m.owner === "string" ? m.owner : ""), authors: metas.map(m => metadataAuthors(m).join(", ")) };
+	const texts = { tags: metas.map(m => metadataTags(m).join(", ")), owner: metas.map(m => typeof m.owner === "string" ? m.owner : ""), authors: metas.map(m => metadataAuthors(m).join(", ")) };
 	const widget = document.createElement("dialog");
 	widget.className = "modal-container metadata-widget";
 	widget.setAttribute("aria-label", "Document metadata");
@@ -1282,6 +1414,8 @@ function openMetadataWidget(label, metas, changeEach, id=null){
 		</div>
 		<label>Owner<input type="text" data-meta="owner" autocomplete="off" spellcheck="false"></label>
 		<label>Authors<input type="text" data-meta="authors" autocomplete="off" spellcheck="false" placeholder="Comma separated"></label>
+		<label>Tags<input type="text" data-meta="tags" autocomplete="off" spellcheck="false" placeholder="Comma separated, e.g. private,home,dog"></label>
+		<p class="muted small metadata-size"></p>
 		<p class="muted small metadata-id" hidden>ID <code></code></p>
 		<div class="row">
 			<button class="btn primary metadata-save">Save</button>
@@ -1294,10 +1428,12 @@ function openMetadataWidget(label, metas, changeEach, id=null){
 		box.checked = flags(key)[0];
 		box.indeterminate = !same(flags(key));
 	}
-	for ( const key of ["owner", "authors"] ) {
+	for ( const key of ["owner", "authors", "tags"] ) {
 		const field = widget.querySelector(`[data-meta="${key}"]`);
 		if ( same(texts[key]) ) { field.value = texts[key][0] } else { field.placeholder = "Several values" }
 	}
+	const bytes = names.reduce((total, name) => total + documentContentSize(name, names.length === 1 ? id : null), 0);
+	widget.querySelector(".metadata-size").textContent = `Size: ${bytes.toLocaleString()} bytes (HTML, UTF-8)`;
 	if ( id ) {
 		widget.querySelector(".metadata-id").hidden = false;
 		widget.querySelector(".metadata-id code").textContent = id;
@@ -1315,6 +1451,7 @@ function openMetadataWidget(label, metas, changeEach, id=null){
 		if ( !Object.keys(values).length ) { return }
 		changeEach((root, meta) => applyMetadata(meta, values));
 		renderPanes();
+		refreshFileTree(true);
 	};
 	widget.querySelector(".metadata-save").addEventListener("click", save);
 	widget.querySelector(".metadata-cancel").addEventListener("click", closeMetadataWidget);
@@ -1329,7 +1466,7 @@ function openMetadataWidget(label, metas, changeEach, id=null){
 }
 
 function applyMetadata(meta, values){
-	// values: {showTitle, scripts: boolean, owner: text, authors: comma separated text}; returns how many changed
+	// values: {showTitle, scripts: boolean, owner: text, authors and tags: comma separated text}; returns how many changed
 	const before = JSON.stringify(meta);
 	for ( const key of ["showTitle", "scripts"] ) {
 		if ( !(key in values) ) { continue }
@@ -1338,6 +1475,10 @@ function applyMetadata(meta, values){
 	if ( "owner" in values ) {
 		const owner = values.owner.trim();
 		owner ? meta.owner = owner : delete meta.owner;
+	}
+	if ( "tags" in values ) {
+		const tags = [...new Set(values.tags.split(",").map(tag => tag.trim()).filter(Boolean))].join(",");
+		tags ? meta.tags = tags : delete meta.tags;
 	}
 	if ( "authors" in values ) {
 		const authors = [...new Set(values.authors.split(",").map(a => a.trim()).filter(Boolean))];
@@ -1581,6 +1722,7 @@ function setupPane(el){
 	el.querySelector(".pane-head").addEventListener("contextmenu", (e) => openContextMenu(e, [
 		{ label: "Close editor", action: () => closePane(pane), disabled: panes.length < 2 },
 		{ label: "Split editor", action: () => splitEditor(), disabled: panes.length >= maxEditors },
+		{ label: "Split editor below", action: () => splitEditor(null, "bottom", pane), disabled: panes.length >= maxEditors },
 		{ label: "Open in new window", action: () => openDocumentWindow(tabById(pane.tabId)?.name), disabled: !tabById(pane.tabId)?.name || !documentExists(tabById(pane.tabId).name) },
 		null,
 		...documentMenuItems(tabById(pane.tabId)),
@@ -1603,24 +1745,41 @@ function setupPane(el){
 		el.classList.remove("dragging");
 		panes.forEach(p => p.el.classList.remove("drop-target"));
 	});
-	// a dragged tab is shown in the editor, a dragged editor swaps places with it
-	const acceptsDrop = () => draggedTabId !== null || (draggedPane !== null && draggedPane !== pane);
+	const acceptsDrop = () => draggedTabId !== null || draggedDocuments?.length || (draggedPane && draggedPane !== pane);
 	el.addEventListener("dragover", (e) => {
 		if ( !acceptsDrop() ) { return }
 		e.preventDefault();
-		el.classList.add("drop-target");
+		const target = editorDropTarget(pane, e);
+		document.getElementById("dock-zones").classList.add("editor-dragging");
+		showDockTarget(target);
 	});
-	el.addEventListener("dragleave", (e) => { if ( !el.contains(e.relatedTarget) ) { el.classList.remove("drop-target") } });
+	el.addEventListener("dragleave", (e) => { if ( !el.contains(e.relatedTarget) ) { clearEditorPreview() } });
 	el.addEventListener("drop", (e) => {
 		if ( !acceptsDrop() ) { return }
 		e.preventDefault();
-		el.classList.remove("drop-target");
-		if ( draggedPane ) {
-			swapPanes(draggedPane, pane);
-		} else if ( !focusEditorsLocked() ) {
-			setPaneTab(pane, tabById(draggedTabId));
-			focusPane(pane);
-		}
+		e.stopPropagation();
+		const side = editorDropTarget(pane, e).side;
+		clearEditorPreview();
+		if ( draggedPane ) { swapPanes(draggedPane, pane); return }
+		if ( focusEditorsLocked() ) { return }
+		const names = draggedDocuments || [];
+		const incoming = draggedTabId !== null ? [tabById(draggedTabId)] : names.map(name => tabs.find(t => t.name === name) || createTab(name));
+		incoming.forEach((tab, i) => {
+			if ( side !== "center" && paneOfTab(tab) && paneOfTab(tab) !== pane ) {
+				const moving = paneOfTab(tab);
+				function remove(node){
+					if ( node === moving ) { return null }
+					if ( !node || node.el ) { return node }
+					node.a = remove(node.a); node.b = remove(node.b);
+					return node.a && node.b ? node : node.a || node.b;
+				}
+				editorSplits = remove(editorSplits);
+				insertEditorSplit(pane, moving, side);
+				focusPane(moving); renderPanes(); saveOpenedEditors();
+			}
+			else if ( side !== "center" && panes.length < maxEditors && !paneOfTab(tab) ) { splitEditor(tab, side, pane) }
+			else if ( i === 0 ) { setPaneTab(pane, tab); focusPane(pane) }
+		});
 	});
 	return pane;
 }
@@ -1629,6 +1788,13 @@ function swapPanes(a, b){
 	// swaps the editors' places in the grid; their documents and unsaved edits move with them
 	const ia = panes.indexOf(a);
 	const ib = panes.indexOf(b);
+	function swap(node){
+		if ( node === a ) { return b }
+		if ( node === b ) { return a }
+		if ( node && !node.el ) { node.a = swap(node.a); node.b = swap(node.b) }
+		return node;
+	}
+	editorSplits = swap(editorSplits);
 	panes[ia] = b;
 	panes[ib] = a;
 	const marker = document.createComment("");
@@ -1720,7 +1886,7 @@ function showFocusedDocument(){
 	updateBlockSelect();
 }
 
-function splitEditor(tab=null){
+function splitEditor(tab=null, side="right", target=focusedPane){
 	// opens an editor next to the focused one, with the given tab, the next hidden tab or a new one
 	if ( focusEditorsLocked() ) { return }
 	if ( panes.length >= maxEditors ) {
@@ -1728,7 +1894,8 @@ function splitEditor(tab=null){
 		return;
 	}
 	tab = tab || tabs.find(t => !paneOfTab(t)) || createTab("");
-	const pane = addPane();
+	const pane = addPane(target);
+	insertEditorSplit(target, pane, side);
 	setPaneTab(pane, tab);
 	focusPane(pane);
 	pane.editor.focus();
@@ -1785,23 +1952,26 @@ function enterFocusEditors(){
 		createNotification(`Focus mode shows ${shown.length} of the ${tabs.length} opened documents: up to ${maxEditors} fit side by side.`, "info");
 	}
 	// set first: what is saved for the next visit stays the editors from before
-	focusLayout = { tabIds: panes.map(p => p.tabId), focused: active?.id };
+	focusLayout = { tabIds: panes.map(p => p.tabId), focused: active?.id, splits: encodeEditorSplits(editorSplits) };
 	showTabsInPanes(shown, active);
 	return true;
 }
 
 function leaveFocusEditors(){
 	if ( !focusLayout ) { return }
-	const { tabIds, focused } = focusLayout;
+	const { tabIds, focused, splits } = focusLayout;
 	focusLayout = null;
 	// the editors from before; the document focused now stays in front, in the place of the one focused then
 	const active = getActiveTab();
 	const ids = tabIds.includes(active?.id) ? tabIds : tabIds.map(id => id === focused ? active.id : id);
 	showTabsInPanes(ids.map(tabById).filter(Boolean), active);
+	editorSplits = decodeEditorSplits(splits);
+	renderPanes();
 	focusedPane.editor.focus({ preventScroll: true });
 }
 
 function renderPanes(){
+	renderEditorSplits();
 	editorGrid.dataset.count = panes.length;
 	document.body.dataset.editors = panes.length;
 	document.getElementById("split-btn").disabled = panes.length >= maxEditors;
@@ -2293,9 +2463,17 @@ function treePanelMenuItems(){
 	];
 }
 
+function combinedBarMenuItems(){
+	return [
+		["tabs-toolbar", "Opened documents | Toolbar"],
+		["toolbar-tabs", "Toolbar | Opened documents"],
+		["with-tabs", "Opened documents above toolbar"],
+	].map(([side, label]) => ({ label, action: () => setToolbarSide(side), disabled: layout.toolbarSide === side }));
+}
+
 function toolbarPanelMenuItems(){
 	return ["top", "bottom", "left", "right"].map(side => (
-		{ label: `Move toolbar to the ${side}`, action: () => setToolbarSide(side), disabled: layout.toolbarSide === side }));
+		{ label: `Move toolbar to the ${side}`, action: () => setToolbarSide(side), disabled: layout.toolbarSide === side })).concat(combinedBarMenuItems());
 }
 
 function tabsPanelMenuItems(){
@@ -2303,6 +2481,8 @@ function tabsPanelMenuItems(){
 		{ label: "Split editor", action: () => splitEditor(), disabled: panes.length >= maxEditors },
 		{ label: "Move opened documents to the top", action: () => setTabsSide("top"), disabled: layout.tabsSide === "top" },
 		{ label: "Move opened documents to the bottom", action: () => setTabsSide("bottom"), disabled: layout.tabsSide === "bottom" },
+		{ label: "Move opened documents above the sidebar", action: () => setTabsSide("above-sidebar"), disabled: layout.tabsSide === "above-sidebar" },
+		...combinedBarMenuItems(),
 	];
 }
 
@@ -2463,6 +2643,22 @@ function dockTargetAt(x, y){
 	const outer = panel === "tree" || panel === "group";
 	const area = (outer ? document.getElementById("app-body") : document.querySelector(".editor-area")).getBoundingClientRect();
 	const name = { tree: "documents", group: "documents and contents", toc: "contents", tabs: "opened documents", toolbar: "toolbar" }[panel];
+	if ( panel === "toolbar" || panel === "tabs" ) {
+		const other = visibleRect(panel === "toolbar" ? "tab-bar" : "sub-bar");
+		if ( isInside(other, x, y) ) {
+			const fraction = (x - other.left) / other.width;
+			const side = fraction < .3 ? (panel === "toolbar" ? "toolbar-tabs" : "tabs-toolbar")
+				: fraction > .7 ? (panel === "toolbar" ? "tabs-toolbar" : "toolbar-tabs") : "with-tabs";
+			const stacked = side === "with-tabs";
+			return { side, label: stacked ? "Opened documents above toolbar" : side === "tabs-toolbar" ? "Opened documents | Toolbar" : "Toolbar | Opened documents",
+				rect: { left: stacked ? other.left : fraction < .3 ? other.left : other.left + other.width / 2,
+					top: other.top, width: stacked ? other.width : other.width / 2, height: other.height } };
+		}
+		if ( panel === "tabs" && y <= document.getElementById("app-body").getBoundingClientRect().top + 12 ) {
+			const box = document.getElementById("app-body").getBoundingClientRect();
+			return { side: "above-sidebar", label: "Opened documents above the sidebar", rect: { left: box.left, top: box.top, width: box.width, height: 32 } };
+		}
+	}
 	if ( panel === "toolbar" ) {
 		// the nearest edge of the editors, the area cut along its diagonals
 		const box = document.getElementById("workspace").getBoundingClientRect();
@@ -2538,6 +2734,10 @@ function tocGroupedWithTree(){
 
 function dockPanel(panel, side){
 	if ( side === "keep" ) { return }
+	if ( (panel === "tabs" || panel === "toolbar") && ["tabs-toolbar", "toolbar-tabs", "with-tabs"].includes(side) ) {
+		setToolbarSide(side);
+		return;
+	}
 	if ( panel === "tree" && tocGroupedWithTree() ) {
 		// only the documents go: the contents stay where the two were, as a panel of their own
 		layout.tocSide = layout.treeSide;
@@ -2583,3 +2783,97 @@ window.addEventListener("drop", (e) => {
 	endDocking();
 	dockPanel(panel, target.side);
 }, true);
+
+// Binary splits keep each divider as a fraction of its containing rectangle.
+function encodeEditorSplits(node){
+	if ( !node ) { return null }
+	if ( node.el ) { return panes.indexOf(node) }
+	return { axis: node.axis, ratio: node.ratio, a: encodeEditorSplits(node.a), b: encodeEditorSplits(node.b) };
+}
+function decodeEditorSplits(value){
+	const used = new Set();
+	function read(node, depth=0){
+		if ( Number.isInteger(node) && panes[node] && !used.has(node) ) { used.add(node); return panes[node] }
+		if ( !node || depth > maxEditors || !["x", "y"].includes(node.axis) || !Number.isFinite(node.ratio) ) { return null }
+		const a = read(node.a, depth + 1), b = read(node.b, depth + 1);
+		return a && b ? { axis: node.axis, ratio: Math.max(.1, Math.min(.9, node.ratio)), a, b } : null;
+	}
+	const result = read(value);
+	return used.size === panes.length ? result : null;
+}
+function insertEditorSplit(target, pane, side){
+	const branch = { axis: ["top", "bottom"].includes(side) ? "y" : "x", ratio: .5,
+		a: ["left", "top"].includes(side) ? pane : target, b: ["left", "top"].includes(side) ? target : pane };
+	function replace(node){
+		if ( node === target ) { return branch }
+		if ( node && !node.el ) { node.a = replace(node.a); node.b = replace(node.b) }
+		return node;
+	}
+	editorSplits = replace(editorSplits || target);
+}
+function renderEditorSplits(){
+	function prune(node){
+		if ( !node || node.el ) { return panes.includes(node) ? node : null }
+		node.a = prune(node.a); node.b = prune(node.b);
+		return node.a && node.b ? node : node.a || node.b;
+	}
+	editorSplits = prune(editorSplits);
+	for ( const pane of panes ) {
+		function contains(node){ return node === pane || (node && !node.el && (contains(node.a) || contains(node.b))) }
+		if ( !contains(editorSplits) ) { editorSplits = editorSplits ? { axis: "x", ratio: .5, a: editorSplits, b: pane } : pane }
+	}
+	editorGrid.querySelectorAll(".editor-resizer").forEach(el => el.remove());
+	function place(node, x, y, w, h){
+		if ( node.el ) {
+			Object.assign(node.el.style, { left: x + "%", top: y + "%", width: w + "%", height: h + "%" });
+			return;
+		}
+		const horizontal = node.axis === "x", r = node.ratio;
+		place(node.a, x, y, horizontal ? w*r : w, horizontal ? h : h*r);
+		place(node.b, horizontal ? x+w*r : x, horizontal ? y : y+h*r, horizontal ? w*(1-r) : w, horizontal ? h : h*(1-r));
+		const bar = document.createElement("div");
+		bar.className = "editor-resizer " + (horizontal ? "vertical" : "horizontal");
+		bar.setAttribute("role", "separator");
+		bar.setAttribute("aria-label", "Resize editors");
+		bar.setAttribute("aria-orientation", horizontal ? "vertical" : "horizontal");
+		bar.setAttribute("aria-valuenow", Math.round(r*100));
+		bar.tabIndex = 0;
+		Object.assign(bar.style, horizontal ? { left: (x+w*r)+"%", top: y+"%", height: h+"%" } : { left: x+"%", top: (y+h*r)+"%", width: w+"%" });
+		const update = value => { node.ratio = Math.max(.1, Math.min(.9, value)); renderEditorSplits(); saveOpenedEditors() };
+		bar.addEventListener("keydown", e => {
+			if ( !(horizontal ? ["ArrowLeft", "ArrowRight"] : ["ArrowUp", "ArrowDown"]).includes(e.key) ) { return }
+			const index = [...editorGrid.querySelectorAll(".editor-resizer")].indexOf(bar);
+			e.preventDefault(); update(node.ratio + (["ArrowLeft", "ArrowUp"].includes(e.key) ? -.02 : .02));
+			editorGrid.querySelectorAll(".editor-resizer")[index]?.focus();
+		});
+		bar.addEventListener("pointerdown", e => {
+			if ( e.button !== 0 ) { return }
+			e.preventDefault();
+			const box = editorGrid.getBoundingClientRect();
+			const move = event => update(horizontal ? ((event.clientX-box.left)/box.width*100-x)/w : ((event.clientY-box.top)/box.height*100-y)/h);
+			const end = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", end); window.removeEventListener("pointercancel", end) };
+			window.addEventListener("pointermove", move);
+			window.addEventListener("pointerup", end);
+			window.addEventListener("pointercancel", end);
+		});
+		editorGrid.append(bar);
+	}
+	if ( editorSplits ) { place(editorSplits, 0, 0, 100, 100) }
+}
+function editorDropTarget(pane, event){
+	const box = pane.el.getBoundingClientRect();
+	const x = (event.clientX-box.left)/box.width, y = (event.clientY-box.top)/box.height;
+	const edges = [["left", x], ["right", 1-x], ["top", y], ["bottom", 1-y]].sort((a,b) => a[1]-b[1]);
+	const side = panes.length < maxEditors && edges[0][1] < .25 && !focusLayout ? edges[0][0] : "center";
+	const rect = { left: box.left, top: box.top, width: box.width, height: box.height };
+	if ( ["left", "right"].includes(side) ) { rect.width /= 2; if ( side === "right" ) { rect.left += rect.width } }
+	if ( ["top", "bottom"].includes(side) ) { rect.height /= 2; if ( side === "bottom" ) { rect.top += rect.height } }
+	return { side, rect, label: side === "center" ? "Open in editor" : `Split editor ${side}` };
+}
+function clearEditorPreview(){
+	if ( !dockDrag ) {
+		document.getElementById("dock-preview").classList.remove("shown");
+		document.getElementById("dock-zones").classList.remove("editor-dragging");
+	}
+}
+document.addEventListener("dragend", clearEditorPreview);

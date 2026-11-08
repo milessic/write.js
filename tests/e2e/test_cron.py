@@ -296,3 +296,37 @@ def test_logged_in_jobs_are_kept_in_the_cloud(browser, server):
 	finally:
 		a.context.close()
 		b.context.close()
+
+
+@pytest.mark.parametrize("conflicts,allow,ok,runs", [(0, False, True, True), (1, False, True, False), (1, True, True, True), (0, True, False, False)])
+def test_sync_before_script(app, conflicts, allow, ok, runs):
+	page = app(cron=False)
+	result = page.evaluate("""async ({job, conflicts, allow, ok}) => {
+		cronRemote = () => true;
+		let synced = false;
+		window.syncCloud = async () => {
+			await new Promise(resolve => setTimeout(resolve, 20));
+			synced = true;
+			return {ok, conflicts};
+		};
+		if (allow) { localStorage.setItem(cronRegardlessConflictsKey, '1') }
+		const result = await executeCronJob(job);
+		return {result, synced};
+	}""", {"job": job(), "conflicts": conflicts, "allow": allow, "ok": ok})
+	assert result["synced"]
+	assert result["result"]["ok"] == runs
+	assert ("count: 1" in stored_counter(page)) == runs
+
+
+def test_conflict_setting_defaults_to_no_and_persists(app):
+	page = app(cron=False)
+	page.click("#hamburger-button")
+	page.click("#settings-btn")
+	setting = page.locator("#setting-cron-regardless-conflicts")
+	assert setting.input_value() == "0"
+	setting.select_option("1")
+	assert page.evaluate("localStorage.getItem('__cronRegardlessConflicts__')") == "1"
+	page.reload()
+	page.click("#hamburger-button")
+	page.click("#settings-btn")
+	assert page.locator("#setting-cron-regardless-conflicts").input_value() == "1"

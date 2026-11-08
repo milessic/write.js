@@ -95,6 +95,7 @@ The backend is [FastAPI](https://fastapi.tiangolo.com/) with authorization and l
 
 ## Notebook Cron
 - turned on in Settings > Notebook cron; off, nothing is fetched or run, and the jobs stay as they are
+- logged in, syncs before each run; sync errors stop the job. Settings > **Run cron regardless conflicts** defaults to **No**, stopping jobs when conflicts need review; **Yes** allows running with conflicts.
 - menu > **Notebook Cron** lists the jobs, add/remove them, each with: document, script (the display name of a script button in it), cron, executor (*Set this browser*), *Run*, next execution and *Enabled*; below them the log of the last 100 runs
 - a job runs only in its executor browser, while the app is open there (one tab runs them); the document doesn't have to be opened, what the script changes is saved with it
 - cron: `minute hour day month weekday`, with `*`, numbers, ranges `1-5`, lists `1,3` and steps `*/15`

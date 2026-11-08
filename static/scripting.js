@@ -226,9 +226,11 @@ async function executeScript(editor, code){
 	const key = scriptScopeKey(editor);
 	if ( key in scriptScopes ) { return null }
 	const scope = scriptScopes[key] = {};
-	const api = scriptApi(editor);
+	const execution = { notifyExecuted: true };
+	const api = scriptApi(editor, execution);
 	try {
-		return { ok: true, result: scriptResultText(await compileScript(code)(scope, editor, ...scriptApiNames.map((n) => api[n]), ...scriptGlobals(editor))) };
+		const result = scriptResultText(await compileScript(code)(scope, editor, ...scriptApiNames.map((n) => api[n]), ...scriptGlobals(editor)));
+		return { ok: true, result, notifyExecuted: execution.notifyExecuted };
 	} catch ( err ) {
 		return { ok: false, result: null, error: err };
 	} finally {
@@ -320,7 +322,9 @@ async function runScript(activator){
 	const changed = afterScriptRun(editor, before, beforeKey, activatorIndex);
 	const outcome = ok ? `'${name}' executed` : `'${name}' failed: ${error?.message ?? error}`;
 	const change = changed ? `. It changed the document: ${scriptUndoHint()} undoes it` : "";
-	scriptNotification(outcome + change, ok ? "info" : "error", ok && !changed && result === null ? notificationTimeout : notificationTimeoutLong, result);
+	if ( !ok || run.notifyExecuted ) {
+		scriptNotification(outcome + change, ok ? "info" : "error", ok && !changed && result === null ? notificationTimeout : notificationTimeoutLong, result);
+	}
 	return ok;
 }
 

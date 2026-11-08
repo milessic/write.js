@@ -55,6 +55,7 @@ def test_folded_heading_draws_its_rule_where_it_was(app):
 
 
 def test_typed_rule_is_a_line_of_its_own_and_folds_with_its_heading(app):
+	app.evaluate("localStorage.setItem(headingBreaksKey, '0')")
 	# --- typed on the line under a heading used to end up inside that line: <div><hr><div>text</div></div>
 	app.evaluate("""() => {
 		const editor = document.getElementById("editor");

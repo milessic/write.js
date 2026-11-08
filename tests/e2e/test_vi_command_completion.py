@@ -90,3 +90,17 @@ def test_ctrl_n_picks_a_document_for_e(typing):
 	typing.load(["one"]).keys(":").page.keyboard.type("e tes")
 	typing.keys("Control+n")
 	assert command_line(typing) == "e test"
+
+
+def test_document_tags_match_without_corrupting_completion_labels(typing):
+	typing.load(["one"])
+	typing.page.evaluate("""() => {
+		localStorage.setItem('__doc__tagged', withDocumentId('<div>tagged</div>', newDocumentId(), {tags: 'private,home,dog'}));
+	}""")
+	try:
+		typing.keys(":").page.keyboard.type("e PRIVATE dog")
+		assert items(typing) == ["tagged"]
+		typing.keys("Control+n")
+		assert command_line(typing) == "e tagged"
+	finally:
+		typing.page.evaluate("localStorage.removeItem('__doc__tagged')")

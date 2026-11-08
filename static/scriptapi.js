@@ -6,7 +6,7 @@
  */
 const scriptApiUrl = document.currentScript?.src || "static/scriptapi.js";
 
-function scriptApi(editor){
+function scriptApi(editor, execution={}){
 	const headings = (level) => [...editor.children].filter((el) => /^H[1-4]$/.test(el.nodeName) && (!level || el.nodeName === `H${level}`));
 
 	/**
@@ -190,6 +190,15 @@ function scriptApi(editor){
 	}
 
 	/**
+	 * Enables or disables the automatic "executed" notification for this script's current run (enabled by default).
+	 * enabled: true or false. Error notifications and notifications made with createNotification are still shown.
+	 */
+	function setScriptExecutedNotification(enabled){
+		if ( typeof enabled !== "boolean" ) { throw new TypeError("setScriptExecutedNotification: enabled has to be true or false") }
+		execution.notifyExecuted = enabled;
+	}
+
+	/**
 	 * Duplicates a document of the notebook, like its "Duplicate" menu item: the copy is "name (copy)", in the same folder.
 	 * documentQuery: {directory, index, doc}, what is left out is null.
 	 * directory: the folder, its path ("Work/Daily", a folder's path is its id) or its name ("Daily"); "" for the
@@ -233,7 +242,7 @@ function scriptApi(editor){
 		return httpRequest("POST", url, payload, headers, "post");
 	}
 
-	return { locateHeading, locateById, getListElements, checkCheckbox, uncheckCheckbox, getDocTitle, setDocTitle, getRandomFromArray, createNotification, duplicateDocument, secret, getAllCheckboxes, get, post };
+	return { locateHeading, locateById, getListElements, checkCheckbox, uncheckCheckbox, getDocTitle, setDocTitle, getRandomFromArray, createNotification, setScriptExecutedNotification, duplicateDocument, secret, getAllCheckboxes, get, post };
 }
 
 // the notebook's documents

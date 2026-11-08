@@ -69,6 +69,38 @@ def test_parent_checked_by_hand_stays(editor):
 	assert states(editor)["c1"] is False
 
 
+def test_enter_adds_child_and_unchecks_ancestors(editor):
+	for text in ["c1", "g1", "g2"]:
+		toggle(editor, text)
+	assert states(editor)["parent"] is True
+	caret(editor, "g2")
+	editor.keyboard.press("Enter")
+	editor.keyboard.type("new child")
+	assert states(editor) == {"parent": False, "c1": True, "c2": False,
+		"g1": True, "g2": True, "new child": False}
+
+
+@pytest.mark.parametrize("checked", ["false", "true", None])
+def test_indenting_child_unchecks_checked_parent(editor, checked):
+	attribute = f' data-checked="{checked}"' if checked is not None else ""
+	load(editor, '<ul><li data-checked="true">parent</li>'
+		f'<li{attribute}>new child</li></ul>')
+	caret(editor, "new child")
+	editor.keyboard.press("Tab")
+	assert states(editor)["parent"] is False
+	assert editor.evaluate("""() => {
+		const parent = document.querySelector('#editor li');
+		return nestedListsOf(parent).some(list => list.textContent.includes('new child'));
+	}""")
+
+
+def test_editing_child_text_keeps_manually_checked_parent(editor):
+	toggle(editor, "parent")
+	caret(editor, "c1")
+	editor.keyboard.type(" edited")
+	assert states(editor)["parent"] is True
+
+
 def test_ctrl_enter_and_vi_tab(editor):
 	caret(editor, "g1")
 	editor.keyboard.press("Control+Enter")

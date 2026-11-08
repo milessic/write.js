@@ -115,6 +115,34 @@ def test_folders_go_with_the_notebook(devices):
 	assert b.evaluate("folderOfDocument('renamed')") == "work"
 
 
+def test_vi_mode_stays_on_its_device(devices):
+	a, b = devices
+	a.evaluate('createSettingsModal()')
+	a.check('#setting-vi-mode')
+	a.wait_for_function('window.WriteVi && viModeEnabled()')
+	a.evaluate('closeAllModals()')
+	sync(a)
+	sync(b)
+	assert b.evaluate('viModeEnabled()') is False
+	assert a.evaluate('JSON.parse(collectMeta())[viModeKey]') is None
+	b.evaluate("localStorage.setItem(viModeKey, '0')")
+	sync(b)
+	sync(a)
+	assert a.evaluate('viModeEnabled()') is True
+	assert b.evaluate('localStorage.getItem(viModeKey)') == '0'
+
+
+@pytest.mark.parametrize('local_value', [None, '0', '1'])
+def test_old_cloud_meta_preserves_device_vi_mode(devices, local_value):
+	_, b = devices
+	b.evaluate("""value => {
+		if (value === null) { localStorage.removeItem(viModeKey) }
+		else { localStorage.setItem(viModeKey, value) }
+		applyRemoteMeta(JSON.stringify({[viModeKey]: value === '1' ? '0' : '1'}), false);
+	}""", local_value)
+	assert b.evaluate('localStorage.getItem(viModeKey)') == local_value
+
+
 def test_both_changed_shows_the_conflict_resolver(devices):
 	a, b = devices
 	save(a, "renamed", a.evaluate("withDocumentId('<div>from a</div>', documentIdOf('renamed'))"))
@@ -197,7 +225,7 @@ def test_notebook_from_before_is_moved_to_documents(browser, server):
 	# a notebook kept as a whole comes to a new device and goes to the cloud document by document
 	device = open_device(browser, server, register(server), {"__doc__old": "<div>from before</div>", "__viMode__": "1"})
 	assert stored(device, "old") == "<div>from before</div>"
-	assert device.evaluate("localStorage.getItem('__viMode__')") == "1"
+	assert device.evaluate("localStorage.getItem('__viMode__')") is None
 	listed = device.evaluate("async () => (await cloudRequest(`/${cloudNotebookId}/documents`))")
 	assert [d["name"] for d in listed["documents"]] == ["old"]
 	assert listed["legacy"] is False

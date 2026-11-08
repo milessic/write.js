@@ -42,7 +42,7 @@ def test_toolbar_is_dragged_to_a_side(app, side):
 def test_toolbar_menu_moves_it(app):
 	app.locator("#toolbar-grip").click(button="right")
 	labels = app.locator("#context-menu button").all_text_contents()
-	assert labels == ["Move toolbar to the top", "Move toolbar to the bottom", "Move toolbar to the left", "Move toolbar to the right"]
+	assert labels == ["Move toolbar to the top", "Move toolbar to the bottom", "Move toolbar to the left", "Move toolbar to the right", "Opened documents | Toolbar", "Toolbar | Opened documents", "Opened documents above toolbar"]
 	assert app.locator("#context-menu button", has_text="to the top").is_disabled()
 	app.locator("#context-menu button", has_text="to the left").click()
 	assert app.evaluate("document.body.dataset.toolbarSide") == "left"

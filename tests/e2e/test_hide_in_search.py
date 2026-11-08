@@ -89,3 +89,22 @@ def test_it_follows_a_renamed_folder(app):
 def test_vi_open_leaves_them_out(app):
 	hide(app, "work")
 	assert app.evaluate("isHiddenInSearch('plan') && isHiddenInSearch('notes') && !isHiddenInSearch('list') && !isHiddenInSearch('loose')")
+
+
+def test_folder_metadata_controls_search_and_persists(app):
+	folder_row(app, "work").click(button="right")
+	app.locator("#context-menu button", has_text="Folder metadata").click()
+	app.locator('.metadata-widget [data-meta="searchHidden"]').check()
+	app.locator('.metadata-widget .metadata-save').click()
+	assert searched(app, "")[0] == ["list", "loose"]
+	app.reload()
+	app.wait_for_function("typeof readFolders === 'function'")
+	folder_row(app, "work/projects").click(button="right")
+	app.locator("#context-menu button", has_text="Folder metadata").click()
+	assert "parent folder" in app.locator('.metadata-widget').text_content()
+	app.locator('.metadata-widget .metadata-cancel').click()
+	folder_row(app, "work").click(button="right")
+	app.locator("#context-menu button", has_text="Folder metadata").click()
+	app.locator('.metadata-widget [data-meta="searchHidden"]').uncheck()
+	app.locator('.metadata-widget .metadata-save').click()
+	assert searched(app, "")[0] == ["list", "loose", "notes", "plan"]

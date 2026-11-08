@@ -1203,6 +1203,35 @@ body.app > .topbar:has(.menu-opened) {
 .format-bar[hidden] {
 	display: none;
 }
+/* The shared bar can have two columns in either order, or two stacked rows. */
+.document-toolbar-bar {
+	flex: none;
+	min-width: 0;
+	display: flex;
+	align-items: stretch;
+}
+.document-toolbar-bar[data-arrangement="with-tabs"] { flex-direction: column; }
+.document-toolbar-bar[data-arrangement="toolbar-tabs"] { flex-direction: row-reverse; }
+.document-toolbar-bar > :is(.tab-bar, .format-bar) {
+	flex: 1 1 0;
+	min-width: 0;
+}
+.document-toolbar-bar > .format-bar { padding: .25rem .4rem; }
+.document-toolbar-bar > .tab-bar { order: 0; flex: 0 0 calc(var(--tabs-share, 50%) - 3px); }
+.document-toolbar-bar > .format-bar { order: 2; }
+.document-toolbar-resizer {
+	order: 1;
+	flex: 0 0 6px;
+	cursor: col-resize;
+	touch-action: none;
+	background: var(--line);
+}
+.document-toolbar-resizer:hover, .document-toolbar-resizer:focus-visible { background: var(--accent); }
+.document-toolbar-bar[data-arrangement="with-tabs"] > .document-toolbar-resizer { display: none; }
+.document-toolbar-bar .toolbar-bar { flex-wrap: wrap; }
+.document-toolbar-bar[data-arrangement="with-tabs"] > :is(.tab-bar, .format-bar) {
+	flex: none;
+}
 [data-editors="1"] .format-bar .toolbar-bar {
 	max-width: 960px;
 	margin: 0 auto;
@@ -2669,3 +2698,14 @@ body.focus-mode .floating-headings-inner {
 	border-radius: 6px; background: var(--surface); color: var(--ink); box-shadow: 0 4px 18px #0003;
 }
 #table-resize-guide { position: fixed; pointer-events: none; z-index: 10001; }
+
+/* Editor rectangles and divider positions are percentages of the available workspace. */
+.editor-grid { position: relative; display: block; padding: 0 !important; }
+.editor-grid > .editor-pane { position: absolute; box-sizing: border-box; padding: 4px; }
+.editor-resizer { position: absolute; z-index: 5; touch-action: none; }
+.editor-resizer.vertical { width: 8px; transform: translateX(-50%); cursor: col-resize; }
+.editor-resizer.horizontal { height: 8px; transform: translateY(-50%); cursor: row-resize; }
+.editor-resizer:hover, .editor-resizer:focus-visible { background: var(--accent); opacity: .5; }
+body.focus-mode:not(.focus-editors) .editor-grid > .editor-pane.focused { left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; }
+body.focus-mode:not(.focus-editors) .editor-resizer { display: none; }
+.dock-zones.editor-dragging { display: block; pointer-events: none; }

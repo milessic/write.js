@@ -10,6 +10,7 @@
 const taskItemSelector = "li[data-checked]";
 let paragraphSnapshot = null; // the editor's items before an Enter, to tell which item the browser just made
 let markerItem = null; // the item just made from a typed "- [ ]": the space typed after the marker isn't its text
+const taskChildren = new WeakMap(); // previous children, so loading a document doesn't change its checked states
 
 function isTaskItem(el){
 	return el?.nodeName === "LI" && el.hasAttribute("data-checked");
@@ -134,7 +135,7 @@ function autoCheckParentsSettingsHtml(){
 	// goes in the Lists section of Settings (createSettingsModal, script.js)
 	return `
 		<label class="check"><input id="setting-auto-check-parents" type="checkbox"${autoCheckParentsEnabled() ? " checked" : ""}>Check a checklist item when all the items nested in it are checked</label>
-		<p class="muted small">Unchecking one of them unchecks it again.</p>`;
+		<p class="muted small">Unchecking one of them or adding a child unchecks it again.</p>`;
 }
 
 function initAutoCheckParentsSettings(){
@@ -312,6 +313,15 @@ function normalizeChecklists(editor){
 		const hr = heading.nextElementSibling;
 		if ( typeof isHeadingBreak !== "undefined" && isHeadingBreak(hr) ) { hr.remove() }
 		heading.replaceWith(...heading.childNodes);
+	}
+	for ( const li of editor.querySelectorAll(taskItemSelector) ) {
+		const children = nestedListsOf(li).flatMap((list) => [...list.children].filter((el) => el.nodeName === "LI"));
+		const previous = taskChildren.get(li);
+		taskChildren.set(li, new Set(children));
+		if ( previous && isChecked(li) && children.some((child) => !previous.has(child)) && autoCheckParentsEnabled() ) {
+			li.dataset.checked = "false";
+			updateParentTaskItems([li]);
+		}
 	}
 }
 

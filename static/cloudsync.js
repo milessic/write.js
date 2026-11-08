@@ -191,6 +191,7 @@ async function runCloudSync({ manual=false, onStart=false }={}){
 		if ( conflicts.length && !document.querySelector(".sync-compare-modal") ) {
 			resolveSyncConflicts(conflicts, "Cloud", true, resolveCloudConflict);
 		}
+		return { ok: !failed, conflicts: conflicts.length };
 	} catch ( err ) {
 		if ( err instanceof CloudHttpError && err.status === 401 ) { return }
 		// fetch rejects with TypeError when the network is gone
