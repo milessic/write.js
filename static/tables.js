@@ -2,8 +2,8 @@
  * Tables: inserted from the toolbar ("Table": columns, rows and whether the first row is the headers), changed from
  * the right-click menu of a cell, or the toolbar's "Table" with the caret in one: rows and columns added or removed,
  * the table removed. Shift+right-click keeps the browser's own menu.
- * A table is always <table>[<thead><tr><th>…]<tbody><tr><td>…</table>, cells of text and simple formatting, no
- * attributes; pasted HTML and Markdown tables come in like that too. A change rebuilds the table and puts it in place
+ * A table is always <table>[<thead><tr><th>…]<tbody><tr><td>…</table>, with simple cell formatting and saved
+ * dimensions. Pasted HTML and Markdown tables come in like that too. A change rebuilds the table and puts it in place
  * with insertHTML, so Ctrl/Cmd+Z undoes it. Tab / Shift+Tab move between the cells, Tab in the last one adds a row.
  * Cells are selected like in a spreadsheet: a selection from one cell to another (a drag, Shift+click, Shift+arrows) is
  * the rectangle between them, Ctrl+click (Cmd+click on Apple devices) adds or removes a cell. Copying selected cells, or
@@ -30,13 +30,20 @@ function tableModel(table, safe=false){
 	const grid = rows.map(cellsOf);
 	const columns = Math.min(Math.max(1, ...grid.map((row) => row.length)), tableMaxColumns);
 	const fit = (row) => [...row.slice(0, columns), ...Array(Math.max(0, columns - row.length)).fill("")];
-	return { head: hasHead ? fit(grid[0]) : null, body: grid.slice(hasHead ? 1 : 0).map(fit) };
+	return { head: hasHead ? fit(grid[0]) : null, body: grid.slice(hasHead ? 1 : 0).map(fit),
+		widths: [...(first?.cells || [])].map((cell) => parseFloat(cell.style.width) || 0),
+		heights: rows.map((tr) => parseFloat(tr.style.height) || 0) };
 }
 
 function tableHtml(model){
-	const cell = (tag, html) => `<${tag}>${isBlankCell(html) ? "<br>" : html}</${tag}>`;
-	const head = model.head ? `<thead><tr>${model.head.map((html) => cell("th", html)).join("")}</tr></thead>` : "";
-	return `<table>${head}<tbody>${model.body.map((row) => `<tr>${row.map((html) => cell("td", html)).join("")}</tr>`).join("")}</tbody></table>`;
+	const dimension = (value) => Number.isFinite(value) && value > 0 ? value : 0;
+	const cell = (tag, html, c) => {
+		const width = dimension(model.widths?.[c]);
+		return `<${tag}${width ? ` style="width: ${width}px; min-width: ${width}px; max-width: ${width}px; overflow-wrap: anywhere;"` : ""}>${isBlankCell(html) ? "<br>" : html}</${tag}>`;
+	};
+	const row = (cells, tag, r) => `<tr${dimension(model.heights?.[r]) ? ` style="height: ${model.heights[r]}px;"` : ""}>${cells.map((html, c) => cell(tag, html, c)).join("")}</tr>`;
+	const head = model.head ? `<thead>${row(model.head, "th", 0)}</thead>` : "";
+	return `<table>${head}<tbody>${model.body.map((cells, r) => row(cells, "td", r + (model.head ? 1 : 0))).join("")}</tbody></table>`;
 }
 
 function isBlankCell(html){
@@ -71,7 +78,7 @@ function normalizedTableHtml(table){
 	// an imported or pasted table as the editor makes it; an empty header row (Markdown needs one, the export writes
 	// it for a table without headers) goes
 	const model = tableModel(table, true);
-	if ( model.head && model.head.every(isBlankCell) && model.body.length ) { model.head = null }
+	if ( model.head && model.head.every(isBlankCell) && model.body.length ) { model.head = null; model.heights.shift() }
 	return tableHtml(model);
 }
 
@@ -181,14 +188,15 @@ function changeTable(cell, change){
 	// goes: [row, column]
 	const { table, row, column } = cellPosition(cell);
 	const model = tableModel(table);
-	const grid = { head: Boolean(model.head), rows: model.head ? [model.head, ...model.body] : model.body };
+	const grid = { head: Boolean(model.head), rows: model.head ? [model.head, ...model.body] : model.body, widths: model.widths, heights: model.heights };
 	const [caretRow, caretColumn] = change(grid, row, column);
-	replaceTable(table, { head: grid.head ? grid.rows[0] : null, body: grid.head ? grid.rows.slice(1) : grid.rows }, caretRow, caretColumn);
+	replaceTable(table, { head: grid.head ? grid.rows[0] : null, body: grid.head ? grid.rows.slice(1) : grid.rows, widths: grid.widths, heights: grid.heights }, caretRow, caretColumn);
 }
 
 function addTableRows(cell, at, count){
 	// count empty rows before the row at (the header row first, if any), the caret in the first of them
 	changeTable(cell, (grid, row, column) => {
+		grid.heights.splice(at, 0, ...Array(count).fill(0));
 		grid.rows.splice(at, 0, ...Array.from({ length: count }, () => Array(grid.rows[0].length).fill("")));
 		return [at, column];
 	});
@@ -197,6 +205,7 @@ function addTableRows(cell, at, count){
 function removeTableRow(cell){
 	changeTable(cell, (grid, row, column) => {
 		grid.rows.splice(row, 1);
+		grid.heights.splice(row, 1);
 		if ( row === 0 ) { grid.head = false } // the header row went: the table has none
 		return [Math.min(row, grid.rows.length - 1), column];
 	});
@@ -205,6 +214,7 @@ function removeTableRow(cell){
 function addTableColumns(cell, at, count){
 	// count empty columns before the column at, the caret in the first of them
 	changeTable(cell, (grid, row) => {
+		grid.widths.splice(at, 0, ...Array(count).fill(0));
 		for ( const cells of grid.rows ) { cells.splice(at, 0, ...Array(count).fill("")) }
 		return [row, at];
 	});
@@ -212,6 +222,7 @@ function addTableColumns(cell, at, count){
 
 function removeTableColumn(cell){
 	changeTable(cell, (grid, row, column) => {
+		grid.widths.splice(column, 1);
 		for ( const cells of grid.rows ) { cells.splice(column, 1) }
 		return [row, Math.min(column, grid.rows[0].length - 1)];
 	});
@@ -219,6 +230,7 @@ function removeTableColumn(cell){
 
 function addTableHeaderRow(cell){
 	changeTable(cell, (grid, row, column) => {
+		grid.heights.unshift(0);
 		grid.rows.unshift(Array(grid.rows[0].length).fill(""));
 		grid.head = true;
 		return [0, column];
@@ -259,6 +271,7 @@ function tableMenuItems(cell){
 		{ label: "Remove column", action: () => removeTableColumn(cell), disabled: (model.head || model.body[0]).length < 2 },
 		...(model.head ? [] : [null, { label: "Add header row", action: () => addTableHeaderRow(cell) }]),
 		null,
+		...(places.length > 1 ? [{ label: "Calculate", action: () => showTableCalculation(places.map((p) => table.rows[p.row].cells[p.column]), cell) }, null] : []),
 		{ label: "Remove table", action: () => removeTable(table), danger: true },
 	];
 }
@@ -586,10 +599,17 @@ function tableSettingsHtml(){
 	return `
 		<label class="check"><input type="radio" name="setting-table-copy" value="markdown"${html ? "" : " checked"}>Copy tables as Markdown</label>
 		<label class="check"><input type="radio" name="setting-table-copy" value="html"${html ? " checked" : ""}>Copy tables as HTML</label>
+		<label class="check"><input type="checkbox" id="setting-table-counters"${localStorage.getItem("__tableCounters__") === "1" ? " checked" : ""}>Show row and columns counters</label>
 		<p class="muted small">What a copied table pastes as text. Pasted into Write.JS or a document editor it stays a table either way.</p>`;
 }
 
 function initTableSettings(){
+	document.getElementById("setting-table-counters")?.addEventListener("change", (e) => {
+		if ( !validateUserConsent() ) { e.target.checked = false; return }
+		localStorage.setItem("__tableCounters__", e.target.checked ? "1" : "0");
+		scheduleTableChrome();
+		if ( typeof handleRemoteAutosave !== "undefined" ) { handleRemoteAutosave() }
+	});
 	document.querySelectorAll('input[name="setting-table-copy"]').forEach((input) => input.addEventListener("change", (e) => {
 		if ( !validateUserConsent() ) { e.target.checked = false; return }
 		localStorage.setItem(tableCopyKey, e.target.value);
@@ -754,3 +774,140 @@ document.getElementById("editor-grid").addEventListener("keydown", handleTableAr
 // capture: before the caret moves with the arrow
 document.getElementById("editor-grid").addEventListener("keydown", handleTableRowMove, true);
 document.getElementById("tb-btn-table").addEventListener("click", () => { formatText("table") });
+
+function showTableCalculation(cells, anchor){
+	document.getElementById("table-calculation")?.remove();
+	const numbers = cells.map((cell) => cell.textContent.trim()).filter((text) => text && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(text)).map(Number).filter(Number.isFinite);
+	const sum = numbers.reduce((total, value) => total + value, 0);
+	const panel = document.createElement("div");
+	panel.id = "table-calculation";
+	panel.setAttribute("role", "status");
+	const values = numbers.length ? [Math.min(...numbers), Math.max(...numbers), sum, sum / numbers.length] : ["—", "—", 0, "—"];
+	["Min", "Max", "Sum", "Average"].forEach((label, i) => {
+		const line = document.createElement("div");
+		line.textContent = `${label}: ${values[i]}`;
+		panel.append(line);
+	});
+	const close = document.createElement("button");
+	close.textContent = "Close";
+	close.onclick = () => panel.remove();
+	panel.append(close);
+	document.body.append(panel);
+	const rect = anchor.getBoundingClientRect();
+	panel.style.left = `${Math.max(0, Math.min(rect.left, innerWidth - panel.offsetWidth))}px`;
+	panel.style.top = `${Math.max(0, Math.min(rect.bottom + 4, innerHeight - panel.offsetHeight))}px`;
+}
+document.addEventListener("keydown", (e) => { if ( e.key === "Escape" ) { document.getElementById("table-calculation")?.remove() } });
+document.addEventListener("pointerdown", (e) => {
+	const panel = document.getElementById("table-calculation");
+	if ( panel && !panel.contains(e.target) ) { panel.remove() }
+}, true);
+
+// Resize at a cell's right or bottom edge. Persist dimensions through the same undoable replacement as menu edits.
+let tableResize = null;
+function clearTableResize(){
+	tableResize = null;
+	document.getElementById("table-resize-guide")?.remove();
+}
+document.addEventListener("pointermove", (e) => {
+	if ( !tableResize ) { return }
+	let guide = document.getElementById("table-resize-guide");
+	if ( !guide ) {
+		guide = document.createElement("div");
+		guide.id = "table-resize-guide";
+		document.body.append(guide);
+	}
+	const { axis, rect, x, y } = tableResize;
+	guide.style.cssText = axis === "column"
+		? `left:${rect.left + Math.max(40, rect.width + e.clientX - x)}px;top:${rect.top}px;height:${rect.height}px;border-left:2px solid var(--accent)`
+		: `left:${rect.left}px;top:${rect.top + Math.max(24, rect.height + e.clientY - y)}px;width:${rect.width}px;border-top:2px solid var(--accent)`;
+});
+function tableResizeEdge(e){
+	const cell = e.target.closest?.(tableCellSelector);
+	if ( !cell?.closest(".editor")?.isContentEditable ) { return null }
+	const rect = cell.getBoundingClientRect();
+	const axis = Math.abs(e.clientX - rect.right) <= 6 ? "column" : Math.abs(e.clientY - rect.bottom) <= 6 ? "row" : null;
+	return axis ? { cell, axis, rect } : null;
+}
+document.getElementById("editor-grid").addEventListener("pointermove", (e) => {
+	const edge = tableResizeEdge(e);
+	const editor = e.target.closest?.(".editor");
+	if ( editor ) { editor.style.cursor = edge ? (edge.axis === "column" ? "col-resize" : "row-resize") : "" }
+});
+document.getElementById("editor-grid").addEventListener("pointerdown", (e) => {
+	if ( e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey ) { return }
+	const edge = tableResizeEdge(e);
+	if ( !edge ) { return }
+	e.preventDefault();
+	e.stopImmediatePropagation();
+	tableResize = { ...edge, x: e.clientX, y: e.clientY, pointer: e.pointerId };
+}, true);
+document.addEventListener("pointerup", (e) => {
+	if ( !tableResize || e.pointerId !== tableResize.pointer ) { return }
+	const { cell, axis, rect, x, y } = tableResize;
+	clearTableResize();
+	if ( !cell.isConnected || Math.abs(e.clientX - x) + Math.abs(e.clientY - y) < 2 ) { return }
+	const { table, row, column } = cellPosition(cell);
+	const model = tableModel(table);
+	if ( axis === "column" ) { model.widths[column] = Math.max(40, Math.round(rect.width + e.clientX - x)) }
+	else { model.heights[row] = Math.max(24, Math.round(rect.height + e.clientY - y)) }
+	replaceTable(table, model, row, column);
+});
+document.addEventListener("pointercancel", clearTableResize);
+
+function tableColumnLabel(index){
+	let label = "";
+	for ( let n = index + 1; n; n = Math.floor((n - 1) / 26) ) { label = String.fromCharCode(65 + (n - 1) % 26) + label }
+	return label;
+}
+let tableChromeFrame = 0;
+function scheduleTableChrome(){
+	if ( tableChromeFrame ) { return }
+	tableChromeFrame = requestAnimationFrame(() => { tableChromeFrame = 0; renderTableChrome() });
+}
+function renderTableChrome(){
+	const enabled = localStorage.getItem("__tableCounters__") === "1";
+	document.body.classList.toggle("show-table-counters", enabled);
+	for ( const card of document.querySelectorAll(".editor-card") ) {
+		let layer = card.querySelector(":scope > .table-counter-layer");
+		if ( !enabled ) { layer?.remove(); continue }
+		if ( !layer ) {
+			layer = document.createElement("div");
+			layer.className = "table-counter-layer";
+			layer.contentEditable = "false";
+			layer.setAttribute("aria-label", "Table row and column counters");
+			card.append(layer);
+		}
+		const origin = layer.getBoundingClientRect();
+		const labels = [];
+		const label = (text, left, top, width, height) => {
+			const el = document.createElement("div");
+			el.textContent = text;
+			el.style.cssText = `left:${left - origin.left}px;top:${top - origin.top}px;width:${width}px;height:${height}px`;
+			labels.push(el);
+		};
+		for ( const table of card.querySelectorAll(".editor table") ) {
+			const rows = tableRows(table);
+			const bounds = table.getBoundingClientRect();
+			[...(rows[0]?.cells || [])].forEach((cell, c) => {
+				const rect = cell.getBoundingClientRect();
+				const left = Math.max(rect.left, bounds.left + 28);
+				const right = Math.min(rect.right, bounds.right);
+				if ( right > left ) { label(tableColumnLabel(c), left, rect.top - 20, right - left, 20) }
+			});
+			rows.forEach((row, r) => {
+				const rect = row.getBoundingClientRect();
+				label(String(r + 1), bounds.left, rect.top, 28, rect.height);
+			});
+		}
+		layer.replaceChildren(...labels);
+	}
+}
+new MutationObserver((records) => {
+	if ( records.some((r) => r.target.closest?.(".editor") || [...r.addedNodes].some((n) => n.nodeType === 1 && (n.matches(".editor") || n.querySelector(".editor")))) ) { scheduleTableChrome() }
+}).observe(document.getElementById("editor-grid"), { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["style"] });
+new ResizeObserver(scheduleTableChrome).observe(document.getElementById("editor-grid"));
+document.getElementById("editor-grid").addEventListener("scroll", scheduleTableChrome, true);
+window.addEventListener("resize", scheduleTableChrome);
+window.addEventListener("storage", scheduleTableChrome);
+scheduleTableChrome();

@@ -500,6 +500,9 @@ function openScriptWizard(activator=null, at=null){
 		if ( scriptBorders.some((b) => b.key === activator.dataset.scriptBorder) ) { border.value = activator.dataset.scriptBorder }
 	}
 	setupScriptCode(code, activator?.dataset.script || "");
+	const values = () => JSON.stringify([name.value, border.value, scriptCodeText(code)]);
+	const initialValues = values();
+	modal.canClose = () => values() === initialValues || showConfirm("Close Script wizard without saving changes?");
 	const showProblem = (text) => {
 		check.textContent = text || "";
 		check.hidden = !text;
@@ -520,6 +523,7 @@ function openScriptWizard(activator=null, at=null){
 		} else {
 			insertScriptActivator(into, at, fillScriptActivator(document.createElement("span"), label, border.value, text));
 		}
+		modal.canClose = null;
 		closeAllModals();
 		into.dispatchEvent(new Event("input", { bubbles: true }));
 		if ( into.id === "editor" ) { performAutoSave() }
@@ -552,10 +556,14 @@ function openScriptWizard(activator=null, at=null){
 			save();
 		} else if ( ["q", "quit", "q!", "quit!", "close"].includes(command) ) {
 			e.preventDefault();
+			modal.canClose = null;
 			closeAllModals();
 		}
 	});
-	modal.querySelector(".script-cancel").addEventListener("click", () => closeAllModals());
+	modal.querySelector(".script-cancel").addEventListener("click", () => {
+		modal.canClose = null;
+		closeAllModals();
+	});
 	modal.querySelector(".script-help-btn").addEventListener("click", openScriptHelp);
 	modal.querySelector(".script-save").addEventListener("click", save);
 	name.focus();

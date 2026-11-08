@@ -699,7 +699,19 @@ function rememberSelection(){
 // before it the DOM position before the <hr>, after it the one after (so dd, yy and p take it like any line)
 const ruleChar = "\u2500";
 
+// Scrolling and selection changes reuse the model. Drain pending records as well
+// so synchronous edits in the same task cannot read an outdated model.
+const textModels = new WeakMap();
 function textModel(editor){
+	let cached = textModels.get(editor);
+	if ( !cached ) {
+		cached = {model: null};
+		cached.observer = new MutationObserver(() => { cached.model = null });
+		cached.observer.observe(editor, {subtree: true, childList: true, characterData: true});
+		textModels.set(editor, cached);
+	}
+	if ( cached.observer.takeRecords().length ) { cached.model = null }
+	if ( cached.model ) { return cached.model }
 	let text = "";
 	const segments = [];   // {node, start, length, kind: "text" | "br" | "empty" | "rule"}
 	let lineOpen = false;      // the current line has something on it
@@ -746,7 +758,7 @@ function textModel(editor){
 		}
 	};
 	walk(editor);
-	return {editor, text, segments};
+	return cached.model = {editor, text, segments};
 }
 
 function isTrailing(node){

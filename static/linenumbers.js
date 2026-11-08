@@ -150,14 +150,16 @@ function lineNumbersView(editor){
 function renderLineNumbers(editor){
 	const view = lineNumbersView(editor);
 	const lines = editorLines(editor);
-	const origin = view.gutter.getBoundingClientRect().top;
 	// the card makes room for the numbers (styles.css)
 	view.gutter.parentElement.style.setProperty("--line-number-digits", Math.max(2, String(lines.length).length));
+	// Measure before writing number styles to avoid a layout for every line.
+	const origin = view.gutter.getBoundingClientRect().top;
+	const rects = lines.map(lineRect);
 	renderTitleNumber(view);
 	const numbers = [...view.gutter.children].filter((el) => !el.classList.contains("title-number"));
 	lines.forEach((line, i) => {
 		const el = numbers[i] || view.gutter.appendChild(document.createElement("span"));
-		const rect = lineRect(line);
+		const rect = rects[i];
 		el.hidden = !rect;
 		if ( rect ) {
 			el.style.top = `${rect.top - origin}px`;

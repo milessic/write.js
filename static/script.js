@@ -1011,6 +1011,7 @@ function closeAllModals(...excludeTitles){
 		document.querySelectorAll(".modal-container").forEach((e) => {
 			excludeTitles.forEach( (t) => {
 				if ( !e.querySelector(".section-head h2").innerText.startsWith(t)){
+					if ( e.canClose && !e.canClose() ) { return }
 					e.remove();
 					deleteOverlay();
 				} 
@@ -1018,7 +1019,9 @@ function closeAllModals(...excludeTitles){
 		})
 		return
 	}
-	document.querySelectorAll(".modal-container").forEach((e) => { e.remove() })
+	document.querySelectorAll(".modal-container").forEach((e) => {
+		if ( !e.canClose || e.canClose() ) { e.remove() }
+	})
 	deleteOverlay();
 }
 
@@ -1042,7 +1045,7 @@ function closeAllPopups(){
 	});
 	if ( typeof closeContextMenu !== "undefined" ) { closeContextMenu() }
 	// typing goes on where it was
-	if ( focusWasInPopup ) { restoreEditorSelection() }
+	if ( focusWasInPopup && !popups.some((el) => el.isConnected && el.classList.contains("modal-container")) ) { restoreEditorSelection() }
 	return true
 }
 
@@ -2241,6 +2244,21 @@ function removeInlineStyles(editor){
 	// takes a heading's size and the other way round; the editor never makes styled spans itself, so they go away
 	// (and <b style>, <i style>, ... from insertHTML)
 	for ( const el of editor.querySelectorAll("[style]") ) {
+		// Table dimensions are document content; discard other imported presentation.
+		if ( el.matches("td, th, tr") ) {
+			const property = el.nodeName === "TR" ? "height" : "width";
+			const value = el.style[property];
+			el.removeAttribute("style");
+			if ( /^\d+(?:\.\d+)?px$/.test(value) && parseFloat(value) > 0 ) {
+				el.style[property] = value;
+				if ( property === "width" ) {
+					el.style.minWidth = value;
+					el.style.maxWidth = value;
+					el.style.overflowWrap = "anywhere";
+				}
+			}
+			continue;
+		}
 		if ( el.nodeName === "SPAN" && el.attributes.length === 1 ) { el.replaceWith(...el.childNodes) }
 		else { el.removeAttribute("style") }
 	}

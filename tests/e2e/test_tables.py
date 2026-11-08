@@ -576,3 +576,84 @@ def test_selected_text_keeps_the_systems_menu(vi_insert, pointer, select, ours):
 	assert vi_insert.evaluate(CONTEXT_MENU, ["x", pointer, select]) is ours
 	vi_insert.keyboard.press("Escape")
 	vi_insert.keyboard.press("i")
+
+
+def test_calculate_selected_numeric_cells(vi_insert):
+	load(vi_insert, '<table><tbody><tr><td>-2</td><td>4.5</td><td>text</td></tr><tr><td>0</td><td>3.5</td><td>12kg</td></tr></tbody></table>')
+	select_cells(vi_insert, '-2', '12kg')
+	menu(vi_insert, '4.5', 'Calculate')
+	assert vi_insert.locator('#table-calculation').inner_text().splitlines() == ['Min: -2', 'Max: 4.5', 'Sum: 6', 'Average: 1.5', 'Close']
+	vi_insert.keyboard.press('Escape')
+	assert vi_insert.locator('#table-calculation').count() == 0
+
+
+def test_calculate_closes_when_clicking_outside(vi_insert):
+	load(vi_insert, TABLE)
+	select_cells(vi_insert, 'x', 'y')
+	menu(vi_insert, 'y', 'Calculate')
+	vi_insert.locator('#table-calculation div').first.click()
+	assert vi_insert.locator('#table-calculation').count() == 1
+	vi_insert.click('#editor > div:first-child')
+	assert vi_insert.locator('#table-calculation').count() == 0
+
+
+def test_calculate_empty_numeric_selection(vi_insert):
+	load(vi_insert, TABLE)
+	select_cells(vi_insert, 'x', 'y')
+	menu(vi_insert, 'y', 'Calculate')
+	assert vi_insert.locator('#table-calculation').inner_text().splitlines()[:4] == ['Min: —', 'Max: —', 'Sum: 0', 'Average: —']
+	vi_insert.click('#table-calculation button')
+	caret_in(vi_insert, 'x')
+	frames(vi_insert)
+	vi_insert.click("#editor td:text-is('x')", button='right')
+	assert 'Calculate' not in labels(vi_insert)
+	vi_insert.keyboard.press('Escape')
+
+
+@pytest.mark.parametrize('axis', ['column', 'row'])
+def test_manual_resize_persists_and_is_undoable(vi_insert, axis):
+	load(vi_insert, TABLE)
+	cell = vi_insert.locator('#editor tbody td').first
+	box = cell.bounding_box()
+	x = box['x'] + (box['width'] - 1 if axis == 'column' else box['width'] / 2)
+	y = box['y'] + (box['height'] / 2 if axis == 'column' else box['height'] - 1)
+	vi_insert.mouse.move(x, y)
+	vi_insert.mouse.down()
+	vi_insert.mouse.move(x + (70 if axis == 'column' else 0), y + (45 if axis == 'row' else 0), steps=5)
+	vi_insert.mouse.up()
+	prop = 'width' if axis == 'column' else 'height'
+	assert cell.bounding_box()[prop] >= box[prop] + (60 if axis == 'column' else 35)
+	resized = vi_insert.evaluate(HTML)
+	undo(vi_insert)
+	assert vi_insert.evaluate(HTML) == TABLE
+	vi_insert.evaluate('(html) => fillEditorWithHTML(html)', resized)
+	assert cell.bounding_box()[prop] >= box[prop] + (60 if axis == 'column' else 35)
+	menu(vi_insert, 'y', 'Add 1 row below')
+	assert cell.bounding_box()[prop] >= box[prop] + (60 if axis == 'column' else 35)
+	undo(vi_insert)
+	assert vi_insert.evaluate(HTML) == resized
+
+
+def test_table_counter_setting_and_labels(vi_insert):
+	load(vi_insert, '<div>x</div>')
+	vi_insert.evaluate('insertTable(28, 2, false)')
+	before = vi_insert.evaluate(HTML)
+	vi_insert.click('#hamburger-button')
+	vi_insert.click('#settings-btn')
+	vi_insert.check('#setting-table-counters')
+	vi_insert.keyboard.press('Escape')
+	frames(vi_insert)
+	try:
+		assert vi_insert.evaluate('localStorage.getItem("__tableCounters__")') == '1'
+		assert vi_insert.locator('.table-counter-layer').get_attribute('contenteditable') == 'false'
+		assert vi_insert.evaluate('[25, 26, 27, 701].map(tableColumnLabel)') == ['Z', 'AA', 'AB', 'ZZ']
+		assert vi_insert.locator('.table-counter-layer > div').all_text_contents()[-2:] == ['1', '2']
+		assert vi_insert.evaluate(HTML) == before
+		vi_insert.evaluate('caretToCell(document.querySelector("#editor tr").cells[27])')
+		frames(vi_insert)
+		assert 'AB' in vi_insert.locator('.table-counter-layer > div').all_text_contents()
+		vi_insert.evaluate('localStorage.setItem("__tableCounters__", "0"); scheduleTableChrome()')
+		frames(vi_insert)
+		assert vi_insert.locator('.table-counter-layer').count() == 0
+	finally:
+		vi_insert.evaluate('localStorage.removeItem("__tableCounters__"); scheduleTableChrome()')

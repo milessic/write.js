@@ -768,6 +768,7 @@ body.app > .topbar:has(.menu-opened) {
 	flex: 1;
 	min-height: 0;
 	overflow-y: auto;
+	scrollbar-gutter: stable;
 	/* don't hand the scroll over to the page at the document's ends */
 	overscroll-behavior: contain;
 }
@@ -2654,3 +2655,17 @@ body.focus-mode .floating-headings-inner {
 .modal-container.script-window-away {
 	display: none !important;
 }
+
+/* Navigation is outside the document, with space reserved around each table. */
+.show-table-counters .editor table { padding-top: 20px; padding-left: 28px; }
+.table-counter-layer { position: absolute; inset: 0; pointer-events: none; user-select: none; }
+.table-counter-layer > div {
+	position: absolute; box-sizing: border-box; overflow: hidden; text-align: center;
+	font: 11px/20px var(--font-mono); color: var(--ink-2); background: var(--surface-2);
+	border: 1px solid var(--line-strong);
+}
+#table-calculation {
+	position: fixed; z-index: 10000; padding: .7rem 1rem; border: 1px solid var(--line-strong);
+	border-radius: 6px; background: var(--surface); color: var(--ink); box-shadow: 0 4px 18px #0003;
+}
+#table-resize-guide { position: fixed; pointer-events: none; z-index: 10001; }
