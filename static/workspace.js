@@ -1161,6 +1161,7 @@ function markActiveTabSaved(){
 
 function markTabSaved(tab, name){
 	tab.name = name;
+	if ( tab.id === focusedPane?.tabId ) { documentNameObject.value = name }
 	tab.dirty = false;
 	// a new or renamed document goes to the tab's folder, a document saved over keeps its own
 	if ( tab.folder && !folderOfDocument(tab.name) ) { assignDocumentFolder(tab.name, tab.folder) }
@@ -1204,7 +1205,7 @@ function saveAllTabs(){
 }
 
 function tabLabelName(tab){
-	return tab.id === focusedPane?.tabId ? getDocumentName() : tab.name;
+	return tab.id === focusedPane?.tabId ? getDocumentName() : (tab.name || "").trim();
 }
 
 function removeRenamedDocument(oldName){
@@ -1591,7 +1592,7 @@ function renderPaneTitle(pane, tab){
 }
 
 function tabLabel(tab){
-	const name = tab.id === focusedPane?.tabId ? getDocumentName() : tab.name;
+	const name = tab.id === focusedPane?.tabId ? getDocumentName() : (tab.name || "").trim();
 	return name || untitledTabLabel;
 }
 

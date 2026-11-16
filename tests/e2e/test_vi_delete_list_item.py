@@ -64,3 +64,19 @@ def test_dc_is_undone_by_u(vi):
 	assert vi.lines == ["one", "one.one", "two", "b"]
 	vi.keys("Control+r")
 	assert vi.lines == ["two", "b"]
+
+
+@pytest.mark.parametrize("at", [0, 2])
+def test_dc_p_preserves_all_descendant_depths(vi, at):
+	vi.load(html=NESTED, at=(at, 0))
+	original = items(vi)
+	branch = original[at:-1]
+	vi.keys("d", "c", "G", "p")
+	base = branch[0][1]
+	assert items(vi)[-len(branch):] == [[text, depth - base, checked] for text, depth, checked in branch]
+
+
+def test_dc_p_preserves_sibling_children(vi):
+	vi.load(html=SIBLINGS).keys("d", "c", "G", "p")
+	assert items(vi) == [["next", 0, "false"], ["text"], ["generate", 0, "false"],
+		["calendar", 1, "true"], ["fix minutes", 1, "false"]]

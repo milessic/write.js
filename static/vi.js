@@ -1659,6 +1659,7 @@ function restoreLineFormats(editor, from, items){
 	if ( !items ) { return }
 	const first = lineNumber(textModel(editor).text, from);
 	const restoredChecks = [];
+	let depthOffset = 0;
 	items.forEach((item, n) => {
 		if ( item.block ) {
 			const model = textModel(editor);
@@ -1679,17 +1680,19 @@ function restoreLineFormats(editor, from, items){
 			exec("insertUnorderedList");
 			li = lineAt();
 		}
-		// as deep as it was, as far as the list lets it (an item can't be nested deeper than under the one above)
+		// Keep descendants relative to the root if it cannot retain its original depth.
+		const targetDepth = Math.max(0, item.depth + depthOffset);
 		for ( let guard = 0; li && guard < 32; guard++ ) {
 			const depth = listDepth(editor, li);
-			if ( depth === item.depth ) { break }
+			if ( depth === targetDepth ) { break }
 			// the first item of a list has nothing to be nested under
-			if ( depth < item.depth && li.previousElementSibling?.nodeName !== "LI" ) { break }
-			exec(depth < item.depth ? "indent" : "outdent");
+			if ( depth < targetDepth && !li.previousElementSibling?.matches("li, ul, ol") ) { break }
+			exec(depth < targetDepth ? "indent" : "outdent");
 			li = lineAt();
 			if ( !li || listDepth(editor, li) === depth ) { break }
 		}
 		if ( !li ) { return }
+		if ( n === 0 ) { depthOffset = listDepth(editor, li) - item.depth }
 		if ( item.checked === null ) { li.removeAttribute("data-checked") } else { li.dataset.checked = item.checked }
 		restoredChecks.push([li, item.checked]);
 	});

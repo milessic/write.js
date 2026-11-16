@@ -75,17 +75,11 @@ function renderFloatingHeadings(pane){
 	const titleShown = !pane.title.hidden && pane.title.getBoundingClientRect().bottom > scroller.getBoundingClientRect().top;
 	const withTitle = document.body.classList.contains("focus-mode") && focusTitleFloats() && !titleShown && Boolean(tab);
 	const name = withTitle ? tabLabel(tab) : null;
-	// what is under the bar counts as scrolled past: the headings are looked for again under the bar they make, until it
-	// stays the same
-	const top = scroller.getBoundingClientRect().top + 1;
-	let covered = bar.hidden ? 0 : bar.firstElementChild?.offsetHeight || 0;
-	for ( let pass = 0; pass < 3; pass++ ) {
-		const headings = floatingHeadingsAt(pane, mode, top + covered);
-		showFloatingHeadings(pane, bar, scroller, mode, name, headings);
-		const height = bar.hidden ? 0 : bar.firstElementChild.offsetHeight;
-		if ( height === covered ) { break }
-		covered = height;
-	}
+	// A fixed threshold avoids feedback between the bar's height and the chosen section.
+	// Wait until a heading has scrolled 8px past the viewport before floating it.
+	const top = scroller.getBoundingClientRect().top - 8;
+	const headings = floatingHeadingsAt(pane, mode, top);
+	showFloatingHeadings(pane, bar, scroller, mode, name, headings);
 }
 
 function floatingHeadingsAt(pane, mode, top){

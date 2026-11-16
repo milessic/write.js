@@ -885,7 +885,7 @@ function getDocumentText(withHtml=true){
 
 
 function getDocumentName(){
-	return documentNameObject.value;
+	return documentNameObject.value.trim();
 }
 
 function createModal(title, html){

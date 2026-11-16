@@ -145,3 +145,21 @@ def test_vi_mode_leaves_the_title_to_typing(app):
 	assert app.input_value("#doc-name") == "planjk"
 	app.keyboard.press("Escape")
 	assert app.evaluate("document.activeElement.id") == "editor"
+
+
+@pytest.mark.parametrize("save", ["saveDocumentToLocalStorage()", "saveAllTabs()"])
+def test_saved_name_is_trimmed(app, save):
+	app.fill("#doc-name", " Garaż ")
+	app.evaluate(save)
+	assert stored(app, "Garaż") is not None
+	assert stored(app, " Garaż ") is None
+	assert stored(app, "plan") is None
+	assert app.input_value("#doc-name") == "Garaż"
+	assert app.evaluate("getActiveTab().savedName") == "Garaż"
+
+
+def test_whitespace_only_name_is_not_saved(app):
+	app.fill("#doc-name", "   ")
+	app.evaluate("saveDocumentToLocalStorage()")
+	assert stored(app, "   ") is None
+	assert stored(app, "plan") is not None
