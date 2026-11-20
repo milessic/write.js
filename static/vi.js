@@ -3430,9 +3430,10 @@ function scrollCaret(editor, block="nearest"){
 	if ( !scroller || !selection.rangeCount ) { return }
 	const range = selection.getRangeAt(0).cloneRange();
 	range.collapse(selection.focusNode === range.startContainer && selection.focusOffset === range.startOffset);
-	// a caret between blocks (on a rule) has no rect of its own: the editor's would scroll to its top
-	let rect = range.getClientRects()[0];
-	if ( !rect ) {
+	// a caret between blocks (on a rule) has no rect of its own: the editor's would scroll to its top. Safari even
+	// gives one, at the document's first rule, so a caret in an element (not in text) is measured by the model
+	let rect = selection.focusNode.nodeType === Node.TEXT_NODE ? range.getClientRects()[0] : null;
+	if ( !rect || (!rect.height && !rect.top && !rect.left) ) {
 		const model = textModel(editor);
 		const index = caretIndex(model);
 		rect = (index !== null && characterRect(model, index)) || elementOf(selection.focusNode).getBoundingClientRect();

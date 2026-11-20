@@ -132,7 +132,28 @@ document.addEventListener("selectionchange", () => {
 		lastEditorRange = selection.getRangeAt(0).cloneRange();
 		updateBlockSelect();
 	}
+	revealCaretBetweenBlocks();
 });
+
+function revealCaretBetweenBlocks(){
+	// a caret right in an editor, between two of its lines (on a rule): Safari scrolls to the document's first rule
+	// instead of to it, so the view jumps to the top. The line next to the caret is brought back into sight.
+	const selection = window.getSelection();
+	if ( !selection.rangeCount || !selection.isCollapsed ) { return }
+	const editor = selection.focusNode;
+	if ( editor?.nodeType !== Node.ELEMENT_NODE || !editor.classList.contains("editor") ) { return }
+	const offset = selection.focusOffset;
+	requestAnimationFrame(() => {
+		if ( selection.focusNode !== editor || selection.focusOffset !== offset ) { return }
+		const line = [editor.childNodes[offset], editor.childNodes[offset - 1]].find(n => n?.nodeType === Node.ELEMENT_NODE && n.getClientRects().length);
+		const scroller = editor.closest(".pane-scroll");
+		if ( !line || !scroller ) { return }
+		const rect = line.getBoundingClientRect();
+		const box = scroller.getBoundingClientRect();
+		const top = box.top + (parseFloat(getComputedStyle(scroller).scrollPaddingTop) || 0);
+		if ( rect.bottom <= top || rect.top >= box.bottom ) { line.scrollIntoView({ block: "nearest" }) }
+	});
+}
 document.getElementById("hamburger-menu").addEventListener("click", toggleMenu);
 // document.getElementById("export-btn").addEventListener("click", exportDocument);
 document.getElementById("save-btn").addEventListener("click", saveDocumentToLocalStorage);
