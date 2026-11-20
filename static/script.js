@@ -1468,7 +1468,7 @@ function simulateEnter() {
 function isDeviceOnlyKey(key){
 	// state of this device that never goes to the cloud or a notebook backup
 	// (the workspace.js keys are looked up on call, that file loads after this one)
-	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viModeKey, viEscButtonKey, viHistoryKey, openedTabsKey, openedEditorsKey, tocSplitKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey, tocFoldsKey, cronExecutorKey, cronLastTickKey, cronLocalKey, scriptSecretsKey].includes(key);
+	return [userLoggedInKey, syncPendingKey, syncBaseKey, cloudSyncKey, viModeKey, viEscButtonKey, viHistoryKey, openedTabsKey, openedEditorsKey, tocSplitKey, treeWidthKey, treeWidthMobileKey, treeHeightKey, treePinnedKey, layoutKey, tocWidthKey, tocHeightKey, docPositionsKey, tocFoldsKey, cronExecutorKey, cronLastTickKey, cronLocalKey, scriptSecretsKey, "__caretTrace__", "__caretTraceLog__"].includes(key); // the caret trace: carettrace.js
 }
 
 function getAllLocalStorageItems() {
@@ -1707,7 +1707,8 @@ function notebookDataHtml(){
 			<button class="btn danger" type="button" id="clearall-btn" onclick="purgeLocalStorage()">Clear localStorage</button>
 		</div>
 		<p class="muted small">Export saves every document and setting of this browser to a <em>.writejs</em> file, Import replaces them with one. Clear deletes them from this browser.</p>
-	</div>`;
+	</div>
+	${typeof caretTraceHtml === "function" ? caretTraceHtml() : ""}`;
 }
 
 function purgeLocalStorage(doConfirm=true){
